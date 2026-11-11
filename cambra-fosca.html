@@ -284,6 +284,37 @@ select{
 }
 .note svg{width:13px;height:13px;flex:0 0 auto;margin-top:1px}
 
+/* ampliar amb IA */
+.modes{display:flex;flex-direction:column;gap:8px}
+.mode{
+  display:flex;flex-direction:column;gap:3px;text-align:left;padding:9px 11px;border-radius:8px;width:100%;
+  border:1px solid var(--line);background:var(--bg-2);
+}
+.mode b{font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mode b em{font-style:normal;font-family:var(--font-mono);font-size:10.5px;color:var(--fg-faint);font-weight:400}
+.mode span{font-size:11.5px;color:var(--fg-dim);line-height:1.4}
+.mode:hover{border-color:#4a4f55}
+.mode[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-wash)}
+.mode[aria-pressed="true"] b{color:var(--accent)}
+.ia-linies{display:flex;flex-direction:column;gap:6px;margin:2px 0 12px}
+.ia-res{font-family:var(--font-mono);font-size:11.5px;color:var(--fg);margin-top:7px}
+.ia-mal{color:var(--danger)}
+.ia-avis{color:#f4c789}
+#iaGo{width:100%;height:38px;justify-content:center;font-size:13px}
+.barra-ia{height:6px;border-radius:3px;background:var(--bg-4);overflow:hidden;margin:9px 0 6px}
+.barra-ia i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+#vel{
+  position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(13,14,15,.6);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+#vel>div{
+  width:min(320px,100%);background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+  box-shadow:0 12px 40px rgba(0,0,0,.5);
+}
+#vel b{font-size:13px;font-weight:600}
+#vel .tiny{min-height:1.45em}
+#velAtura{margin-top:10px}
+
 /* ---------- ratlla d'estat ---------- */
 .statusbar{
   flex:0 0 auto;display:flex;align-items:center;gap:14px;height:26px;
@@ -432,6 +463,12 @@ select{
         </div>
       </div>
       <div id="drop">Deixa anar la imatge aquí</div>
+      <div id="vel" hidden><div role="status" aria-live="polite">
+        <b id="velText">Ampliant…</b>
+        <div class="barra-ia"><i id="velBarra"></i></div>
+        <div class="tiny" id="velDetall"></div>
+        <button class="btn" id="velAtura" type="button">Atura</button>
+      </div></div>
     </main>
 
     <aside class="panels">
@@ -443,12 +480,14 @@ select{
         <button class="tab" role="tab" id="tab-adj" aria-selected="true" aria-controls="pane-adj">Ajustos</button>
         <button class="tab" role="tab" id="tab-fil" aria-selected="false" aria-controls="pane-fil">Filtres</button>
         <button class="tab" role="tab" id="tab-his" aria-selected="false" aria-controls="pane-his">Historial</button>
+        <button class="tab" role="tab" id="tab-amp" aria-selected="false" aria-controls="pane-amp">Amplia</button>
       </div>
       <div class="scroll">
         <div class="pane on" id="pane-adj" role="tabpanel" aria-labelledby="tab-adj"></div>
         <div class="pane" id="pane-fil" role="tabpanel" aria-labelledby="tab-fil">
           <div class="fgrid" id="fgrid"></div>
         </div>
+        <div class="pane" id="pane-amp" role="tabpanel" aria-labelledby="tab-amp"></div>
         <div class="pane" id="pane-his" role="tabpanel" aria-labelledby="tab-his">
           <div class="hlist" id="hlist"></div>
         </div>
@@ -673,6 +712,14 @@ function orientedSize(){
   return (S.rot%180) ? {w:h,h:w} : {w,h};
 }
 function buildBase(){
+  // Sense girs, inversions ni retall, la base és la foto mateixa: no se'n fa
+  // cap còpia. Cap llenç no hi dibuixa a sobre, i amb una foto ampliada a
+  // 6000 px una còpia són 144 MB més.
+  if(!S.rot && !S.flipH && !S.flipV && !S.crop){
+    baseCanvas=S.src; baseCtx=null;
+    renderPaint();
+    return;
+  }
   const o=orientedSize();
   const oc=mkCanvas(o.w,o.h), ox=oc.getContext('2d');
   ox.save();
@@ -688,15 +735,23 @@ function buildBase(){
     out=mkCanvas(c.w,c.h);
     out.getContext('2d').drawImage(oc,c.x,c.y,c.w,c.h,0,0,c.w,c.h);
   }
-  baseCanvas=out; baseCtx=out.getContext('2d',{willReadFrequently:true});
-
-  if(!paintCanvas || paintCanvas.width!==out.width || paintCanvas.height!==out.height){
-    paintCanvas=mkCanvas(out.width,out.height);
+  baseCanvas=out; baseCtx=null;
+  renderPaint();
+}
+/* La capa de pintura i l'esborrany de cada pinzellada fan la mida de la foto,
+   però només calen si s'hi ha pintat alguna cosa: es fan quan calen i es
+   llencen quan no hi ha res pintat. */
+function ensurePaint(){
+  if(!paintCanvas || paintCanvas.width!==baseCanvas.width || paintCanvas.height!==baseCanvas.height){
+    paintCanvas=mkCanvas(baseCanvas.width,baseCanvas.height);
     paintCtx=paintCanvas.getContext('2d');
-    scratch=mkCanvas(out.width,out.height);
+  }
+}
+function ensureScratch(){
+  if(!scratch || scratch.width!==baseCanvas.width || scratch.height!==baseCanvas.height){
+    scratch=mkCanvas(baseCanvas.width,baseCanvas.height);
     scratchCtx=scratch.getContext('2d');
   }
-  renderPaint();
 }
 
 /* Quan la imatge gira, s'inverteix o es retalla, les pinzellades ja fetes
@@ -792,6 +847,7 @@ function drawOp(op){
   }
   // el pinzell i el tampo passen per un llenc a part: aixi una pinzellada te
   // una sola opacitat i no se'n va enfosquint alla on es creua ella mateixa
+  ensureScratch();
   scratchCtx.clearRect(0,0,scratch.width,scratch.height);
   if(op.type==='clone'){
     const ox=op.src[0]-op.pts[0], oy=op.src[1]-op.pts[1];
@@ -815,7 +871,12 @@ function drawOp(op){
   paintCtx.restore();
 }
 function renderPaint(){
-  if(!paintCtx) return;
+  if(!baseCanvas) return;
+  if(!S.ops.length){
+    paintCanvas=paintCtx=scratch=scratchCtx=paintSnap=paintSnapCtx=null;
+    return;
+  }
+  ensurePaint();
   paintCtx.clearRect(0,0,paintCanvas.width,paintCanvas.height);
   for(const op of S.ops) drawOp(op);
 }
@@ -980,7 +1041,7 @@ function composite(ctx,w,h){
   ctx.clearRect(0,0,w,h);
   ctx.imageSmoothingQuality='high';
   ctx.drawImage(baseCanvas,0,0,w,h);
-  ctx.drawImage(paintCanvas,0,0,w,h);
+  if(paintCanvas) ctx.drawImage(paintCanvas,0,0,w,h);
 }
 function renderInto(canvas,w,h,adj){
   canvas.width=w; canvas.height=h;
@@ -1043,6 +1104,7 @@ function setZoom(z,keepFit){
 function snap(){
   return {
     adj:Object.assign({},S.adj),
+    src:S.src,
     rot:S.rot, flipH:S.flipH, flipV:S.flipV,
     crop:S.crop?Object.assign({},S.crop):null,
     preset:S.preset,
@@ -1059,8 +1121,10 @@ function push(label){
 function restore(i){
   const e=S.history[i]; if(!e) return;
   const st=e.st;
-  const geomChanged = st.rot!==S.rot||st.flipH!==S.flipH||st.flipV!==S.flipV||
+  // ampliar canvia la foto mateixa: desfer-ho torna a la d'abans
+  const geomChanged = st.src!==S.src||st.rot!==S.rot||st.flipH!==S.flipH||st.flipV!==S.flipV||
     JSON.stringify(st.crop)!==JSON.stringify(S.crop);
+  S.src=st.src;
   S.adj=Object.assign({},st.adj);
   S.rot=st.rot; S.flipH=st.flipH; S.flipV=st.flipV;
   S.crop=st.crop?Object.assign({},st.crop):null;
@@ -1070,8 +1134,8 @@ function restore(i){
   if(geomChanged){ buildBase(); fitToStage(); } else { renderPaint(); scheduleRender(); }
   syncSliders(); drawHistory(); syncButtons(); markPreset();
 }
-const undo=()=>{ if(S.hIndex>0) restore(S.hIndex-1); };
-const redo=()=>{ if(S.hIndex<S.history.length-1) restore(S.hIndex+1); };
+const undo=()=>{ if(!IA.treballant && S.hIndex>0) restore(S.hIndex-1); };
+const redo=()=>{ if(!IA.treballant && S.hIndex<S.history.length-1) restore(S.hIndex+1); };
 function drawHistory(){
   const list=$('#hlist'); list.textContent='';
   S.history.forEach((e,i)=>{
@@ -1339,7 +1403,7 @@ function drawThumbs(){
   tx.clearRect(0,0,N,N);
   tx.imageSmoothingQuality='high';
   tx.drawImage(baseCanvas,(bw-s)/2,(bh-s)/2,s,s,0,0,N,N);
-  tx.drawImage(paintCanvas,(bw-s)/2,(bh-s)/2,s,s,0,0,N,N);
+  if(paintCanvas) tx.drawImage(paintCanvas,(bw-s)/2,(bh-s)/2,s,s,0,0,N,N);
   for(const p of PRESETS){
     const card=$('#fc-'+p.id); if(!card) continue;
     const c=card.querySelector('canvas'), cx=c.getContext('2d',{willReadFrequently:true});
@@ -1500,6 +1564,7 @@ view.addEventListener('pointerdown',e=>{
     color:S.brush.color,
     src: t==='clone'? S.cloneSrc.slice() : null,
   };
+  ensurePaint();
   savePaintSnap();
   S.ops.push(stroke);
   drawOp(stroke); scheduleRender();
@@ -1576,16 +1641,19 @@ function loadImage(src,name,isSample){
   img.src=src;
 }
 function adopt(canvas,name,isSample){
+  if(IA.treballant) IA.atura=true;
+  IA.factorTriat=false;
   S.src=canvas; S.name=name||'imatge.png'; S.sample=!!isSample;
   S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
   S.adj=Object.assign({},ADJ_DEF); S.preset='cap';
   S.ops=[]; S.cloneSrc=null; $('#cloneSrc').style.display='none';
-  paintCanvas=null; thumbSrc=null;
+  paintCanvas=paintCtx=scratch=scratchCtx=null; thumbSrc=null;
   S.history=[]; S.hIndex=-1;
   buildBase(); syncSliders(); markPreset();
   $('#fileName').textContent=S.name;
   fitToStage(); push('Obre '+S.name);
   if(S.tool==='crop') startCrop();
+  if($('#pane-amp').classList.contains('on')) pintaAmplia();
   say(isSample
     ? 'Imatge d\'exemple generada per la pàgina. Obre\'n una teva per començar.'
     : S.src.width+' × '+S.src.height+' px carregats.');
@@ -1751,15 +1819,298 @@ $('#btnHelp').onclick=()=>dialog('Dreceres de teclat',body=>{
 });
 
 /* ===================================================================
-   16. pestanyes, ratlla d'estat i teclat
+   16. ampliar amb IA
+   Les mateixes xarxes neuronals que fa servir Upscayl (Real-ESRGAN), fent
+   córrer dins del navegador amb ONNX Runtime. La foto no surt de l'aparell:
+   el que es baixa (una sola vegada) és el motor i el model, del mateix web.
+   N'hi ha dos: el lleuger, per al mòbil, i el gran, per a l'ordinador.
 =================================================================== */
-['adj','fil','his'].forEach(id=>{
+const IA={
+  DIR:'ia/',
+  CAU:'cambra-fosca-ia-1',
+  MARGE:16,               // píxels de context al voltant de cada tros, que no es vegin les costures
+  models:{
+    mobil:{ fitxer:'models/realesr-general-x4v3.onnx', mb:4.9, nom:'Mòbil', model:'lleuger',
+            desc:'Model lleuger. Va ràpid i serveix a qualsevol aparell.', tros:{gpu:192,cpu:128}, maxMP:16 },
+    ordinador:{ fitxer:'models/realesrgan-x4plus.onnx', mb:66.9, nom:'Ordinador', model:'gran',
+            desc:'Model gran: més qualitat, però més lent i amb més memòria.', tros:{gpu:128,cpu:96}, maxMP:64 },
+  },
+  motors:{
+    gpu:{ script:'ort/ort.webgpu.min.js', wasm:'ort/ort-wasm-simd-threaded.asyncify.wasm', mb:28.7 },
+    cpu:{ script:'ort/ort.wasm.min.js',   wasm:'ort/ort-wasm-simd-threaded.wasm',          mb:14.8 },
+  },
+  mode:null, factor:4,
+  factorTriat:false,      // si l'ha triat la persona, no es canvia sol (abans passava a ×2 sense dir res)
+  motor:null,             // 'gpu' si l'aparell pot fer servir la gràfica, 'cpu' si no; null mentre es mira
+  carregat:null, sessio:null, sessioDe:null,
+  treballant:false, atura:false,
+  baixats:{},             // què ja hi ha a la memòria del navegador
+  error:null,
+};
+
+/* El que és un mòbil, de partida: pantalla de dit i petita. Es pot canviar. */
+IA.mode = (matchMedia('(pointer:coarse)').matches && Math.min(screen.width,screen.height)<820) ? 'mobil' : 'ordinador';
+
+async function miraGPU(){
+  try{
+    if(!navigator.gpu) return false;
+    return !!(await navigator.gpu.requestAdapter());
+  }catch(e){ return false; }
+}
+const urlIA = cami => new URL(IA.DIR+cami, location.href).href;
+async function cauIA(){ try{ return self.caches ? await caches.open(IA.CAU) : null; }catch(e){ return null; } }
+async function miraBaixats(){
+  const c=await cauIA(); if(!c) return;
+  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
+  for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
+}
+/* Baixa un fitxer gros una sola vegada: després el treu de la memòria del
+   navegador (Cache Storage), també sense connexió. */
+async function baixaIA(cami, progres){
+  const url=urlIA(cami), c=await cauIA();
+  if(c){ const r=await c.match(url); if(r) return new Uint8Array(await r.arrayBuffer()); }
+  const r=await fetch(url);
+  if(!r.ok) throw new Error('no s\'ha pogut baixar '+cami.split('/').pop()+' ('+r.status+')');
+  const total=+r.headers.get('content-length')||0;
+  let buf;
+  if(r.body && r.body.getReader){
+    const lector=r.body.getReader(), trossos=[]; let rebut=0;
+    for(;;){
+      const {done,value}=await lector.read(); if(done) break;
+      trossos.push(value); rebut+=value.length; progres(rebut,total);
+    }
+    buf=new Uint8Array(rebut); let o=0; for(const t of trossos){ buf.set(t,o); o+=t.length; }
+  } else buf=new Uint8Array(await r.arrayBuffer());
+  if(c){ try{ await c.put(url, new Response(buf.slice(0), {headers:{'content-type':'application/octet-stream'}})); IA.baixats[cami]=true; }catch(e){} }
+  return buf;
+}
+function carregaScript(src){
+  return new Promise((ok,ko)=>{
+    const sc=document.createElement('script'); sc.src=src;
+    sc.onload=ok; sc.onerror=()=>ko(new Error('no s\'ha pogut carregar el motor'));
+    document.head.appendChild(sc);
+  });
+}
+async function preparaMotor(progres){
+  if(IA.carregat) return;
+  const m=IA.motors[IA.motor];
+  const wasm=await baixaIA(m.wasm, (a,t)=>progres('el motor',a,t||m.mb*1048576));
+  await carregaScript(urlIA(m.script));
+  if(!self.ort) throw new Error('el motor no s\'ha engegat');
+  ort.env.wasm.wasmPaths=urlIA('ort/');
+  ort.env.wasm.wasmBinary=wasm;
+  ort.env.wasm.numThreads=1;         // els fils demanen unes capçaleres que GitHub no envia
+  // Sense gràfica, el motor treballa en un fil a part: si no, el navegador es
+  // quedaria glaçat mentre fa cada tros.
+  if(IA.motor==='cpu') ort.env.wasm.proxy=true;
+  IA.carregat=IA.motor;
+}
+async function preparaSessio(progres){
+  if(IA.sessio && IA.sessioDe===IA.mode) return IA.sessio;
+  if(IA.sessio){ try{ await IA.sessio.release(); }catch(e){} IA.sessio=null; IA.sessioDe=null; }
+  const md=IA.models[IA.mode];
+  const bytes=await baixaIA(md.fitxer, (a,t)=>progres('el model',a,t||md.mb*1048576));
+  progres('preparant el model',0,0);
+  IA.sessio=await ort.InferenceSession.create(bytes, {
+    executionProviders: IA.motor==='gpu' ? ['webgpu','wasm'] : ['wasm'],
+    graphOptimizationLevel:'all',
+  });
+  IA.sessioDe=IA.mode;
+  return IA.sessio;
+}
+
+/* La feina, per trossos. Cada tros es passa pel model amb un marge de context
+   al voltant (fora de la foto, es repeteix la vora) i només se'n queda el mig:
+   així no es veuen les costures i la memòria no depèn de la mida de la foto.
+   Els trossos fan sempre la mateixa mida, que la gràfica no hagi de tornar a
+   preparar-se a cada un. El model sempre amplia per 4; per a ×2, cada tros es
+   redueix a la meitat abans de posar-lo, amb el seu marge i tot. */
+async function ampliaImatge(src, sessio, f, T, cadaTros){
+  const W=src.width, H=src.height, P=IA.MARGE;
+  const tw=Math.min(T,W), th=Math.min(T,H), iw=tw+2*P, ih=th+2*P;
+  const cols=Math.ceil(W/tw), files=Math.ceil(H/th), total=cols*files;
+  const px=src.getContext('2d').getImageData(0,0,W,H).data;
+  let alfa=false; for(let i=3;i<px.length;i+=4) if(px[i]<255){ alfa=true; break; }
+  const out=mkCanvas(W*f,H*f), ox=out.getContext('2d');
+  const t4=mkCanvas(iw*4,ih*4), t4x=t4.getContext('2d');
+  const img=t4x.createImageData(iw*4,ih*4), d=img.data;
+  let t2=null, t2x=null;
+  if(f===2){ t2=mkCanvas(iw*2,ih*2); t2x=t2.getContext('2d'); t2x.imageSmoothingQuality='high'; }
+  let ta=null, tax=null;
+  if(alfa){ ta=mkCanvas(iw*4,ih*4); tax=ta.getContext('2d',{willReadFrequently:true}); tax.imageSmoothingQuality='high'; }
+  const nomE=sessio.inputNames[0], nomS=sessio.outputNames[0], pla=iw*ih, p4=pla*16;
+  let n=0;
+  for(let r=0;r<files;r++) for(let c=0;c<cols;c++){
+    if(IA.atura) throw new Error('aturat');
+    const x0=Math.min(c*tw,W-tw), y0=Math.min(r*th,H-th);
+    const e=new Float32Array(3*pla);   // un de nou cada vegada: el fil del motor se l'endú
+    for(let y=0;y<ih;y++){
+      const fila=clamp(y0-P+y,0,H-1)*W;
+      for(let x=0;x<iw;x++){
+        const k=(fila+clamp(x0-P+x,0,W-1))*4, o=y*iw+x;
+        e[o]=px[k]/255; e[o+pla]=px[k+1]/255; e[o+2*pla]=px[k+2]/255;
+      }
+    }
+    const res=await sessio.run({[nomE]: new ort.Tensor('float32', e, [1,3,ih,iw])});
+    const sortida=res[nomS], y=sortida.data;
+    for(let i=0,j=0;i<p4;i++,j+=4){ d[j]=y[i]*255; d[j+1]=y[i+p4]*255; d[j+2]=y[i+2*p4]*255; d[j+3]=255; }
+    if(sortida.dispose) sortida.dispose();
+    if(alfa){
+      // la transparència no la toca el model: s'amplia a part, a la manera normal
+      tax.clearRect(0,0,ta.width,ta.height);
+      tax.drawImage(src, x0-P, y0-P, iw, ih, 0, 0, iw*4, ih*4);
+      const a=tax.getImageData(0,0,ta.width,ta.height).data;
+      for(let j=3;j<d.length;j+=4) d[j]=a[j];
+    }
+    t4x.putImageData(img,0,0);
+    const dx=x0*f, dy=y0*f, dw=tw*f, dh=th*f;
+    ox.clearRect(dx,dy,dw,dh);
+    if(f===4) ox.drawImage(t4, 4*P,4*P,4*tw,4*th, dx,dy,dw,dh);
+    else { t2x.clearRect(0,0,t2.width,t2.height); t2x.drawImage(t4,0,0,t2.width,t2.height);
+           ox.drawImage(t2, 2*P,2*P,2*tw,2*th, dx,dy,dw,dh); }
+    n++; cadaTros(n,total);
+  }
+  return out;
+}
+
+const mb = n => (n>=10 ? Math.round(n) : n.toFixed(1).replace('.',','))+' MB';
+const minuts = s => s<60 ? Math.max(1,round(s))+' s' : Math.floor(s/60)+' min '+String(round(s%60)).padStart(2,'0')+' s';
+function midaResultat(f){
+  return { w:baseCanvas.width*f, h:baseCanvas.height*f, mp:baseCanvas.width*f*baseCanvas.height*f/1e6 };
+}
+function hiCap(f){ return midaResultat(f).mp <= IA.models[IA.mode].maxMP; }
+
+function pintaAmplia(){
+  const pane=$('#pane-amp'); if(!pane || !baseCanvas) return;
+  // De partida, ×4 si hi cap i ×2 si no; però si la persona ha triat ×4 i no
+  // hi cap, es queda ×4 i se li diu per què no pot.
+  if(!IA.factorTriat) IA.factor = hiCap(4) ? 4 : 2;
+  const md=IA.models[IA.mode], res=midaResultat(IA.factor), cap=hiCap(IA.factor);
+  pane.textContent='';
+
+  const g1=el('div','grp');
+  g1.appendChild(el('h4',null,'Amplia amb IA'));
+  g1.appendChild(el('div','tiny','Fa la foto més gran i s\'inventa el detall que hi falta, com Upscayl. Va molt bé amb fotos petites o borroses; el que s\'ha perdut del tot no ho recupera. La foto no surt del teu aparell.'));
+  pane.appendChild(g1);
+
+  const g2=el('div','grp'); g2.appendChild(el('h4',null,'On ho fas'));
+  const modes=el('div','modes');
+  for(const k of ['mobil','ordinador']){
+    const m=IA.models[k], b=el('button','mode');
+    b.type='button'; b.id='iaMode-'+k; b.setAttribute('aria-pressed', k===IA.mode?'true':'false');
+    b.innerHTML='<b>'+m.nom+'<em>'+mb(m.mb)+'</em></b><span>'+m.desc+'</span>';
+    b.onclick=()=>{ IA.mode=k; IA.factorTriat=false; pintaAmplia(); };
+    modes.appendChild(b);
+  }
+  g2.appendChild(modes); pane.appendChild(g2);
+
+  const g3=el('div','grp'); g3.appendChild(el('h4',null,'Quant més gran'));
+  const chips=el('div','chips');
+  for(const f of [2,4]){
+    const c=el('button','chip','×'+f); c.type='button'; c.id='iaF-'+f;
+    c.setAttribute('aria-pressed', f===IA.factor?'true':'false');
+    c.onclick=()=>{ IA.factor=f; IA.factorTriat=true; pintaAmplia(); };
+    chips.appendChild(c);
+  }
+  g3.appendChild(chips);
+  g3.appendChild(el('div','ia-res'+(cap?'':' ia-mal'),
+    baseCanvas.width+' × '+baseCanvas.height+' → '+res.w+' × '+res.h+' px'));
+  if(!cap){
+    g3.appendChild(el('div','tiny ia-mal','Faria '+round(res.mp)+' megapíxels, i en aquest mode el màxim és '+md.maxMP+
+      ': no cabria a la memòria. '+(IA.factor===4&&hiCap(2)?'Tria ×2, o ':'')+'retalla primer la part que vulguis'+
+      (IA.mode==='mobil'?', o fes-ho des de l\'ordinador.':'.')));
+  }
+  pane.appendChild(g3);
+
+  const linies=el('div','ia-linies'); linies.id='iaLinies';
+  const linia=(t,c)=>linies.appendChild(el('div','tiny'+(c?' '+c:''),t));
+  if(IA.motor==null) linia('Mirant si aquest aparell pot fer servir la gràfica…');
+  else if(IA.motor==='gpu') linia('Farà servir la gràfica de l\'aparell, que és el que el fa anar de pressa.');
+  else {
+    linia('Aquest aparell no pot fer servir la gràfica: anirà amb el processador, que és més lent.');
+    if(IA.mode==='ordinador') linia('Amb el model gran i sense gràfica pot trigar molts minuts. El de mòbil va molt més de pressa.','ia-avis');
+  }
+  if(IA.motor){
+    const falta=[];
+    const mot=IA.motors[IA.motor];
+    if(!IA.baixats[mot.wasm] && IA.carregat!==IA.motor) falta.push(mot.mb);
+    if(!IA.baixats[md.fitxer] && !(IA.sessio && IA.sessioDe===IA.mode)) falta.push(md.mb);
+    const suma=falta.reduce((a,b)=>a+b,0);
+    linia(suma ? 'La primera vegada es baixen '+mb(suma)+' (el motor i el model). Després queden desats en aquest navegador.'
+               : 'El motor i el model ja són en aquest navegador: no cal baixar res.');
+  }
+  if(IA.error) linia('L\'última vegada no ha funcionat: '+IA.error+'.','ia-mal');
+  pane.appendChild(linies);
+
+  const go=el('button','btn primary','Amplia ×'+IA.factor); go.type='button'; go.id='iaGo';
+  go.disabled=!cap || IA.motor==null || IA.treballant;
+  go.onclick=fesAmplia;
+  pane.appendChild(go);
+}
+
+function vel(text, part, detall){
+  $('#vel').hidden=false;
+  $('#velText').textContent=text;
+  $('#velBarra').style.width=round(clamp(part,0,1)*100)+'%';
+  $('#velDetall').textContent=detall||'';
+}
+$('#velAtura').onclick=()=>{ IA.atura=true; $('#velText').textContent='Aturant…'; };
+
+async function fesAmplia(){
+  if(IA.treballant || !baseCanvas || !hiCap(IA.factor)) return;
+  if(cropOn){ endCrop(false); setTool('move'); }
+  hideTextEdit();
+  IA.treballant=true; IA.atura=false; IA.error=null;
+  const f=IA.factor, md=IA.models[IA.mode], src=baseCanvas, t0=performance.now();
+  try{
+    const progres=(que,a,t)=>{
+      if(IA.atura) throw new Error('aturat');
+      vel(t ? 'Baixant '+que+'…' : 'Preparant el model…', t ? a/t : 0, t ? mb(a/1048576)+' de '+mb(t/1048576) : 'Només la primera vegada.');
+    };
+    vel('Preparant…',0,'');
+    await preparaMotor(progres);
+    const sessio=await preparaSessio(progres);
+    let tInici=0;
+    vel('Ampliant…',0,'Començant pel primer tros…');
+    const out=await ampliaImatge(src, sessio, f, md.tros[IA.motor], (n,total)=>{
+      // el primer tros porta la preparació de la gràfica: el compte comença al segon
+      if(n===1) tInici=performance.now();
+      let detall='Tros '+n+' de '+total;
+      if(n>=2){ const queda=(performance.now()-tInici)/(n-1)*(total-n)/1000; detall+=' · queden uns '+minuts(queda); }
+      vel('Ampliant ×'+f+'…', n/total, detall);
+    });
+    if(IA.atura) throw new Error('aturat');
+    // La foto ampliada passa a ser la foto: els girs i el retall ja hi són
+    // aplicats, i les pinzellades es fan grans amb ella.
+    S.src=out; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
+    mapOps((x,y)=>[x*f,y*f]);
+    for(const op of S.ops) if(op.size) op.size*=f;
+    S.cloneSrc=null; $('#cloneSrc').style.display='none';
+    buildBase(); fitToStage();
+    push('Amplia ×'+f+' · model '+md.model);
+    say('Ampliada a '+out.width+' × '+out.height+' px en '+minuts((performance.now()-t0)/1000)+'.');
+  }catch(e){
+    const msg=String(e&&e.message||e);
+    if(msg==='aturat') say('Ampliació aturada. La foto és com era.');
+    else { IA.error=msg; say('No s\'ha pogut ampliar: '+msg+'.'); console.warn('Amplia:',e); }
+  }finally{
+    IA.treballant=false; IA.atura=false;
+    $('#vel').hidden=true;
+    pintaAmplia();
+  }
+}
+
+/* ===================================================================
+   17. pestanyes, ratlla d'estat i teclat
+=================================================================== */
+['adj','fil','his','amp'].forEach(id=>{
   $('#tab-'+id).onclick=()=>{
-    ['adj','fil','his'].forEach(o=>{
+    ['adj','fil','his','amp'].forEach(o=>{
       $('#tab-'+o).setAttribute('aria-selected', o===id?'true':'false');
       $('#pane-'+o).classList.toggle('on', o===id);
     });
     if(id==='fil') drawThumbs();
+    if(id==='amp') pintaAmplia();
   };
 });
 let msgTimer=null;
@@ -1783,6 +2134,7 @@ document.addEventListener('keydown',e=>{
   const tag=(e.target.tagName||'').toLowerCase();
   if(tag==='input'||tag==='select'||tag==='textarea') return;
   const k=e.key.toLowerCase();
+  if(IA.treballant){ if(k==='escape') IA.atura=true; e.preventDefault(); return; }
   if((e.ctrlKey||e.metaKey)&&k==='z'){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
   if((e.ctrlKey||e.metaKey)&&k==='y'){ e.preventDefault(); redo(); return; }
   if((e.ctrlKey||e.metaKey)&&k==='s'){ e.preventDefault(); saveDialog(); return; }
@@ -1812,7 +2164,7 @@ window.addEventListener('resize',()=>{
 });
 
 /* ===================================================================
-   17. engegar
+   18. engegar
 =================================================================== */
 buildRail();
 buildAdjPanel();
@@ -1820,6 +2172,7 @@ buildFilters();
 setTool('move');
 adopt(makeSample(),'exemple.png',true);
 requestAnimationFrame(()=>{ fitToStage(); drawThumbs(); });
+miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats(); pintaAmplia(); });
 
 if(window.claude && typeof window.claude.use==='function'){
   window.claude.use('downloads').then(d=>{ downloads=d; }).catch(()=>{});

@@ -1,0 +1,3 @@
+# Els models i el motor són binaris: que git no hi toqui mai els salts de línia
+*.onnx binary
+*.wasm binary

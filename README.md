@@ -10,10 +10,15 @@ estadístiques.
 
 | Eina | Què fa |
 |---|---|
-| [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text |
+| [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar, text, i amplia amb IA |
 | [La Revisió](https://oscarbellosido.github.io/Eines/revisio.html) | Repassa la seguretat d'un mòbil Android en tretze comprovacions guiades |
 
 Els jocs són a [la seva col·lecció](https://oscarbellosido.github.io/Jocs/).
+
+L'ampliació amb IA fa servir els models de
+[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) (llicència BSD) i el motor
+[ONNX Runtime Web](https://github.com/microsoft/onnxruntime) (llicència MIT).
+Tots dos són a `ia/`, amb les seves llicències; `ia/LLEGEIX.md` ho explica.
 
 ## Provar-les
 

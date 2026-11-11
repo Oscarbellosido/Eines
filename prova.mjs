@@ -162,6 +162,135 @@ if (!desat) problemes.push('el botó de desar no ha generat cap fitxer');
 console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename() : 'no s\'ha baixat res'}`);
 await p.close();
 
+// ------------------------------------------- la Cambra Fosca: ampliar amb IA
+// El motor i els models es llegeixen amb `fetch`, i des d'una pàgina file://
+// el navegador no ho deixa fer: aquesta part serveix el repositori ella
+// mateixa. Aquí no hi ha gràfica (WebGPU), o sigui que es prova el camí del
+// processador; el de la gràfica només es pot provar en un aparell que en tingui.
+{
+  const { createServer } = await import('http');
+  const { readFileSync, statSync } = await import('fs');
+  const { extname, join } = await import('path');
+  const TIPUS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript',
+                  '.wasm': 'application/wasm', '.png': 'image/png' };
+  const servidor = createServer((q, r) => {
+    const f = join(AQUI, decodeURIComponent(q.url.split('?')[0]));
+    if (!f.startsWith(AQUI) || !existsSync(f) || statSync(f).isDirectory()) { r.writeHead(404); return r.end(); }
+    r.writeHead(200, { 'content-type': TIPUS[extname(f)] || 'application/octet-stream', 'content-length': statSync(f).size });
+    r.end(readFileSync(f));
+  });
+  await new Promise(ok => servidor.listen(0, '127.0.0.1', ok));
+  const BASE = `http://127.0.0.1:${servidor.address().port}/cambra-fosca.html`;
+  const abansDe = problemes.length;
+  const p = await navegador.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+  vigila(p, 'amplia');
+  await p.goto(BASE);
+  await p.waitForTimeout(1500);
+  const text = sel => p.locator(sel).innerText();
+  const mida = () => text('#stDims');
+  const historial = () => p.locator('.hitem span').allInnerTexts();
+  const acaba = async (maxim = 300000) => {      // espera que se'n vagi el vel
+    const t0 = Date.now();
+    while (!(await p.evaluate(() => document.querySelector('#vel').hidden))) {
+      if (Date.now() - t0 > maxim) { problemes.push('l\'ampliació no s\'acaba mai'); return; }
+      await p.waitForTimeout(200);
+    }
+  };
+  // una imatge petita feta aquí mateix: degradat, un cercle i un quadre
+  const fesImatge = (w, h) => p.evaluate(([w, h]) => {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#2a5a9c'); g.addColorStop(1, '#e0a050');
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+    x.fillStyle = '#f2d24a'; x.beginPath(); x.arc(w * .3, h * .45, h * .28, 0, 7); x.fill();
+    x.fillStyle = '#7a2230'; x.fillRect(w * .6, h * .35, w * .3, h * .55);
+    return c.toDataURL('image/png');
+  }, [w, h]);
+  const obre = async (w, h) => {
+    const dades = await fesImatge(w, h);
+    await p.setInputFiles('#file', { name: 'petita.png', mimeType: 'image/png', buffer: Buffer.from(dades.split(',')[1], 'base64') });
+    await p.waitForTimeout(600);
+  };
+
+  // la pestanya hi cap a totes les mides, sense tallar-se
+  for (const ample of [320, 1280]) {
+    await p.setViewportSize({ width: ample, height: 800 });
+    await p.waitForTimeout(200);
+    const t = await p.evaluate(() => { const t = document.querySelector('.tabs');
+      return { vessa: t.scrollWidth > t.clientWidth + 1, tallades: [...t.children].filter(b => b.scrollWidth > b.clientWidth + 1).length }; });
+    if (t.vessa || t.tallades) problemes.push(`a ${ample}px les pestanyes no hi caben`);
+  }
+  await p.setViewportSize({ width: 1280, height: 800 });
+
+  // els límits: amb la foto de mostra (1500 × 1000), al mòbil ×4 no hi cap
+  await p.click('#tab-amp');
+  await p.click('#iaMode-mobil');
+  if (await text('#iaGo') !== 'Amplia ×2') problemes.push('al mòbil, amb una foto que per 4 no hi cap, no tria ×2 de partida: ' + await text('#iaGo'));
+  await p.click('#iaF-4');
+  if (!await p.locator('#iaGo').isDisabled() || !(await p.locator('#pane-amp .ia-mal').count()))
+    problemes.push('triant ×4 quan no hi cap, no avisa o el botó no queda desactivat');
+  await p.click('#iaMode-ordinador');
+  if (await text('#iaGo') !== 'Amplia ×4' || await p.locator('#iaGo').isDisabled())
+    problemes.push('a l\'ordinador, la mateixa foto per 4 hauria de cabre');
+
+  // el model lleuger, ×4
+  await obre(64, 48);
+  await p.click('#tab-amp');
+  await p.click('#iaMode-mobil'); await p.click('#iaF-4');
+  await p.click('#iaGo');
+  await acaba();
+  if (await mida() !== '256 × 192 px') problemes.push('el model lleuger ×4 no dona la mida que toca: ' + await mida());
+  if (!(await historial()).includes('Amplia ×4 · model lleuger')) problemes.push('l\'ampliació no surt a l\'historial');
+  // que s'assembli a la foto: comparada amb una ampliació normal, ha de ser a prop (no soroll) però no igual
+  await p.click('#btnSave'); await p.waitForTimeout(300);
+  const baixada = p.waitForEvent('download'); await p.click('.dlg .btn.primary');
+  const png = readFileSync(await (await baixada).path()).toString('base64');
+  const semblanca = await p.evaluate(async ([png, original]) => {
+    const carrega = src => new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.src = src; });
+    const [a, b] = await Promise.all([carrega('data:image/png;base64,' + png), carrega(original)]);
+    const c = document.createElement('canvas'); c.width = a.width; c.height = a.height;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(a, 0, 0); const da = x.getImageData(0, 0, c.width, c.height).data;
+    x.imageSmoothingQuality = 'high'; x.drawImage(b, 0, 0, c.width, c.height); const db = x.getImageData(0, 0, c.width, c.height).data;
+    let s = 0; for (let i = 0; i < da.length; i += 4) s += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]);
+    return s / (da.length / 4 * 3);
+  }, [png, await fesImatge(64, 48)]);
+  if (!(semblanca > 0.3 && semblanca < 12)) problemes.push(`el resultat no s'assembla a la foto com hauria (diferència mitjana ${semblanca.toFixed(1)})`);
+
+  // desfer torna a la foto petita, i refer a l'ampliada
+  await p.keyboard.press('Control+z'); await p.waitForTimeout(400);
+  if (await mida() !== '64 × 48 px') problemes.push('desfer no torna a la foto d\'abans d\'ampliar: ' + await mida());
+  await p.keyboard.press('Control+Shift+z'); await p.waitForTimeout(400);
+  if (await mida() !== '256 × 192 px') problemes.push('refer no torna a l\'ampliada: ' + await mida());
+
+  // la segona vegada no torna a baixar res
+  await p.click('#tab-amp');
+  if (!(await text('#iaLinies')).includes('no cal baixar res')) problemes.push('la segona vegada torna a dir que s\'ha de baixar el model');
+
+  // aturar a mig fer deixa la foto com era
+  await obre(400, 300);
+  await p.click('#tab-amp');
+  await p.click('#iaMode-mobil'); await p.click('#iaF-2');
+  await p.click('#iaGo');
+  await p.waitForFunction(() => /Tros [1-9]/.test(document.querySelector('#velDetall').textContent), null, { timeout: 120000 });
+  await p.click('#velAtura');
+  await acaba();
+  if (await mida() !== '400 × 300 px') problemes.push('aturant a mig fer, la foto ha canviat: ' + await mida());
+  if ((await historial()).some(h => h.startsWith('Amplia'))) problemes.push('una ampliació aturada surt a l\'historial');
+
+  // el model gran, ×4, amb una foto petita (sense gràfica va molt a poc a poc)
+  await obre(32, 24);
+  await p.click('#tab-amp');
+  await p.click('#iaMode-ordinador'); await p.click('#iaF-4');
+  await p.click('#iaGo');
+  await acaba(600000);
+  if (await mida() !== '128 × 96 px') problemes.push('el model gran ×4 no dona la mida que toca: ' + await mida());
+
+  console.log(`${problemes.length > abansDe ? '✗' : '✓'} ampliar amb IA (pel processador): lleuger ×4, gran ×4, límits, aturar, desfer i refer, i la segona vegada sense baixar res`);
+  await p.close();
+  servidor.close();
+}
+
 // --------------------------------------------------------------- la Revisió
 await noVessa(navegador, 'revisio.html', async p => {
   const r = await p.evaluate(() => ({

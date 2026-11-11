@@ -2,7 +2,8 @@
 
 Eines petites que funcionen dins del navegador, en català i pensades per al
 mòbil. **Cada eina és un sol fitxer** HTML autocontingut, sense cap llibreria,
-sense cap servidor i sense cap dependència: s'obre i funciona.
+sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepció
+és la carpeta `ia/`, que fa servir l'ampliació de La Cambra Fosca (més avall).
 
 - Publicat a: https://oscarbellosido.github.io/Eines/
 - **El que hi posa qui la fa servir no surt mai del seu aparell.** No hi ha
@@ -15,7 +16,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona.
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -24,6 +25,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona.
 index.html            la portada, amb una fitxa per eina
 cambra-fosca.html     l'editor de fotografies
 revisio.html          la revisió de seguretat del mòbil
+ia/                   el motor i els models de l'ampliació amb IA (vegeu ia/LLEGEIX.md)
 thumbs/               una captura de cada eina, 480 × 300
 prova.mjs             la prova: la portada i totes les eines
 ```
@@ -104,6 +106,85 @@ i allà el navegador no deixa que una pàgina es baixi res ella mateixa: s'ha de
 demanar a la plataforma (`claude.use('downloads')`). Es prova primer la
 plataforma i, si no hi és, l'enllaç de tota la vida. **Si es toca una de les
 dues bandes, s'ha de comprovar l'altra.**
+
+## La Cambra Fosca: ampliar amb IA
+
+L'usuari va demanar poder ampliar una foto guanyant qualitat, com fa Upscayl,
+i que hi hagués **dues opcions: una per al mòbil i una per a l'ordinador**, que
+té molta més capacitat. És la pestanya **Amplia**. Fa servir les mateixes
+xarxes neuronals que Upscayl (Real-ESRGAN), que corren dins del navegador amb
+ONNX Runtime Web. La foto no surt de l'aparell.
+
+| Mode | Model | Pes | Màxim del resultat |
+|---|---|---|---|
+| Mòbil | `realesr-general-x4v3` (lleuger) | 4,9 MB | 16 megapíxels |
+| Ordinador | `realesrgan-x4plus` (gran) | 67 MB | 64 megapíxels |
+
+De partida es tria el mode pel tipus de pantalla, però es pot canviar.
+
+**Per què és l'excepció a «un sol fitxer».** El motor (15 o 29 MB) i els
+models (5 o 67 MB) no poden anar dins de l'HTML: el farien inservible per a
+qui no amplia res, i tenen llicència pròpia. Van a `ia/`, del mateix web (cap
+altre servidor), i només es baixen la primera vegada que algú amplia. Després
+queden a la memòria del navegador (`caches`, `cambra-fosca-ia-1`), també
+sense connexió. `ia/LLEGEIX.md` diu d'on surt cada fitxer i amb quina
+llicència, i `ia/conversio/` té els scripts que fan els models: **els `.onnx`
+no s'han de tocar a mà**, es tornen a fer amb aquells scripts.
+
+Coses que no s'han de desfer sense entendre-les:
+
+- **Els models es van fer sense PyTorch.** El servidor de PyTorch és tancat
+  des del contenidor on es treballa, i el de PyPI arrossega 2 GB. Per això
+  `llegeix_pth.py` llegeix els pesos directament (i, de pas, no executa res
+  del que porta el fitxer: només accepta números), i `fes_onnx.py` construeix
+  les dues xarxes peça a peça. Es va comprovar que funcionen reduint una
+  imatge a la quarta part i tornant-la a ampliar.
+- **Cada aparell baixa només el motor que pot fer servir** (`IA.motors`): el
+  de la gràfica (WebGPU, 29 MB) si en té, i el del processador (15 MB) si no.
+  El de la gràfica també sap anar amb el processador si la gràfica falla.
+- **Sense gràfica, el motor treballa en un fil a part** (`ort.env.wasm.proxy`).
+  Si no, el navegador es quedaria glaçat uns segons a cada tros.
+- **Es treballa per trossos** (`ampliaImatge`), sempre de la mateixa mida
+  (que la gràfica no s'hagi de tornar a preparar a cada un), amb **16 píxels
+  de context** al voltant (`MARGE`) que després es llencen. Comparat amb el
+  model passat de cop sobre tota la imatge, la diferència més gran a les
+  costures és de 4 nivells sobre 255: no es veu. La memòria no depèn de la
+  mida de la foto.
+- **Fora de la foto es repeteix la vora**, no s'hi posa negre. Amb negre (que
+  és el que fa el model passat de cop) a les vores de la foto surt un marc
+  fosc.
+- **El model sempre amplia per 4.** Per a ×2, cada tros es redueix a la
+  meitat amb el seu marge i tot, abans de posar-lo: així tampoc no hi ha
+  costures. Vol dir que ×2 costa el mateix temps que ×4.
+- **La transparència no la toca el model**: s'amplia a part, a la manera
+  normal, només si la foto en té.
+- **La foto ampliada passa a ser la foto** (`S.src`): els girs i el retall hi
+  queden aplicats, les pinzellades es fan grans amb ella (`mapOps` i la
+  mida), i els ajustos es continuen aplicant a sobre. L'historial recorda
+  quina foto hi havia (`src` a `snap`), i per això desfer torna a la petita.
+- **Mentre amplia, no es pot tocar res**: un vel tapa la pantalla, amb la
+  barra, quants trossos queden i quant temps, i el botó d'**Atura**. Aturar
+  deixa la foto com era i no apunta res a l'historial.
+- **Els límits del resultat (16 i 64 megapíxels) són per la memòria.** Si
+  la persona tria ×4 i no hi cap, es queda ×4 i se li diu per què no pot
+  (tria ×2, retalla primer, o fes-ho des de l'ordinador). Al principi passava
+  sol a ×2 sense dir res, i l'avís no sortia mai.
+- **La capa de pintura i l'esborrany només existeixen si s'hi ha pintat**
+  (`ensurePaint`, `ensureScratch`), i la base no és cap còpia quan la foto
+  no està girada ni retallada. Abans hi havia quatre llenços de la mida de la
+  foto: amb una foto ampliada a 6000 px, 576 MB.
+- **Neteja el soroll i el gra.** És com són aquests models: a una foto vella
+  o de WhatsApp li va molt bé, i a una amb gra a posta, el treu. El que s'ha
+  perdut del tot (unes lletres petitíssimes) no ho recupera: s'inventa una
+  cosa que s'hi assembla.
+
+**El camí de la gràfica no s'ha pogut provar al contenidor**, que no en té
+(ni amb SwiftShader). Està fet perquè, si falla, vagi amb el processador. La
+prova de veritat l'ha de fer l'usuari a l'ordinador.
+
+Com va de temps, sense gràfica i en un sol fil (el contenidor): una imatge de
+200 × 150 per 4 triga 11 segons amb el model lleuger, i per 2 triga dos minuts
+i mig amb el gran. El gran, sense gràfica, és per a fotos petites.
 
 ## La Revisió
 
@@ -187,7 +268,15 @@ de debò i comprova:
 - **la Cambra Fosca**: que no vessi a cap d'aquelles mides, que no salti cap
   error, que els filtres, els controls d'ajust, el pinzell, el retall, desfer
   i refer i l'historial facin el que han de fer, i que el botó de desar generi
-  el fitxer de debò.
+  el fitxer de debò;
+- **ampliar amb IA** (aquesta part serveix el repositori ella mateixa, que el
+  motor es llegeix amb `fetch` i des de file:// no es pot): que les quatre
+  pestanyes hi càpiguen, els límits de cada mode, el model lleuger per 4, que
+  el resultat s'assembli a la foto (ni soroll ni colors canviats), desfer i
+  refer, que la segona vegada no torni a baixar res, que aturar a mig fer
+  deixi la foto com era, i el model gran per 4 amb una foto petita. Es va
+  comprovar que la prova falla si es canvien els colors o si el botó d'aturar
+  no atura.
 - **la Revisió**: que no vessi, i feta sencera amb el dit a 320 px: que el
   pedaç no deixi continuar sense data i jutgi bé una data bona i una de
   vella, que enrere torni on eres, que les tretze comprovacions arribin al
