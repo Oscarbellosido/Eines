@@ -162,6 +162,114 @@ if (!desat) problemes.push('el botó de desar no ha generat cap fitxer');
 console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename() : 'no s\'ha baixat res'}`);
 await p.close();
 
+// --------------------------------------------------------------- la Revisió
+await noVessa(navegador, 'revisio.html', async p => {
+  const r = await p.evaluate(() => ({
+    comenca: !!document.querySelector('#comenca'),
+    tornar: !!document.querySelector('a.back'),
+    aparell: document.querySelectorAll('#aparell dt').length,
+  }));
+  if (!r.comenca) problemes.push('la Revisió no té el botó de començar');
+  if (!r.tornar) problemes.push('la Revisió no té l\'enllaç de tornada a la portada');
+  if (r.aparell < 3) problemes.push('la Revisió no diu què veu del mòbil');
+  return '';
+});
+
+// Es fa sencera amb el dit, al mòbil més estret, i a cada pantalla es mira que
+// els botons hi càpiguen i que no se'n talli el text.
+{
+  const ctx = await navegador.newContext({
+    viewport: { width: 320, height: 600 }, hasTouch: true, isMobile: true,
+    userAgent: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
+  });
+  const r = await ctx.newPage();
+  vigila(r, 'revisió');
+  await r.goto(fitxer('revisio.html'));
+  await r.waitForTimeout(700);
+  const abansDe = problemes.length;
+  const text = sel => r.evaluate(s => document.querySelector(s)?.textContent.trim() ?? null, sel);
+  const hiCap = async on => {
+    const v = await r.evaluate(() => ({
+      pagina: document.documentElement.scrollWidth > innerWidth + 1,
+      tallats: [...document.querySelectorAll('#peu .bt')].filter(b => b.scrollWidth > b.clientWidth + 1).map(b => b.textContent),
+      fora: [...document.querySelectorAll('#peu .bt')].filter(b => b.getBoundingClientRect().right > innerWidth + 1).length,
+      // un botó aixafat es pot tocar igualment amb la prova, però no amb el dit
+      aixafats: [...document.querySelectorAll('#peu .bt')].filter(b => b.getBoundingClientRect().height < 40).map(b => b.textContent),
+    }));
+    if (v.aixafats.length) problemes.push(`a la Revisió hi ha un botó aixafat (${on}): ${v.aixafats.join(', ')}`);
+    if (v.pagina) problemes.push(`la Revisió vessa a 320px (${on})`);
+    if (v.tallats.length) problemes.push(`a la Revisió es talla el text d'un botó (${on}): ${v.tallats.join(', ')}`);
+    if (v.fora) problemes.push(`a la Revisió un botó surt de la pantalla (${on})`);
+  };
+  const any = new Date().getFullYear();
+
+  await hiCap('entrada');
+  await r.tap('#comenca');
+  if (await text('#onvas') !== '1 de 13') problemes.push('la Revisió no comença pel pas 1 de 13: ' + await text('#onvas'));
+
+  // el pedaç: sense data no es pot continuar; una d'ara és bona i una de fa dos anys, dolenta
+  if (!await r.evaluate(() => document.querySelector('#continua').disabled)) problemes.push('el pedaç deixa continuar sense posar la data');
+  await r.selectOption('#mes', String(new Date().getMonth() + 1));
+  await r.selectOption('#any', String(any));
+  if (!await r.evaluate(() => !!document.querySelector('#veredicte .caixa.be'))) problemes.push('un pedaç d\'aquest mes no surt com a bo');
+  await r.selectOption('#any', String(any - 2));
+  if (!await r.evaluate(() => !!document.querySelector('#veredicte .caixa.mal'))) problemes.push('un pedaç de fa dos anys no surt com a dolent');
+  await hiCap('pedaç');
+  await r.tap('#continua');
+
+  // enrere torna a la comprovació d'abans, amb la data que hi havies posat
+  await r.tap('#enrere');
+  if (await text('#onvas') !== '1 de 13' || await r.evaluate(() => document.querySelector('#any').value) !== String(any - 2))
+    problemes.push('enrere no torna al pedaç amb la data posada');
+  await r.tap('#continua');
+
+  // la resta: la segona bé, la tercera malament, la quarta no ho sé, i les altres bé
+  let passos = 1;
+  for (let i = 2; i <= 13; i++) {
+    if (await text('#onvas') !== `${i} de 13`) { problemes.push(`la Revisió no arriba al pas ${i}: ${await text('#onvas')}`); break; }
+    await hiCap('pas ' + i);
+    await r.tap(i === 3 ? '#mal' : i === 4 ? '#dubte' : '#be');
+    passos++;
+  }
+  const comptes = async () => [await text('#n-be'), await text('#n-mal'), await text('#n-dubte')].join(',');
+  if (await comptes() !== '10,2,1') problemes.push('el resum de la Revisió no quadra: ' + await comptes() + ' (havia de ser 10,2,1)');
+  if (await text('#titol') !== 'Hi ha 2 coses per arreglar') problemes.push('el títol del resum no diu el que hi ha: ' + await text('#titol'));
+  await hiCap('resum');
+
+  // tancant i tornant-hi, la revisió feta hi és
+  await r.reload(); await r.waitForTimeout(600);
+  if (!await r.evaluate(() => !!document.querySelector('#veu-resum')) || !(await text('#ultima') || '').includes('2 per arreglar'))
+    problemes.push('en tornar a entrar, la Revisió no recorda l\'última');
+
+  // des del resum es pot tornar a una comprovació i arreglar-la, i no s'apunta dues vegades
+  await r.tap('#veu-resum');
+  await r.tap('[data-torna="desconegudes"]');
+  await r.tap('#be');
+  if (await comptes() !== '11,1,1') problemes.push('arreglant una comprovació des del resum, els números no canvien: ' + await comptes());
+  let historial = await r.evaluate(() => JSON.parse(localStorage.getItem('revisio-historial') || '[]').length);
+  if (historial !== 1) problemes.push(`una sola revisió surt ${historial} vegades a l'historial`);
+
+  // una de nova a mig fer es reprèn on era, i començar de nou pregunta abans
+  await r.tap('#inici');
+  await r.tap('#comenca');
+  await r.tap('#dubte');            // el pedaç: no el trobo
+  await r.tap('#be');
+  await r.reload(); await r.waitForTimeout(600);
+  if (await text('#comenca') !== 'CONTINUA (3 DE 13)') problemes.push('la Revisió a mig fer no es reprèn on era: ' + await text('#comenca'));
+  await hiCap('entrada a mig fer');
+  await r.tap('#de-nou');
+  if (!await r.evaluate(() => !!document.querySelector('#de-nou'))) problemes.push('començar de nou no pregunta abans');
+  await r.reload(); await r.waitForTimeout(600);
+  await r.tap('#comenca');
+  for (let i = 3; i <= 13; i++) await r.tap('#be');
+  if (!(await text('#abans') || '').includes('1 per arreglar')) problemes.push('el resum no compara amb la revisió d\'abans');
+  historial = await r.evaluate(() => JSON.parse(localStorage.getItem('revisio-historial') || '[]').length);
+  if (historial !== 2) problemes.push(`amb dues revisions fetes, a l'historial n'hi ha ${historial}`);
+
+  console.log(`${problemes.length > abansDe ? '✗' : '✓'} la Revisió, sencera amb el dit a 320px: ${passos} comprovacions, resum, desar i continuar`);
+  await ctx.close();
+}
+
 await navegador.close();
 
 // ------------------------------------------------------------------ el resum

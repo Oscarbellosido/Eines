@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#17181a">
+<title>La Revisió</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Disposició: una columna. A dalt, tornar i per on vas; al mig, la comprovació
+   (és l'única part que es desplaça); a sota, sempre a la vista, els botons de
+   resposta. Mateixos colors que les altres eines. */
+:root{
+  color-scheme: dark;
+  --bg:#17181a;
+  --bg-2:#1e2023;
+  --bg-3:#272a2e;
+  --bg-4:#32363b;
+  --line:#34383d;
+  --fg:#e8eaed;
+  --fg-dim:#a3a9b1;
+  --fg-faint:#6f757d;
+  --accent:#f0a33c;
+  --be:#6cc18f;      --be-fons:rgba(108,193,143,.13);
+  --mal:#e87a68;     --mal-fons:rgba(232,122,104,.13);
+  --dubte:#d9b65a;   --dubte-fons:rgba(217,182,90,.12);
+  --font-ui:'IBM Plex Sans','Segoe UI',system-ui,-apple-system,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:15px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;display:flex;align-items:flex-start;justify-content:center;overflow:hidden;
+}
+[hidden]{display:none!important}
+button{font-family:inherit;color:inherit;cursor:pointer}
+a{color:var(--accent)}
+
+#wrap{
+  width:100%;max-width:560px;height:100%;display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+.vora{
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+
+/* ---------- barra de dalt ---------- */
+#barra{flex:none;display:flex;align-items:center;gap:10px;padding-block:10px;border-bottom:1px solid var(--line);background:var(--bg-2)}
+.back{
+  display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:6px;flex:0 0 auto;
+  border:1px solid var(--line);background:var(--bg-3);color:var(--fg-dim);text-decoration:none;font-size:13px;
+}
+.back span{font-size:11px;letter-spacing:.06em}
+#nom{font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;white-space:nowrap}
+#nom i{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);flex:0 0 auto}
+#onvas{font-family:var(--font-mono);font-size:12px;color:var(--fg-dim);flex:0 0 auto;font-variant-numeric:tabular-nums}
+#fil{flex:none;height:3px;background:var(--bg-3)}
+#fil i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+
+/* ---------- el cos, que és el que es desplaça ---------- */
+#cos{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding-block:18px 22px;overscroll-behavior:contain}
+h1{margin:0 0 6px;font-size:23px;line-height:1.2;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+h2{margin:22px 0 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg-faint);font-weight:600}
+p{margin:0 0 10px}
+.dim{color:var(--fg-dim)}
+.petit{font-size:13px;color:var(--fg-dim)}
+.pes{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+
+ol.on{margin:0;padding:0;list-style:none;counter-reset:pas;display:flex;flex-direction:column;gap:7px}
+ol.on li{counter-increment:pas;display:flex;gap:10px;align-items:baseline}
+ol.on li::before{
+  content:counter(pas);font-family:var(--font-mono);font-size:11px;color:var(--fg-dim);flex:0 0 22px;height:22px;
+  border:1px solid var(--line);border-radius:50%;display:inline-grid;place-items:center;transform:translateY(-1px);
+}
+ol.on li>div{min-width:0}
+.cerca{
+  margin-top:10px;padding:9px 11px;border-radius:8px;background:var(--bg-2);border:1px dashed var(--line);
+  font-size:13px;color:var(--fg-dim);
+}
+.cerca b{color:var(--fg);font-weight:500}
+.caixa{padding:10px 12px;border-radius:8px;margin-top:8px;font-size:14px;border:1px solid transparent}
+.caixa b{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px}
+.caixa.be{background:var(--be-fons);border-color:rgba(108,193,143,.3)} .caixa.be b{color:var(--be)}
+.caixa.mal{background:var(--mal-fons);border-color:rgba(232,122,104,.3)} .caixa.mal b{color:var(--mal)}
+.caixa.dubte{background:var(--dubte-fons);border-color:rgba(217,182,90,.3)} .caixa.dubte b{color:var(--dubte)}
+.caixa.info{background:var(--bg-2);border-color:var(--line)} .caixa.info b{color:var(--fg-faint)}
+
+.enllac{
+  display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;padding:11px 12px;border-radius:8px;
+  border:1px solid var(--line);background:var(--bg-3);color:var(--fg);text-decoration:none;font-weight:500;font-size:14px;
+}
+.tria{display:flex;gap:8px;margin-top:10px}
+select{
+  flex:1 1 0;min-width:0;height:44px;border-radius:8px;border:1px solid var(--line);background:var(--bg-3);
+  color:var(--fg);font:inherit;padding:0 10px;
+}
+
+/* taula del que el navegador sap de l'aparell */
+dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:14px}
+dt{color:var(--fg-dim)} dd{margin:0;min-width:0;overflow-wrap:anywhere}
+
+/* resum */
+.comptes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 4px}
+.compte{padding:10px 6px;border-radius:8px;text-align:center;border:1px solid var(--line);background:var(--bg-2)}
+.compte b{display:block;font-family:var(--font-mono);font-size:24px;font-weight:500;line-height:1.1}
+.compte span{font-size:11px;color:var(--fg-dim);letter-spacing:.04em}
+.compte.be b{color:var(--be)} .compte.mal b{color:var(--mal)} .compte.dubte b{color:var(--dubte)}
+.fitxa{padding:11px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);margin-top:8px}
+.fitxa h3{margin:0 0 4px;font-size:15px;font-weight:600;display:flex;gap:8px;align-items:baseline}
+.fitxa h3 i{font-style:normal;flex:0 0 auto}
+.fitxa.mal h3 i{color:var(--mal)} .fitxa.dubte h3 i{color:var(--dubte)}
+.fitxa p{margin:0;font-size:14px;color:var(--fg-dim)}
+.fitxa button{
+  margin-top:8px;background:none;border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--fg-dim);
+}
+ul.fets{margin:0;padding:0;list-style:none;font-size:14px;color:var(--fg-dim);display:flex;flex-direction:column;gap:3px}
+ul.fets li::before{content:"✓ ";color:var(--be)}
+
+/* ---------- botons de sota ---------- */
+#peu{flex:none;border-top:1px solid var(--line);background:var(--bg-2);padding-block:10px 12px;display:flex;flex-direction:column;gap:8px}
+.fila{display:flex;gap:8px}
+.bt{
+  flex:1 1 0;min-width:0;height:46px;border-radius:9px;border:1px solid var(--line);background:var(--bg-3);
+  font-size:13px;font-weight:600;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 8px;
+}
+/* Els botons que van sols a la seva filera no s'han d'encongir: el peu és una
+   columna, i amb `flex:1 1 0` l'alçada els quedava a zero (es veia una ratlla). */
+#peu>.bt{flex:none}
+.bt.gros{height:52px;font-size:15px}
+.bt.principal{background:var(--accent);border-color:var(--accent);color:#231604}
+.bt.be{background:var(--be-fons);border-color:rgba(108,193,143,.55);color:var(--be)}
+.bt.mal{color:var(--mal)} .bt.dubte{color:var(--dubte)}
+.bt.triat{box-shadow:0 0 0 2px currentColor inset}
+.bt:active{transform:translateY(1px)}
+.bt:focus-visible,.back:focus-visible,.enllac:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.lleu{background:none;border:0;color:var(--fg-faint);font-size:13px;text-decoration:underline;padding:4px;align-self:center}
+#enrere{background:none;border:0;color:var(--fg-dim);font-size:13px;padding:4px 2px;flex:0 0 auto}
+
+@media (max-width:380px){
+  .back span{display:none}
+  body{font-size:14.5px}
+  h1{font-size:21px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="barra" class="vora">
+    <a class="back" href="index.html" aria-label="Tornar a les eines">←<span>EINES</span></a>
+    <div id="nom"><i></i>La Revisió</div>
+    <button id="enrere" type="button" hidden>‹ enrere</button>
+    <div id="onvas"></div>
+  </div>
+  <div id="fil"><i></i></div>
+  <div id="cos" class="vora"></div>
+  <div id="peu" class="vora"></div>
+</div>
+
+<script>
+"use strict";
+(function(){
+
+/* ===================================================================
+   1. Les comprovacions
+   Van per ordre d'importància. Cada una diu per què importa, on es mira,
+   què és normal, què no ho és i què s'ha de fer si no està bé.
+   Els noms dels menús canvien una mica segons la marca del mòbil: per això
+   cada una porta la paraula que s'ha de buscar a la lupa de Configuració,
+   en català i en castellà.
+=================================================================== */
+const PASSOS = [
+  { id:'pedac', pes:3, tipus:'data',
+    titol:'El pedaç de seguretat',
+    perque:'Cada mes es descobreixen forats a Android i cada mes surten pedaços que els tapen. Un mòbil que fa molt que no s\'actualitza té forats coneguts oberts.',
+    on:['Obre <b>Configuració</b>.',
+        'Ves a <b>Quant al telèfon</b> (en alguns mòbils, després <b>Informació del programari</b>).',
+        'Busca <b>«Pedaç de seguretat d\'Android»</b>: al costat hi ha una data. Posa-la aquí sota.'],
+    cerca:['pedaç de seguretat','parche de seguridad'],
+    arregla:'Ves a Configuració → Sistema → Actualització del sistema i instal·la el que hi hagi. Si et diu que ja està al dia però el pedaç té més d\'un any, el fabricant ja no actualitza aquest mòbil: no hi tinguis el banc ni res delicat, i pensa a canviar-lo.' },
+
+  { id:'playprotect', pes:3,
+    titol:'Play Protect: l\'escaneig de debò',
+    perque:'Play Protect és l\'antivirus que ja ve amb Android. Mira totes les apps que tens, també les que no venen de la botiga. Aquest és l\'escaneig de veritat, i el fa el mòbil: una pàgina web no pot veure les teves apps.',
+    on:['Obre la <b>Play Store</b>.',
+        'Toca la teva foto, a dalt a la dreta.',
+        'Entra a <b>Play Protect</b> i toca <b>Escaneja</b>. Espera que acabi.'],
+    normal:'Diu que no ha trobat cap aplicació perjudicial, i l\'escaneig estava activat.',
+    sospitos:'Estava desactivat sense que ho haguessis fet tu, o ha trobat alguna app perjudicial.',
+    arregla:'A Play Protect, toca la rodeta de dalt a la dreta i activa «Escaneja les aplicacions amb Play Protect». Desinstal·la el que t\'hagi assenyalat.' },
+
+  { id:'desconegudes', pes:3,
+    titol:'Apps de fora de la botiga',
+    perque:'Gairebé tot el programari maliciós d\'Android entra per aquí: una app baixada d\'un enllaç i no de la botiga. El mòbil no ho deixa fer, tret que alguna app tingui permís per instal·lar-ne d\'altres.',
+    on:['<b>Configuració</b> → <b>Aplicacions</b>.',
+        '<b>Accés especial de les aplicacions</b>.',
+        '<b>Instal·la aplicacions desconegudes</b>. Mira què diu a sota de cada una.'],
+    cerca:['aplicacions desconegudes','aplicaciones desconocidas'],
+    normal:'Totes diuen «No permès».',
+    sospitos:'N\'hi ha alguna amb «Permès»: el navegador, WhatsApp, Telegram, el gestor de fitxers...',
+    arregla:'Entra a cada una que digui «Permès» i apaga-ho. I si mai has instal·lat una app des d\'un enllaç o d\'un fitxer i no saps ben bé què era, desinstal·la-la.' },
+
+  { id:'accessibilitat', pes:3,
+    titol:'Qui té el permís d\'accessibilitat',
+    perque:'És el permís més perillós que hi ha: una app que el té pot llegir tot el que surt a la pantalla i tocar botons per tu. És el que demanen les apps que buiden comptes del banc i les apps espia.',
+    on:['<b>Configuració</b> → <b>Accessibilitat</b>.',
+        'Mira l\'apartat <b>Aplicacions baixades</b> (o «Aplicacions instal·lades»).'],
+    cerca:['accessibilitat','accesibilidad'],
+    normal:'No hi ha res activat, o només coses que hi has posat tu i saps per què: el gestor de contrasenyes, un lector de pantalla...',
+    sospitos:'Hi ha activada una app que no coneixes, o una que no té cap motiu per ser-hi: un joc, una llanterna, un «netejador».',
+    arregla:'Desactiva-la allà mateix i després desinstal·la l\'app. Si no et deixa desactivar-la, reinicia el mòbil en mode segur (mantén premut el botó d\'«Apaga» que surt a la pantalla) i torna-ho a provar.' },
+
+  { id:'administradors', pes:3,
+    titol:'Apps administradores del mòbil',
+    perque:'Una app administradora no es pot desinstal·lar com les altres, i pot bloquejar o esborrar el mòbil. Les apps espia s\'hi posen perquè no les puguis treure.',
+    on:['<b>Configuració</b> → <b>Seguretat i privadesa</b>.',
+        '<b>Més opcions de seguretat</b>.',
+        '<b>Aplicacions d\'administració de dispositius</b>.'],
+    cerca:['administració de dispositius','administrador de dispositivos'],
+    normal:'Només «Troba el meu dispositiu» i, si tens el correu de la feina al mòbil, l\'app de la feina.',
+    sospitos:'Qualsevol altra app activada que no sàpigues què és.',
+    arregla:'Desactiva-la en aquella mateixa pantalla i després desinstal·la-la.' },
+
+  { id:'google', pes:3,
+    titol:'El compte de Google',
+    perque:'El compte de Google és la clau de tot: el correu, les fotos, les contrasenyes desades i la botiga. Qui hi entra no necessita tenir el teu mòbil.',
+    enllac:['https://myaccount.google.com/security-checkup','Obre la revisió de seguretat de Google'],
+    nota:'S\'obre la pàgina de Google en una altra pestanya. Aquesta eina no hi envia res.',
+    on:['Toca el botó d\'aquí sota.',
+        'Mira <b>«Els teus dispositius»</b>: hi han de sortir només els teus aparells.',
+        'Mira que la <b>«Verificació en dos passos»</b> estigui activada.'],
+    normal:'Només hi ha aparells teus, i la verificació en dos passos està activada.',
+    sospitos:'Hi ha un aparell que no és teu, o un inici de sessió des d\'un lloc on no has estat. O no tens la verificació en dos passos.',
+    arregla:'Tanca la sessió d\'aquell aparell des d\'allà mateix, canvia la contrasenya i activa la verificació en dos passos.' },
+
+  { id:'notificacions', pes:2,
+    titol:'Qui pot llegir les notificacions',
+    perque:'Qui llegeix les notificacions veu els missatges que reps i els codis que t\'envia el banc.',
+    on:['<b>Configuració</b> → <b>Aplicacions</b> → <b>Accés especial de les aplicacions</b>.',
+        '<b>Accés a les notificacions</b> (o «Notificacions del dispositiu i de les aplicacions»).'],
+    cerca:['accés a les notificacions','acceso a notificaciones'],
+    normal:'El rellotge o la polsera, Android Auto, i poca cosa més.',
+    sospitos:'Apps que no han de saber res dels teus missatges: jocs, apps de fotos, apps que no coneixes.',
+    arregla:'Apaga el permís a totes les que no el necessitin.' },
+
+  { id:'sms', pes:2,
+    titol:'Qui pot llegir els SMS',
+    perque:'Els codis del banc arriben per SMS. Una app que els pot llegir pot acabar operacions en nom teu.',
+    on:['<b>Configuració</b> → <b>Seguretat i privadesa</b> → <b>Privadesa</b>.',
+        '<b>Gestor de permisos</b> → <b>SMS</b>.'],
+    cerca:['gestor de permisos','administrador de permisos'],
+    normal:'L\'app de Missatges, el Telèfon i, com a molt, la del rellotge o la del cotxe.',
+    sospitos:'Jocs, llanternes, apps de fotos o qualsevol que no hagi d\'enviar ni llegir missatges.',
+    arregla:'Toca l\'app i tria «No permetis».' },
+
+  { id:'sensors', pes:2,
+    titol:'Micròfon, càmera i ubicació',
+    perque:'El tauler de privadesa diu quines apps han fet servir el micròfon, la càmera i la ubicació les últimes 24 hores. Si alguna t\'escolta o et segueix, hi surt.',
+    on:['<b>Configuració</b> → <b>Seguretat i privadesa</b> → <b>Privadesa</b>.',
+        '<b>Tauler de privadesa</b>.',
+        'Mira <b>micròfon</b>, <b>càmera</b> i <b>ubicació</b>, una per una.'],
+    cerca:['tauler de privadesa','panel de privacidad'],
+    normal:'Hi surten les apps que has fet servir tu: la càmera, WhatsApp si has trucat, Maps si has mirat un mapa.',
+    sospitos:'Una app que ha fet servir el micròfon o la càmera sense que l\'haguessis obert, o que mira la ubicació «sempre» sense motiu.',
+    arregla:'Al Gestor de permisos, treu-li el permís. Per a la ubicació, tria «Només mentre es fa servir l\'aplicació».' },
+
+  { id:'apps', pes:2,
+    titol:'La llista sencera d\'apps',
+    perque:'Les apps espia amaguen la icona: no surten a la pantalla del mòbil, però sí a la llista completa.',
+    on:['<b>Configuració</b> → <b>Aplicacions</b>.',
+        '<b>Mostra totes les aplicacions</b>.',
+        'Repassa la llista sencera, a poc a poc.'],
+    cerca:['totes les aplicacions','todas las aplicaciones'],
+    normal:'Les coneixes totes, o són clarament del mòbil: de Google o de la marca.',
+    sospitos:'Una app que no recordes haver instal·lat. Una pista: un nom que vol semblar del sistema («Update», «Sync», «System Service») però amb botó de «Desinstal·la». Les del sistema de debò normalment només es poden desactivar.',
+    arregla:'Desinstal·la el que no coneguis o no facis servir: com menys apps, menys forats. Si dubtes d\'un nom, busca\'l a internet abans de treure\'l.' },
+
+  { id:'bloqueig', pes:2,
+    titol:'El bloqueig de pantalla',
+    perque:'Qui t\'agafa el mòbil desbloquejat hi pot instal·lar el que vulgui en dos minuts. I si el perds, has de poder trobar-lo o esborrar-lo de lluny.',
+    on:['<b>Configuració</b> → <b>Seguretat i privadesa</b> → <b>Desbloqueig del dispositiu</b>: hi ha d\'haver PIN, patró o contrasenya.',
+        '<b>Configuració</b> → <b>Google</b> → <b>Troba el meu dispositiu</b> (ara també es diu «Find Hub»): activat.'],
+    cerca:['bloqueig de pantalla','bloqueo de pantalla'],
+    normal:'Un PIN de sis xifres o més (amb empremta o sense), i «Troba el meu dispositiu» activat.',
+    sospitos:'Sense bloqueig, o només «Llisca». Un PIN que sap més gent. «Troba el meu dispositiu» apagat.',
+    arregla:'Posa un PIN que només sàpigues tu i activa «Troba el meu dispositiu».' },
+
+  { id:'missatgeria', pes:2,
+    titol:'WhatsApp i Telegram: dispositius enllaçats',
+    perque:'Amb els «dispositius enllaçats», un ordinador pot llegir tots els teus missatges sense tornar a tocar el mòbil. N\'hi ha prou que algú l\'hagi tingut un minut a les mans.',
+    on:['<b>WhatsApp</b>: els tres punts de dalt → <b>Dispositius enllaçats</b>.',
+        '<b>Telegram</b>: <b>Configuració</b> → <b>Dispositius</b>.'],
+    normal:'Només hi ha els teus ordinadors i tauletes.',
+    sospitos:'Una sessió que no reconeixes, o d\'un lloc on no has estat.',
+    arregla:'Toca-la i tanca-la. A WhatsApp, activa també la verificació en dos passos (Configuració → Compte).' },
+
+  { id:'portes', pes:1,
+    titol:'La depuració per USB i la VPN',
+    perque:'La depuració per USB deixa que un ordinador controli el mòbil pel cable. I una VPN que no hi has posat tu fa passar tot el que fas per l\'ordinador d\'algú altre.',
+    on:['<b>Configuració</b> → <b>Sistema</b> → <b>Opcions per a desenvolupadors</b>. Si no hi surt, ja està bé. Si hi surt, «Depuració per USB» ha d\'estar apagada.',
+        '<b>Configuració</b> → <b>Xarxa i Internet</b> → <b>VPN</b>: no n\'hi ha d\'haver cap que no coneguis.'],
+    cerca:['depuració per USB','depuración por USB'],
+    normal:'No hi ha opcions per a desenvolupadors (o la depuració és apagada), i cap VPN que no hagis posat tu.',
+    sospitos:'La depuració per USB engegada sense que ho hagis fet tu, o una VPN que no saps d\'on surt.',
+    arregla:'Apaga la depuració per USB. Esborra la VPN que no coneguis i desinstal·la l\'app que l\'ha posada.' },
+];
+
+const MESOS = ['gener','febrer','març','abril','maig','juny','juliol','agost','setembre','octubre','novembre','desembre'];
+
+/* A partir de quina versió d'Android Google ja no publica pedaços. Només es
+   diu de les que és segur que no en reben (la 12 es va acabar el març del
+   2025). De les altres no es diu res: el que mana és la data del pedaç, que
+   posa l'usuari i no es fa vella. Cal repassar aquest número un cop l'any. */
+const ANDROID_MORT = 12;
+/* Mesos d'antiguitat del pedaç: fins a 3, bé; fins a 12, endarrerit; més, malament. */
+const PEDAC_BE = 3, PEDAC_MAL = 12;
+
+/* ===================================================================
+   2. L'estat, i desar-lo
+   Tot es queda en aquest mòbil (localStorage). No s'envia res enlloc.
+=================================================================== */
+const CLAU = 'revisio-actual', CLAU_HIST = 'revisio-historial';
+let R = null;            // la revisió d'ara: {inici, pas, respostes:{id:'be'|'mal'|'dubte'}, pedac:{m,a}|null, fi}
+let vista = 'inici';     // 'inici' | 'pas' | 'resum'
+let aparell = { esAndroid:false, android:null, model:null, navegador:null };
+
+function llegeix(clau, perDefecte){
+  try{ const v = localStorage.getItem(clau); return v ? JSON.parse(v) : perDefecte; }catch(e){ return perDefecte; }
+}
+function desa(){
+  try{ localStorage.setItem(CLAU, JSON.stringify(R)); }catch(e){}
+}
+function nova(){
+  R = { inici: Date.now(), pas: 0, respostes: {}, pedac: null, fi: null };
+  desa();
+}
+function compta(r){
+  const c = { be:0, mal:0, dubte:0 };
+  for(const p of PASSOS){ const e = r.respostes[p.id]; if(e) c[e]++; }
+  return c;
+}
+/* L'historial guarda només la data i els tres números de cada revisió
+   acabada, per poder comparar amb la del mes passat. Una revisió hi surt una
+   sola vegada: si canvies una resposta després d'acabar-la, s'actualitza. */
+function apuntaHistorial(){
+  const h = llegeix(CLAU_HIST, []);
+  const c = compta(R);
+  const fila = { id: R.inici, data: R.fi, be: c.be, mal: c.mal, dubte: c.dubte };
+  const i = h.findIndex(x => x.id === R.inici);
+  if(i >= 0) h[i] = fila; else h.push(fila);
+  while(h.length > 12) h.shift();
+  try{ localStorage.setItem(CLAU_HIST, JSON.stringify(h)); }catch(e){}
+}
+const dataLlarga = t => new Date(t).toLocaleDateString('ca-ES', { day:'numeric', month:'long', year:'numeric' });
+
+/* ===================================================================
+   3. El poc que una pàgina web pot saber del mòbil
+   La versió d'Android, el model i el navegador, i prou. No pot veure les
+   apps, ni els fitxers, ni res del que corre per sota: per això la resta de
+   comprovacions les ha de mirar la persona.
+=================================================================== */
+async function miraAparell(){
+  const ua = navigator.userAgent || '';
+  const a = { esAndroid: /Android/i.test(ua), android: null, model: null, navegador: null };
+  const m = ua.match(/(Firefox|SamsungBrowser|EdgA|Chrome)\/(\d+)/);
+  if(m) a.navegador = ({ EdgA:'Edge', SamsungBrowser:'Samsung Internet' }[m[1]] || m[1]) + ' ' + m[2];
+  try{
+    const d = navigator.userAgentData;
+    if(d && d.getHighEntropyValues){
+      const v = await d.getHighEntropyValues(['platformVersion','model']);
+      if(d.platform === 'Android'){
+        a.esAndroid = true;
+        a.android = parseInt(v.platformVersion, 10) || null;
+        a.model = v.model || null;
+      }
+    }
+  }catch(e){}
+  // El Chrome d'ara diu sempre «Android 10; K», sigui quina sigui la versió:
+  // aquell 10 no vol dir res i no es té en compte.
+  if(a.esAndroid && a.android == null && !/Android 10; K\)/.test(ua)){
+    const v = ua.match(/Android (\d+)/);
+    if(v) a.android = +v[1];
+  }
+  return a;
+}
+
+/* ===================================================================
+   4. Pintar
+=================================================================== */
+const $ = s => document.querySelector(s);
+const cos = $('#cos'), peu = $('#peu');
+function boto(id, text, classes, fn){
+  const b = document.createElement('button');
+  b.type = 'button'; b.id = id; b.className = 'bt ' + (classes || ''); b.textContent = text;
+  b.addEventListener('click', fn);
+  return b;
+}
+function fila(){ const d = document.createElement('div'); d.className = 'fila'; d.append(...arguments); return d; }
+
+function pinta(){
+  peu.textContent = '';
+  cos.scrollTop = 0;
+  if(vista === 'pas') pintaPas();
+  else if(vista === 'resum') pintaResum();
+  else pintaInici();
+}
+
+function barra(text, part){
+  $('#onvas').textContent = text;
+  $('#fil i').style.width = Math.round(part * 100) + '%';
+  $('#enrere').hidden = vista !== 'pas';
+}
+
+/* ---------------- la pantalla d'entrada ---------------- */
+function pintaInici(){
+  barra('', 0);
+  const fets = R ? Object.keys(R.respostes).length : 0;
+  const hist = llegeix(CLAU_HIST, []);
+  const ultima = hist.length ? hist[hist.length - 1] : null;
+
+  let h = '<h1>Revisa la seguretat del teu Android</h1>' +
+    '<p class="dim">Tretze comprovacions, de la més important a la que menys. A cada una et dic on has de mirar, què és normal i què no. Són uns deu minuts.</p>';
+
+  h += '<div class="caixa info"><b>Què és i què no és</b>' +
+    'Això no és un antivirus: una pàgina web no pot veure les teves apps ni els teus fitxers, i les que diuen que sí, menteixen. ' +
+    'L\'escaneig de debò el fa Play Protect, que ja tens al mòbil, i és la segona comprovació. La resta són les portes per on entra el perill de veritat, i només les pots mirar tu.</div>';
+
+  if(!aparell.esAndroid){
+    h += '<div class="caixa dubte"><b>Sembla que no ets en un Android</b>Els passos són per a mòbils Android. La pots llegir des d\'aquí, però s\'ha de fer amb el mòbil a la mà.</div>';
+  }
+
+  h += '<h2>El que una pàgina web veu del teu mòbil</h2><dl id="aparell">' +
+    '<dt>Sistema</dt><dd>' + (aparell.esAndroid ? 'Android' + (aparell.android ? ' ' + aparell.android : ' (el navegador no en diu la versió)') : 'No és Android') + '</dd>' +
+    (aparell.model ? '<dt>Model</dt><dd>' + esc(aparell.model) + '</dd>' : '') +
+    '<dt>Navegador</dt><dd>' + esc(aparell.navegador || 'No ho diu') + '</dd>' +
+    '<dt>Les teves apps</dt><dd>No les pot veure</dd>' +
+    '<dt>Els teus fitxers</dt><dd>No els pot veure</dd></dl>';
+  if(aparell.android && aparell.android <= ANDROID_MORT){
+    h += '<div class="caixa mal"><b>Android ' + aparell.android + ' ja no rep pedaços</b>Google ja no publica pedaços de seguretat per a aquesta versió. Mira si hi ha una actualització del sistema; si no n\'hi ha, aquest mòbil no és per tenir-hi el banc.</div>';
+  }
+
+  if(ultima){
+    h += '<h2>L\'última revisió</h2><p id="ultima" class="dim">' + dataLlarga(ultima.data) + ': ' +
+      ultima.be + ' bé, ' + ultima.mal + ' per arreglar, ' + ultima.dubte + ' per mirar.</p>';
+  }
+  h += '<p class="petit" style="margin-top:18px">Les teves respostes es desen només en aquest mòbil. No s\'envia res enlloc.</p>';
+  cos.innerHTML = h;
+
+  if(R && R.fi){
+    peu.append(boto('veu-resum', 'MIRA EL RESUM', 'gros principal', () => { vista = 'resum'; pinta(); }));
+    peu.append(fila(boto('comenca', 'FES-NE UNA DE NOVA', '', () => { nova(); vista = 'pas'; pinta(); })));
+  } else if(R && fets){
+    peu.append(boto('comenca', 'CONTINUA (' + (R.pas + 1) + ' DE ' + PASSOS.length + ')', 'gros principal', () => { vista = 'pas'; pinta(); }));
+    // Tornar a començar esborra el que portes fet: és petit i pregunta abans.
+    const de0 = document.createElement('button');
+    de0.type = 'button'; de0.id = 'de-nou'; de0.className = 'lleu'; de0.textContent = 'començar de nou';
+    de0.addEventListener('click', () => {
+      if(de0.dataset.segur){ nova(); vista = 'pas'; pinta(); }
+      else { de0.dataset.segur = '1'; de0.textContent = 'segur? torna-hi a tocar i s\'esborra el que portes'; }
+    });
+    peu.append(de0);
+  } else {
+    peu.append(boto('comenca', 'COMENÇA', 'gros principal', () => { if(!R) nova(); vista = 'pas'; pinta(); }));
+  }
+}
+
+/* ---------------- una comprovació ---------------- */
+function pintaPas(){
+  const p = PASSOS[R.pas], n = R.pas + 1;
+  barra(n + ' de ' + PASSOS.length, R.pas / PASSOS.length);
+  const pes = ['', 'Convé mirar-ho', 'Important', 'Molt important'][p.pes];
+
+  let h = '<p class="pes">' + pes + '</p><h1 id="titol">' + p.titol + '</h1><p class="dim">' + p.perque + '</p>' +
+    '<h2>On es mira</h2><ol class="on">' + p.on.map(x => '<li><div>' + x + '</div></li>').join('') + '</ol>';
+  if(p.enllac) h += '<a class="enllac" href="' + p.enllac[0] + '" target="_blank" rel="noopener noreferrer">' + p.enllac[1] + ' ↗</a>';
+  if(p.nota) h += '<p class="petit" style="margin-top:8px">' + p.nota + '</p>';
+  if(p.cerca) h += '<div class="cerca">No trobes el menú? Toca la lupa de Configuració i busca <b>«' + p.cerca[0] + '»</b>' +
+    (p.cerca[1] !== p.cerca[0] ? ' (en castellà, <b>«' + p.cerca[1] + '»</b>)' : '') + '.</div>';
+
+  if(p.tipus === 'data'){
+    const ara = new Date(), any0 = ara.getFullYear();
+    h += '<h2>Quina data hi diu?</h2><div class="tria">' +
+      '<select id="mes" aria-label="Mes"><option value="">mes</option>' + MESOS.map((m, i) => '<option value="' + (i + 1) + '">' + m + '</option>').join('') + '</select>' +
+      '<select id="any" aria-label="Any"><option value="">any</option>' + Array.from({ length: 9 }, (_, i) => '<option>' + (any0 - i) + '</option>').join('') + '</select></div>' +
+      '<div id="veredicte"></div>';
+  } else {
+    h += '<div class="caixa be"><b>És normal</b>' + p.normal + '</div>' +
+         '<div class="caixa mal"><b>No ho és</b>' + p.sospitos + '</div>';
+  }
+  cos.innerHTML = h;
+
+  const triat = R.respostes[p.id];
+  if(p.tipus === 'data'){
+    const mes = $('#mes'), any = $('#any');
+    if(R.pedac){ mes.value = R.pedac.m; any.value = R.pedac.a; }
+    const continua = boto('continua', 'CONTINUA', 'gros principal', () => {
+      const v = veredictePedac();
+      if(!v) return;
+      R.pedac = { m: +mes.value, a: +any.value };
+      respon(p.id, v.estat);
+    });
+    const mira = () => {
+      const v = veredictePedac();
+      $('#veredicte').innerHTML = v ? '<div class="caixa ' + v.estat + '"><b>' + v.titol + '</b>' + v.text + '</div>' : '';
+      continua.disabled = !v; continua.style.opacity = v ? 1 : .45;
+    };
+    mes.addEventListener('change', mira); any.addEventListener('change', mira);
+    peu.append(continua, fila(boto('dubte', 'NO EL TROBO', 'dubte' + (triat === 'dubte' && !R.pedac ? ' triat' : ''), () => { R.pedac = null; respon(p.id, 'dubte'); })));
+    mira();
+  } else {
+    // El botó que es prem gairebé sempre, gros i sol; els altres dos, a sota.
+    peu.append(
+      boto('be', '✓ TOT BÉ', 'gros be' + (triat === 'be' ? ' triat' : ''), () => respon(p.id, 'be')),
+      fila(boto('mal', '⚠ NO ESTÀ BÉ', 'mal' + (triat === 'mal' ? ' triat' : ''), () => respon(p.id, 'mal')),
+           boto('dubte', '? NO HO SÉ', 'dubte' + (triat === 'dubte' ? ' triat' : ''), () => respon(p.id, 'dubte'))));
+  }
+}
+function veredictePedac(){
+  const m = +$('#mes').value, a = +$('#any').value;
+  if(!m || !a) return null;
+  const ara = new Date();
+  const mesos = (ara.getFullYear() - a) * 12 + (ara.getMonth() + 1 - m);
+  if(mesos < 0) return { estat:'dubte', titol:'Aquesta data encara no ha arribat', text:'Torna-la a mirar: el pedaç no pot ser d\'un mes que encara no ha passat.' };
+  const fa = mesos === 0 ? 'És d\'aquest mes.' : mesos === 1 ? 'Fa 1 mes.' : 'Fa ' + mesos + ' mesos.';
+  if(mesos <= PEDAC_BE) return { estat:'be', titol:'Al dia', text: fa + ' El mòbil rep pedaços.' };
+  if(mesos <= PEDAC_MAL) return { estat:'dubte', titol:'Endarrerit', text: fa + ' Mira si tens una actualització pendent.' };
+  return { estat:'mal', titol:'Massa vell', text: fa + ' Aquest mòbil té forats coneguts sense tapar.' };
+}
+function respon(id, estat){
+  R.respostes[id] = estat;
+  // Si ja l'havies acabat i has tornat a una comprovació des del resum, hi tornes.
+  if(R.fi){ R.fi = Date.now(); desa(); apuntaHistorial(); vista = 'resum'; pinta(); return; }
+  if(R.pas < PASSOS.length - 1){ R.pas++; desa(); pinta(); return; }
+  R.fi = Date.now(); desa(); apuntaHistorial(); vista = 'resum'; pinta();
+}
+
+/* ---------------- el resum ---------------- */
+function pintaResum(){
+  barra('resum', 1);
+  const c = compta(R);
+  const perPes = (a, b) => b.pes - a.pes;
+  const mals = PASSOS.filter(p => R.respostes[p.id] === 'mal').sort(perPes);
+  const dubtes = PASSOS.filter(p => R.respostes[p.id] === 'dubte').sort(perPes);
+  const bens = PASSOS.filter(p => R.respostes[p.id] === 'be');
+
+  const titol = c.mal ? (c.mal === 1 ? 'Hi ha 1 cosa per arreglar' : 'Hi ha ' + c.mal + ' coses per arreglar')
+              : c.dubte ? (c.dubte === 1 ? 'Queda 1 cosa per mirar' : 'Queden ' + c.dubte + ' coses per mirar')
+              : 'Tot en ordre';
+  let h = '<h1 id="titol">' + titol + '</h1><p class="dim">Revisió del ' + dataLlarga(R.fi) + '.</p>' +
+    '<div class="comptes" id="comptes">' +
+    '<div class="compte be"><b id="n-be">' + c.be + '</b><span>bé</span></div>' +
+    '<div class="compte mal"><b id="n-mal">' + c.mal + '</b><span>per arreglar</span></div>' +
+    '<div class="compte dubte"><b id="n-dubte">' + c.dubte + '</b><span>per mirar</span></div></div>';
+
+  // Comparar amb la revisió d'abans, si n'hi ha
+  const hist = llegeix(CLAU_HIST, []).filter(x => x.id !== R.inici);
+  if(hist.length){
+    const a = hist[hist.length - 1];
+    h += '<p class="petit" id="abans">L\'altra vegada (' + dataLlarga(a.data) + '): ' + a.mal + ' per arreglar i ' + a.dubte + ' per mirar.</p>';
+  }
+
+  const fitxa = (p, estat) => '<div class="fitxa ' + estat + '"><h3><i>' + (estat === 'mal' ? '⚠' : '?') + '</i>' + p.titol + '</h3>' +
+    '<p>' + (estat === 'mal' ? p.arregla : 'No l\'has pogut mirar. Torna-hi quan puguis: ' + p.on.length + (p.on.length === 1 ? ' pas.' : ' passos.')) + '</p>' +
+    '<button type="button" data-torna="' + p.id + '">torna a aquesta comprovació</button></div>';
+  if(mals.length) h += '<h2>Per arreglar, per ordre</h2>' + mals.map(p => fitxa(p, 'mal')).join('');
+  if(dubtes.length) h += '<h2>Per mirar</h2>' + dubtes.map(p => fitxa(p, 'dubte')).join('');
+  if(bens.length) h += '<h2>El que està bé</h2><ul class="fets">' + bens.map(p => '<li>' + p.titol + '</li>').join('') + '</ul>';
+  h += '<p class="petit" style="margin-top:20px">Val la pena tornar-la a passar d\'aquí a un mes, i sempre que el mòbil faci coses estranyes o algú altre l\'hagi tingut a les mans.</p>';
+  cos.innerHTML = h;
+
+  cos.querySelectorAll('[data-torna]').forEach(b => b.addEventListener('click', () => {
+    R.pas = PASSOS.findIndex(p => p.id === b.dataset.torna); desa(); vista = 'pas'; pinta();
+  }));
+
+  const copia = boto('copia', 'COPIA EL RESUM', '', () => {
+    const t = textResum(c, mals, dubtes);
+    const fet = () => { copia.textContent = '✓ COPIAT'; setTimeout(() => copia.textContent = 'COPIA EL RESUM', 1800); };
+    const aMa = () => {     // quan el navegador no deixa copiar sol, a la manera vella
+      const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
+      try{ document.execCommand('copy'); fet(); }catch(e){} ta.remove();
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(fet, aMa); else aMa();
+  });
+  peu.append(fila(copia, boto('inici', 'A L\'INICI', '', () => { vista = 'inici'; pinta(); })));
+}
+function textResum(c, mals, dubtes){
+  let t = 'Revisió de seguretat del mòbil · ' + dataLlarga(R.fi) + '\n' +
+    c.be + ' bé · ' + c.mal + ' per arreglar · ' + c.dubte + ' per mirar\n';
+  if(mals.length) t += '\nPer arreglar:\n' + mals.map(p => '- ' + p.titol).join('\n') + '\n';
+  if(dubtes.length) t += '\nPer mirar:\n' + dubtes.map(p => '- ' + p.titol).join('\n') + '\n';
+  return t;
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[ch])); }
+
+/* ===================================================================
+   5. Engegar
+=================================================================== */
+$('#enrere').addEventListener('click', () => {
+  if(vista !== 'pas') return;
+  if(R.fi){ vista = 'resum'; }             // venies del resum: hi tornes
+  else if(R.pas > 0){ R.pas--; desa(); }
+  else { vista = 'inici'; }
+  pinta();
+});
+
+R = llegeix(CLAU, null);
+// una revisió desada que no quadra amb les comprovacions d'ara no es carrega
+if(R && (typeof R.pas !== 'number' || R.pas < 0 || R.pas >= PASSOS.length || !R.respostes)) R = null;
+pinta();
+miraAparell().then(a => { aparell = a; if(vista === 'inici') pinta(); });
+
+})();
+</script>
+</body>
+</html>

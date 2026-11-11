@@ -16,12 +16,14 @@ sense cap servidor i sense cap dependència: s'obre i funciona.
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
 | `cambra-fosca.html` | La Cambra Fosca | Retoca fotografies | 2026 |
+| `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
 
 ```
 index.html            la portada, amb una fitxa per eina
 cambra-fosca.html     l'editor de fotografies
+revisio.html          la revisió de seguretat del mòbil
 thumbs/               una captura de cada eina, 480 × 300
 prova.mjs             la prova: la portada i totes les eines
 ```
@@ -103,6 +105,57 @@ demanar a la plataforma (`claude.use('downloads')`). Es prova primer la
 plataforma i, si no hi és, l'enllaç de tota la vida. **Si es toca una de les
 dues bandes, s'ha de comprovar l'altra.**
 
+## La Revisió
+
+L'usuari va demanar una eina que vigilés el mòbil «en pla antivirus», per si
+hi havia virus o portes del darrere. **Això no es pot fer amb una pàgina web**,
+i no se n'ha de fer cap que ho faci veure: el navegador no deixa veure ni les
+apps instal·lades, ni els fitxers, ni res del que corre per sota. Una pàgina
+que digués «escanejant... cap virus» seria teatre, i donaria tranquil·litat
+sense motiu. L'eina ho diu a la primera pantalla.
+
+El que fa és una **revisió guiada**: tretze comprovacions (`PASSOS`), de la
+més important a la que menys, que són les portes per on entra el perill de
+debò a un Android. Les mira la persona, que és l'única que hi té accés, i
+respon **✓ TOT BÉ**, **⚠ NO ESTÀ BÉ** o **? NO HO SÉ**. Al final, un resum amb
+el que cal arreglar, per ordre.
+
+- **L'escaneig de debò és Play Protect**, que ja ve amb Android i sí que pot
+  mirar les apps. És la segona comprovació, i l'eina hi envia.
+- **Cada comprovació diu per què importa, on es mira, què és normal, què no
+  ho és i què s'ha de fer.** Si se n'hi afegeix una, ha de portar les cinc
+  coses, i el `pes` (3, 2 o 1) que decideix l'ordre al resum.
+- **Els noms dels menús canvien segons la marca del mòbil** (i molta gent el
+  té en castellà). Per això cada comprovació porta la paraula que s'ha de
+  buscar a la lupa de Configuració, en català i en castellà (`cerca`). Sense
+  això, a mig camí ja no trobes el menú.
+- **El pedaç de seguretat es jutja per la data que hi posa la persona**, no
+  per la versió d'Android: fins a 3 mesos, bé; fins a 12, endarrerit; més,
+  malament (`PEDAC_BE`, `PEDAC_MAL`). La data no es fa vella; una llista de
+  versions «bones», sí.
+- **`ANDROID_MORT` s'ha de repassar un cop l'any.** És l'última versió
+  d'Android que ja no rep pedaços de Google (la 12, des del març del 2025).
+  Només s'avisa de les que és segur que no en reben; de les altres no es diu
+  res.
+- **El Chrome d'ara diu sempre «Android 10; K»**, sigui quina sigui la
+  versió. La de debò es demana a part (`userAgentData`), i aquell 10 no es té
+  en compte: si no, a tothom li sortiria que té un Android vell.
+- **Tot es desa en aquest mòbil i no s'envia res** (`revisio-actual`, i
+  `revisio-historial` amb la data i els tres números de cada revisió acabada,
+  per comparar amb la del mes passat). L'única cosa que surt a fora és un
+  enllaç a la revisió de seguretat de Google, que obre la persona tocant-lo, i
+  l'eina ho diu.
+- **Una revisió surt una sola vegada a l'historial**: si des del resum tornes
+  a una comprovació i la canvies, s'actualitza la mateixa fila.
+- **Començar de nou és petit i pregunta abans**, que esborra el que portes.
+- **El botó que es prem gairebé sempre (TOT BÉ) va sol i gros; els altres
+  dos, a sota i més petits.** Va sortir aixafat en una ratlla: el peu és una
+  columna i, amb `flex:1 1 0`, l'alçada li quedava a zero. La prova el tocava
+  igualment i no ho veia; ara mira que cap botó faci menys de 40 px d'alt.
+
+És per a Android. Si algun dia es fa per a iPhone, són unes altres
+comprovacions i uns altres menús: una llista a part, no la mateixa amb retocs.
+
 ## Disposició: les trampes
 
 Les mateixes que al repositori dels jocs, i ja ens han mossegat allà:
@@ -135,6 +188,13 @@ de debò i comprova:
   error, que els filtres, els controls d'ajust, el pinzell, el retall, desfer
   i refer i l'historial facin el que han de fer, i que el botó de desar generi
   el fitxer de debò.
+- **la Revisió**: que no vessi, i feta sencera amb el dit a 320 px: que el
+  pedaç no deixi continuar sense data i jutgi bé una data bona i una de
+  vella, que enrere torni on eres, que les tretze comprovacions arribin al
+  resum amb els números que toquen, que es desi i es reprengui on era, que
+  des del resum es pugui arreglar una comprovació sense apuntar-la dues
+  vegades, que començar de nou pregunti, que compari amb la revisió d'abans,
+  i que a cada pantalla els botons hi càpiguen, sencers i sense aixafar.
 
 Si es toca res del tractament de píxels o de la disposició, aquesta prova és la
 primera cosa que s'ha de mirar.

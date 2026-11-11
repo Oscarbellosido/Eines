@@ -11,6 +11,7 @@ estadístiques.
 | Eina | Què fa |
 |---|---|
 | [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text |
+| [La Revisió](https://oscarbellosido.github.io/Eines/revisio.html) | Repassa la seguretat d'un mòbil Android en tretze comprovacions guiades |
 
 Els jocs són a [la seva col·lecció](https://oscarbellosido.github.io/Jocs/).
 
