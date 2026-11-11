@@ -16,7 +16,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepci
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca i amplia fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -106,6 +106,70 @@ i allà el navegador no deixa que una pàgina es baixi res ella mateixa: s'ha de
 demanar a la plataforma (`claude.use('downloads')`). Es prova primer la
 plataforma i, si no hi és, l'enllaç de tota la vida. **Si es toca una de les
 dues bandes, s'ha de comprovar l'altra.**
+
+## La Cambra Fosca: arregla la foto
+
+L'usuari va preguntar si es podien arreglar fotos mal fetes «com fa ChatGPT».
+El que fa ChatGPT (entendre la foto i tornar-la a pintar: «treu la gent del
+fons») és un model enorme que corre als seus servidors i no es pot fer a
+l'aparell. Es van proposar tres coses que sí: un botó que arregla sol la
+claredat i el color, esborrar coses amb una IA (LaMa, uns 200 MB) i arreglar
+cares (GFPGAN, uns 350 MB). L'usuari va triar començar per la primera. A dalt
+del panell d'ajustos hi ha **Arregla la foto**, amb dues coses:
+
+**✦ Arregla-la sola** (`calculaArregla`). **No fa cap màgia: mou els mateixos
+controls d'ajust de sota**, perquè es vegi què ha fet i es pugui retocar, i ho
+diu amb paraules («Ara és més clara i menys groga»). Mira la foto i ho
+arregla per aquest ordre: el tint de color, la claredat, el contrast, les
+ombres tapades i les llums cremades, i els colors apagats. Toca vuit controls
+(`ARREGLA.CONTROLA`) i deixa la resta (filtres, vinyeta, gra...) com eren.
+Prémer-lo dues vegades dona el mateix.
+
+Coses que no s'han de desfer sense entendre-les:
+
+- **Per triar quant mou cada control, prova valors** sobre una còpia de la
+  foto de 256 px, passant-la pel mateix tractament que la pantalla
+  (`pipeline`), i mira el que en surt (`bisecta`). Així el que diuen els
+  números és el que es veu, sigui com sigui per dins cada control. Triga
+  una o dues dècimes.
+- **Una foto que ja està bé no s'ha de tocar.** Per això els marges de «ja
+  està bé» són amples (`MED_ZONA`, `ESTESA_MIN`): la claredat del mig, entre
+  0,32 i 0,62, i el contrast, només si del més fosc al més clar no arriba a
+  0,75. Amb marges estrets, a la foto bona de la prova li canviava la claredat
+  i el contrast.
+- **El color és el més delicat, i es va haver de fer tres vegades.** Ara hi
+  ha dues pistes: el color de les parts més clares (que solen ser blanques:
+  un paper, un núvol) diu **quant** s'ha de corregir, i el color de mitjana
+  de tota la foto **només té dret a vet**: si diu el sentit contrari, no es
+  toca el color. Així una posta de sol (el sol és taronja, però el cel és
+  blau) es queda com és. Les dues maneres d'abans fallaven:
+  - buscar els objectes grisos de la foto: amb un tint fort, un objecte blau
+    es torna grisós, i la foto groga sortia encara més groga;
+  - corregir només el que digués la pista més prudent: la mitjana es deixa
+    enganyar pels colors de l'escena (el cel blau, les muntanyes verdes), i la
+    foto groga es quedava groga i la blava es tornava rosa.
+- **Les parts més clares descarten només els cremats de debò (254)**: amb un
+  límit de 250, el paper blanc d'una foto groguenca (vermell a 250) quedava
+  fora, i és justament la millor pista.
+- **El color es corregeix un 80% del que caldria** (`COLOR_PART`), i fins a 90
+  de temperatura: una foto feta a casa amb llum de bombeta en necessita més de
+  70.
+- **El que deia el botó s'amaga** si obres una altra foto o desfàs, que ja no
+  seria veritat.
+
+Com va, amb les fotos espatllades de la prova (diferència mitjana amb la foto
+bona, de 0 a 255): la fosca de 71 a 35, la cremada de 65 a 23, la fosca i
+groga de 68 a 33, i a la groga i la blava el tint baixa a menys de la meitat.
+La bona i la posta de sol de mostra no es toquen de color.
+
+**Endreça** (`aplicaEndreca`): un control de −15° a +15° per redreçar una foto
+torta. Mentre es mou, **només gira la imatge de la pantalla** (CSS), amb una
+reixa al damunt per veure-hi les rectes; la foto no es toca fins a **Aplica**,
+que si no cada retoc la tornaria a passar pel girat i la perdria. En
+aplicar-ho, la foto es retalla el just perquè no quedin cantonades buides, amb
+la mateixa forma (`escalaEndreca`), i passa a ser la foto, com quan s'amplia:
+les pinzellades giren amb ella i desfer la torna com era. Qualsevol altra cosa
+que facis amb la foto mentre el control és mogut el cancel·la.
 
 ## La Cambra Fosca: ampliar amb IA
 
@@ -269,6 +333,16 @@ de debò i comprova:
   error, que els filtres, els controls d'ajust, el pinzell, el retall, desfer
   i refer i l'historial facin el que han de fer, i que el botó de desar generi
   el fitxer de debò;
+- **arregla la foto**: es fa una foto «bona» (cel, paret grisa, un full
+  blanc, objectes de color) i s'espatlla de cinc maneres (fosca, cremada,
+  groga, blava, i fosca i groga). «Arregla-la sola» ha de deixar la bona com
+  era, millorar clarament les de llum, reduir el tint de les de color a menys
+  de la meitat sense passar a l'altre cantó, dir-ho amb paraules, donar el
+  mateix si es prem dues vegades i no tocar el color de la posta de sol de
+  mostra. Endreça: que la vista prèvia giri sense tocar la foto, que Cancel·la
+  ho desfaci, i que un horitzó tort 5° quedi recte amb la mida que toca. Es va
+  comprovar que la prova falla si el vet del color va al revés o si endreça
+  cap a l'altre costat;
 - **ampliar amb IA** (aquesta part serveix el repositori ella mateixa, que el
   motor es llegeix amb `fetch` i des de file:// no es pot): que les quatre
   pestanyes hi càpiguen, els límits de cada mode, el model lleuger per 4, que

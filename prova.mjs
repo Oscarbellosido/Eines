@@ -162,6 +162,148 @@ if (!desat) problemes.push('el botó de desar no ha generat cap fitxer');
 console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename() : 'no s\'ha baixat res'}`);
 await p.close();
 
+// ------------------------------- la Cambra Fosca: Arregla-la sola i Endreça
+// Es fa una foto «bona» (cel, paret grisa, un full blanc i objectes de color),
+// s'espatlla de les maneres típiques i es mira si «Arregla-la sola» l'acosta a
+// la bona; i que a la bona i a una posta de sol no els toqui el color.
+{
+  const abansDe = problemes.length;
+  const p = await navegador.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+  vigila(p, 'arregla');
+  await p.goto(fitxer('cambra-fosca.html'));
+  await p.waitForTimeout(1200);
+  const { readFileSync } = await import('fs');
+  // la foto bona, i una manera d'espatllar-la: x → mul·x^gamma, canal per canal
+  const foto = (esp) => p.evaluate((esp) => {
+    const W = 600, H = 400, c = document.createElement('canvas'); c.width = W; c.height = H;
+    const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, 170); g.addColorStop(0, 'rgb(110,160,215)'); g.addColorStop(1, 'rgb(166,202,215)');
+    x.fillStyle = g; x.fillRect(0, 0, W, 170);
+    x.fillStyle = 'rgb(150,148,142)'; x.fillRect(0, 170, W, 160);       // paret grisa
+    x.fillStyle = 'rgb(95,90,84)'; x.fillRect(0, 330, W, 70);           // terra
+    x.fillStyle = 'rgb(80,110,80)'; x.beginPath(); x.moveTo(0, 170); x.lineTo(120, 110); x.lineTo(260, 170); x.fill();
+    x.fillStyle = 'rgb(70,100,75)'; x.beginPath(); x.moveTo(300, 170); x.lineTo(460, 95); x.lineTo(600, 170); x.fill();
+    x.fillStyle = 'rgb(236,236,232)'; x.fillRect(60, 200, 140, 120);     // full blanc
+    x.fillStyle = 'rgb(30,30,30)'; x.beginPath(); x.ellipse(130, 265, 40, 35, 0, 0, 7); x.fill();
+    x.fillStyle = 'rgb(178,40,38)'; x.fillRect(250, 210, 80, 120);
+    x.fillStyle = 'rgb(60,120,190)'; x.beginPath(); x.arc(430, 270, 50, 0, 7); x.fill();
+    x.fillStyle = 'rgb(70,140,60)'; x.fillRect(500, 240, 70, 90);
+    if (esp) {
+      const id = x.getImageData(0, 0, W, H), d = id.data;
+      for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++)
+        d[i + k] = 255 * esp.mul[k] * Math.pow(d[i + k] / 255, esp.gamma || 1) + 255 * (esp.mes || 0);
+      x.putImageData(id, 0, 0);
+    }
+    return c.toDataURL('image/png');
+  }, esp);
+  const obre = async (dades, nom = 'foto.png') => {
+    await p.setInputFiles('#file', { name: nom, mimeType: 'image/png', buffer: Buffer.from(dades.split(',')[1], 'base64') });
+    await p.waitForTimeout(400);
+  };
+  const valors = () => p.evaluate(() => Object.fromEntries(
+    ['exposure', 'contrast', 'highlights', 'shadows', 'temperature', 'tint', 'vibrance'].map(k => [k, +document.querySelector('#sl-' + k).value])));
+  const desa = async () => {
+    await p.click('#btnSave'); await p.waitForTimeout(250);
+    const b = p.waitForEvent('download'); await p.click('.dlg .btn.primary');
+    return 'data:image/png;base64,' + readFileSync(await (await b).path()).toString('base64');
+  };
+  // diferència mitjana amb la bona, i el tint d'un tros de paret (en % sobre la bona)
+  const compara = (a, bona) => p.evaluate(async ([a, bona]) => {
+    const px = async src => { const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = src; });
+      const c = document.createElement('canvas'); c.width = i.width; c.height = i.height;
+      const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(i, 0, 0); return x.getImageData(0, 0, c.width, c.height).data; };
+    const da = await px(a), db = await px(bona);
+    let s = 0; for (let i = 0; i < da.length; i += 4) s += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]);
+    const paret = d => { let r = 0, g = 0, b = 0, n = 0;
+      for (let y = 180; y < 320; y++) for (let x = 208; x < 244; x++) { const i = (y * 600 + x) * 4; r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+      return (r - b) / ((r + g + b) / 3); };
+    return { dif: s / (da.length / 4 * 3), tint: (paret(da) - paret(db)) * 100 };
+  }, [a, bona]);
+
+  const bona = await foto(null);
+  // `millora`: fins on ha de baixar la diferència amb la bona. A les de llum,
+  // clarament (el 85%). A les de color, el que compta és el tint (més avall), i
+  // aquí només es demana que no empitjori: la temperatura i el matís no desfan
+  // exactament un tint fet canal per canal, i la diferència total baixa poc.
+  const casos = [
+    { nom: 'bona', esp: null },
+    { nom: 'fosca', esp: { mul: [.75, .75, .75], gamma: 1.9 }, millora: .85 },
+    { nom: 'cremada', esp: { mul: [.6, .6, .6], gamma: .55, mes: .38 }, millora: .85 },
+    { nom: 'groga', esp: { mul: [1.06, .98, .70] }, millora: 1 },
+    { nom: 'blava', esp: { mul: [.78, .92, 1.08] }, millora: 1 },
+    { nom: 'fosca i groga', esp: { mul: [.83, .75, .53], gamma: 1.6 }, millora: .85 },
+  ];
+  const fila = [];
+  for (const c of casos) {
+    const espatllada = c.esp ? await foto(c.esp) : bona;
+    const abans = await compara(espatllada, bona);
+    await obre(espatllada);
+    await p.click('#arregla');
+    const v = await valors();
+    const despres = await compara(await desa(), bona);
+    const diu = await p.locator('#arreglaRes').innerText();
+    fila.push(`${c.nom} ${abans.dif.toFixed(0)}→${despres.dif.toFixed(0)}`);
+    if (c.nom === 'bona') {
+      if (Object.values(v).some(x => x !== 0)) problemes.push('«Arregla-la sola» ha tocat una foto que ja estava bé: ' + JSON.stringify(v));
+      if (!diu.includes('ja estava bé')) problemes.push('a una foto bona, «Arregla-la sola» no diu que ja estava bé: ' + diu);
+    } else if (despres.dif > abans.dif * c.millora)
+      problemes.push(`«Arregla-la sola» no ha millorat prou la foto ${c.nom} (diferència amb la bona: ${abans.dif.toFixed(1)} → ${despres.dif.toFixed(1)})`);
+    if (Math.abs(abans.tint) > 20) {            // les que tenen un tint fort: s'ha de reduir a la meitat, sense passar a l'altre cantó
+      if (Math.abs(despres.tint) > Math.abs(abans.tint) * 0.5 || Math.sign(despres.tint) === -Math.sign(abans.tint) && Math.abs(despres.tint) > 12)
+        problemes.push(`a la foto ${c.nom}, el tint no s'ha arreglat bé (${abans.tint.toFixed(0)}% → ${despres.tint.toFixed(0)}%)`);
+    }
+    if (c.nom === 'fosca' && !diu.includes('més clara')) problemes.push('a la foto fosca no diu que l\'ha aclarida: ' + diu);
+    if (c.nom === 'groga' && !diu.includes('menys groga')) problemes.push('a la foto groga no diu que l\'ha fet menys groga: ' + diu);
+    // prémer-lo dues vegades dona el mateix
+    if (c.nom === 'groga') { await p.click('#arregla'); if (JSON.stringify(await valors()) !== JSON.stringify(v)) problemes.push('prémer «Arregla-la sola» dues vegades no dona el mateix'); }
+  }
+  // la posta de sol de mostra: el color no es toca (el sol taronja no és cap tint)
+  await p.reload(); await p.waitForTimeout(1200);
+  await p.click('#arregla');
+  const posta = await valors();
+  if (posta.temperature || posta.tint) problemes.push(`«Arregla-la sola» ha canviat el color de la posta de sol: temperatura ${posta.temperature}, matís ${posta.tint}`);
+  // desfer amaga el que deia, que ja no seria veritat
+  await p.keyboard.press('Control+z'); await p.waitForTimeout(300);
+  if (await p.locator('#arreglaRes').isVisible()) problemes.push('després de desfer, encara surt el que havia fet «Arregla-la sola»');
+
+  // Endreça: un horitzó tort 5° ha de quedar recte
+  const tort = await p.evaluate(() => {
+    const c = document.createElement('canvas'); c.width = 600; c.height = 400; const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, 400); g.addColorStop(0, '#5a8ccc'); g.addColorStop(1, '#c8d27a');
+    x.fillStyle = g; x.fillRect(0, 0, 600, 400);
+    const t = Math.tan(5 * Math.PI / 180);
+    x.strokeStyle = '#0a0a0a'; x.lineWidth = 9; x.beginPath(); x.moveTo(-50, 200 - t * 350); x.lineTo(650, 200 + t * 350); x.stroke();
+    return c.toDataURL('image/png');
+  });
+  const inclinacio = src => p.evaluate(async src => {
+    const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = src; });
+    const c = document.createElement('canvas'); c.width = i.width; c.height = i.height;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(i, 0, 0);
+    const y = cx => { const d = x.getImageData(cx, 0, 1, c.height).data; let s = 0, n = 0;
+      for (let k = 0; k < c.height; k++) if (d[k * 4] < 60) { s += k; n++; } return s / n; };
+    return Math.atan((y(Math.round(c.width * .8)) - y(Math.round(c.width * .2))) / (c.width * .6)) * 180 / Math.PI;
+  }, src);
+  const posaEndreca = g => p.evaluate(g => { const r = document.querySelector('#sl-endreca'); r.value = g; r.dispatchEvent(new Event('input', { bubbles: true })); }, g);
+  await obre(tort, 'torta.png');
+  await posaEndreca(-5);
+  const previa = await p.evaluate(() => ({ t: document.querySelector('#view').style.transform, reixa: !document.querySelector('#reixa').hidden }));
+  if (!previa.t.includes('rotate(-5deg)') || !previa.reixa) problemes.push('moure Endreça no ensenya la foto girada amb la reixa: ' + JSON.stringify(previa));
+  if (await p.locator('#stDims').innerText() !== '600 × 400 px') problemes.push('moure Endreça ja canvia la foto, abans d\'APLICA');
+  await p.click('#endrecaCancela');
+  if (await p.evaluate(() => document.querySelector('#view').style.transform)) problemes.push('Cancel·la no treu el gir de la vista');
+  await posaEndreca(-5);
+  await p.click('#endrecaAplica'); await p.waitForTimeout(300);
+  if (await p.locator('#stDims').innerText() !== '531 × 354 px') problemes.push('Endreça −5° no retalla el que toca: ' + await p.locator('#stDims').innerText());
+  const recte = await inclinacio(await desa());
+  if (Math.abs(recte) > 0.3) problemes.push(`l'horitzó endreçat encara fa ${recte.toFixed(2)}° (abans ${(await inclinacio(tort)).toFixed(2)}°)`);
+  if (!(await p.locator('.hitem span').allInnerTexts()).some(h => h.startsWith('Endreça'))) problemes.push('Endreça no surt a l\'historial');
+  await p.keyboard.press('Control+z'); await p.waitForTimeout(300);
+  if (await p.locator('#stDims').innerText() !== '600 × 400 px') problemes.push('desfer no torna la foto d\'abans d\'endreçar');
+
+  console.log(`${problemes.length > abansDe ? '✗' : '✓'} Arregla-la sola (diferència amb la bona: ${fila.join(', ')}) i Endreça (5° → ${recte.toFixed(2)}°)`);
+  await p.close();
+}
+
 // ------------------------------------------- la Cambra Fosca: ampliar amb IA
 // El motor i els models es llegeixen amb `fetch`, i des d'una pàgina file://
 // el navegador no ho deixa fer: aquesta part serveix el repositori ella

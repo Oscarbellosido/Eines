@@ -284,6 +284,25 @@ select{
 }
 .note svg{width:13px;height:13px;flex:0 0 auto;margin-top:1px}
 
+/* arregla la foto */
+.arregla #arregla{width:100%;height:36px;justify-content:center;font-size:13px;margin-bottom:7px}
+.arregla #arreglaRes{color:var(--fg);margin-bottom:6px;padding:7px 9px;border-radius:6px;background:var(--accent-wash);border:1px solid rgba(240,163,60,.28)}
+.arregla>.tiny{margin-bottom:8px}
+.arregla #arreglaRes{margin-bottom:10px}
+.arregla .optrow{margin:-2px 0 4px}
+.arregla .optrow .tiny{flex:1 1 140px;min-width:0}
+#reixa{
+  position:absolute;inset:0;pointer-events:none;z-index:3;
+  background-image:
+    linear-gradient(rgba(255,255,255,.55) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.55) 1px,transparent 1px),
+    linear-gradient(rgba(255,255,255,.18) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.18) 1px,transparent 1px);
+  background-size:33.333% 33.333%,33.333% 33.333%,8.333% 8.333%,8.333% 8.333%;
+  background-position:-1px -1px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.4);
+}
+
 /* ampliar amb IA */
 .modes{display:flex;flex-direction:column;gap:8px}
 .mode{
@@ -449,6 +468,7 @@ select{
     <main class="stage" id="stage" data-bg="dark">
       <div class="wrap" id="wrap" data-tool="move">
         <canvas id="view"></canvas>
+        <div id="reixa" hidden></div>
         <div id="cursor"></div>
         <div id="cloneSrc"></div>
         <div id="crop"><div id="cropBox">
@@ -1120,6 +1140,8 @@ function push(label){
 }
 function restore(i){
   const e=S.history[i]; if(!e) return;
+  cancelaEndreca();
+  $('#arreglaRes').hidden=true;      // el que deia «Arregla-la sola» ja no seria veritat
   const st=e.st;
   // ampliar canvia la foto mateixa: desfer-ho torna a la d'abans
   const geomChanged = st.src!==S.src||st.rot!==S.rot||st.flipH!==S.flipH||st.flipV!==S.flipV||
@@ -1189,6 +1211,7 @@ function buildRail(){
   }
 }
 function setTool(id){
+  cancelaEndreca();
   if(id!=='crop' && cropOn) endCrop(false);
   S.tool=id;
   for(const t of TOOLS) if(!t.sep) $('#tool-'+t.id).setAttribute('aria-pressed', t.id===id?'true':'false');
@@ -1318,6 +1341,7 @@ function buildOpts(id,hint){
 const sliderRefs={};
 function buildAdjPanel(){
   const pane=$('#pane-adj'); pane.textContent='';
+  pane.appendChild(grupArregla());
   for(const g of ADJ_SPEC){
     const box=el('div','grp');
     box.appendChild(el('h4',null,g.group));
@@ -1369,6 +1393,239 @@ function buildAdjPanel(){
 function syncSliders(){
   for(const k in sliderRefs){ sliderRefs[k].r.value=S.adj[k]; sliderRefs[k].paint(); }
   const sw=$('#sw-mono'); if(sw) sw.setAttribute('aria-pressed',S.adj.mono?'true':'false');
+}
+
+/* ---- arregla la foto: «Arregla-la sola» i «Endreça» ----
+   «Arregla-la sola» no fa cap màgia: mira la foto i mou els mateixos controls
+   d'ajust que hi ha a sota, perquè es vegi què ha fet i es pugui retocar. Per
+   triar quant els mou, prova valors sobre una còpia petita de la foto passant
+   pel mateix tractament que la pantalla, i mira el que en surt: així el que
+   diuen els números és el que es veu, sigui com sigui cada control. */
+const ARREGLA={
+  CONTROLA:['exposure','brightness','contrast','highlights','shadows','temperature','tint','vibrance'],
+  // Els marges de «ja està bé» són amples a posta: una foto que ja estava bé
+  // no s'ha de tocar. Amb marges estrets, a la foto bona de la prova li
+  // canviava la claredat i el contrast.
+  MED:0.46, MED_ZONA:[0.32,0.62], MED_PART:0.85,   // la claredat del mig: on volem, on ja està bé, quant s'hi acosta
+  ESTESA:0.88, ESTESA_MIN:0.75,                    // del més fosc al més clar: on volem, i per sota de quant s'estira
+  COLOR_PART:0.8,                                  // el color es corregeix una mica menys del compte, per prudència
+};
+function mostraArregla(){
+  const M=256, W=baseCanvas.width, H=baseCanvas.height, k=Math.min(1,M/Math.max(W,H));
+  const w=Math.max(1,round(W*k)), h=Math.max(1,round(H*k));
+  const c=mkCanvas(w,h), x=c.getContext('2d',{willReadFrequently:true});
+  x.imageSmoothingQuality='high'; x.drawImage(baseCanvas,0,0,w,h);
+  return { x, w, h, orig:x.getImageData(0,0,w,h) };
+}
+function passaArregla(m,a){
+  m.x.putImageData(m.orig,0,0);
+  pipeline(m.x,m.w,m.h,a,1);
+  return m.x.getImageData(0,0,m.w,m.h).data;
+}
+function mesuraArregla(d,conjunts){
+  // conjunts: llistes de píxels (el de tota la foto i el dels més clars) on
+  // es mesura el color de mitjana, per saber quin tint té
+  const hist=new Uint32Array(256); let n=0,cr=0,cn=0,blancs=0;
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i],g=d[i+1],b=d[i+2], y=(0.2126*r+0.7152*g+0.0722*b)|0;
+    hist[y]++; n++; if(y>=253) blancs++;
+    if(y>25&&y<230){ cr+=Math.max(r,g,b)-Math.min(r,g,b); cn++; }
+  }
+  const pct=q=>{ const t=q*n; let s=0; for(let v=0;v<256;v++){ s+=hist[v]; if(s>=t) return v/255; } return 1; };
+  const tint=llista=>{
+    let r=0,g=0,b=0; for(const p of llista){ const i=p*4; r+=d[i]; g+=d[i+1]; b+=d[i+2]; }
+    const k=1/(llista.length*255||1); r*=k; g*=k; b*=k;
+    return { calent:r-b, verd:g-(r+b)/2 };     // >0: tira a groc/taronja · >0: tira a verd
+  };
+  return { p1:pct(.01), p10:pct(.10), med:pct(.5), p98:pct(.98), p99:pct(.99), blancs:blancs/n,
+           croma:cn?cr/cn/255:0, tints:conjunts?conjunts.map(tint):null };
+}
+// busca el valor del control que fa que la mesura arribi a l'objectiu (la mesura ha de créixer amb el control)
+function bisecta(lo,hi,f,obj){
+  if(obj<=f(lo)) return lo; if(obj>=f(hi)) return hi;
+  for(let i=0;i<11;i++){ const m=(lo+hi)/2; if(f(m)<obj) lo=m; else hi=m; }
+  return (lo+hi)/2;
+}
+function calculaArregla(){
+  const m=mostraArregla(), o=m.orig.data, N=m.w*m.h;
+  // Dues pistes del tint de la foto. La que mana és el color de les parts més
+  // clares, que solen ser blanques (un paper, un núvol, una paret al sol):
+  // diu quant s'ha de corregir. L'altra és el color de mitjana de tota la
+  // foto, que es deixa enganyar pels colors de l'escena (el cel blau, les
+  // muntanyes verdes) i per això només té dret a vet: si diu el sentit
+  // contrari, no es toca el color. Així una posta de sol, amb el sol taronja
+  // però el cel blau, es queda com és.
+  // Ho vam provar d'altres maneres que fallaven: buscar els objectes grisos
+  // (amb un tint fort, un objecte blau es torna grisós i la foto groga sortia
+  // més groga), i corregir només el que digués la pista més prudent (la foto
+  // groga es quedava groga, i a la blava el verd de les muntanyes la feia rosa).
+  const lum=new Float32Array(N), tota=[], clars=[];
+  let colorMax=0; const crom=new Float32Array(N);
+  for(let i=0,p=0;i<o.length;i+=4,p++){
+    lum[p]=(0.2126*o[i]+0.7152*o[i+1]+0.0722*o[i+2])/255;
+    crom[p]=(Math.max(o[i],o[i+1],o[i+2])-Math.min(o[i],o[i+1],o[i+2]))/255;
+    if(lum[p]>0.05&&lum[p]<0.95) tota.push(p);
+  }
+  { // els més clars: el 3% de dalt, sense els cremats (un blanc cremat no diu
+    // de quin color era). Cremat vol dir arribar a 254: amb un límit de 250, el
+    // paper blanc d'una foto groguenca (vermell a 250) quedava fora, i era
+    // justament la millor pista.
+    const ord=Float32Array.from(lum).sort(), ll=ord[Math.floor(N*0.97)];
+    for(let i=0,p=0;i<o.length;i+=4,p++) if(lum[p]>=ll && Math.max(o[i],o[i+1],o[i+2])<254) clars.push(p);
+  }
+  const p95croma=Float32Array.from(crom).sort()[Math.floor(N*0.95)]||0;
+  const enBlancINegre=p95croma<0.03;
+  const conjunts=[tota, clars];
+  const a=Object.assign({},ADJ_DEF);
+  const mesura=()=>mesuraArregla(passaArregla(m,a),conjunts);
+  const prova=(k,v)=>{ const ant=a[k]; a[k]=v; const s=mesura(); a[k]=ant; return s; };
+
+  // 1. el tint de color
+  if(!enBlancINegre && tota.length>N*0.2 && clars.length>N*0.005){
+    // a cada eix (calent/fred i verd/rosat): si el blanc té un tint que es nota
+    // i la mitjana no diu el contrari, es busca el control que deixa el blanc neutre
+    const eix=(clau,control,lim,llindar,signe)=>{
+      const t=mesura().tints, mitjana=t[0][clau], blanc=t[1][clau];
+      if(Math.abs(blanc)<llindar || Math.sign(mitjana)!==Math.sign(blanc)) return;
+      a[control]=bisecta(-lim,lim,v=>signe*prova(control,v).tints[1][clau],0);
+    };
+    for(let volta=0;volta<2;volta++){
+      eix('calent','temperature',100,0.02,1);   // la temperatura puja el vermell i baixa el blau
+      eix('verd','tint',80,0.012,-1);            // el matís positiu baixa el verd
+    }
+    // Fins a 90: una foto feta a casa amb llum de bombeta en necessita més de
+    // 70, i amb límits més baixos es quedava groga. Que la mitjana pugui vetar
+    // el sentit és el que protegeix de passar-se'n.
+    a.temperature=clamp(a.temperature*ARREGLA.COLOR_PART,-90,90);
+    a.tint=clamp(a.tint*ARREGLA.COLOR_PART,-50,50);
+    if(Math.abs(a.temperature)<3) a.temperature=0;
+    if(Math.abs(a.tint)<3) a.tint=0;
+  }
+  // 2. la claredat: si el mig és massa fosc o massa clar, s'hi acosta
+  const exposa=()=>{
+    const med=mesura().med;
+    if(med>=ARREGLA.MED_ZONA[0]&&med<=ARREGLA.MED_ZONA[1]) return;
+    const obj=med+ARREGLA.MED_PART*(ARREGLA.MED-med);
+    a.exposure=clamp(bisecta(-70,70,v=>prova('exposure',v).med,obj),-70,70);
+  };
+  exposa();
+  // 3. el contrast: si la foto no va del fosc al clar, s'estira; sense cremar
+  // més de l'1% dels píxels. Fins a 60: amb 40 una foto esvaïda no n'hi havia prou.
+  {
+    const s=mesura();
+    if(s.p99-s.p1<ARREGLA.ESTESA_MIN){
+      let c=bisecta(0,60,v=>{ const t=prova('contrast',v); return t.p99-t.p1; },ARREGLA.ESTESA);
+      const cremat=v=>{ const t=prova('contrast',v); return t.blancs+(t.p1<=1/255?0.02:0); };
+      if(cremat(c)>0.01) c=bisecta(0,c,cremat,0.01);
+      a.contrast=c;
+      exposa();      // el contrast mou el mig: es torna a mirar la claredat
+    }
+  }
+  // 4. les ombres massa tapades, i les llums cremades
+  if(mesura().p10<0.08) a.shadows=clamp(bisecta(0,40,v=>prova('shadows',v).p10,0.11),0,40);
+  { const s=mesura(); if(s.blancs>0.02||s.p98>0.985) a.highlights=clamp(bisecta(-50,0,v=>prova('highlights',v).p98,0.95),-50,0); }
+  // 5. els colors apagats
+  if(!enBlancINegre && mesura().croma<0.08) a.vibrance=clamp(bisecta(0,30,v=>prova('vibrance',v).croma,0.11),0,30);
+
+  const res={};
+  for(const k of ARREGLA.CONTROLA) res[k]=round(a[k]);
+  return res;
+}
+function explicaArregla(v){
+  const fets=[];
+  if(v.exposure>=4) fets.push('més clara'); else if(v.exposure<=-4) fets.push('més fosca');
+  if(v.contrast>=4) fets.push('amb més contrast');
+  if(v.shadows>=4) fets.push('amb les ombres aclarides');
+  if(v.highlights<=-4) fets.push('amb les llums recuperades');
+  if(v.temperature<=-4) fets.push('menys groga'); else if(v.temperature>=4) fets.push('menys blava');
+  if(v.tint>=4) fets.push('menys verda'); else if(v.tint<=-4) fets.push('menys rosada');
+  if(v.vibrance>=4) fets.push('amb els colors més vius');
+  if(!fets.length) return 'Aquesta foto ja estava bé: no hi ha calgut canviar res.';
+  const llista=fets.length===1?fets[0]:fets.slice(0,-1).join(', ')+' i '+fets[fets.length-1];
+  return 'Ara és '+llista+'. Ho pots retocar als controls de sota.';
+}
+function arreglaSola(){
+  if(!baseCanvas||IA.treballant) return;
+  cancelaEndreca();
+  const v=calculaArregla();
+  Object.assign(S.adj,v);
+  S.preset=null; syncSliders(); markPreset(); scheduleRender();
+  const t=explicaArregla(v);
+  push('Arregla-la sola');
+  const r=$('#arreglaRes'); if(r){ r.textContent=t; r.hidden=false; }
+  say(t);
+}
+
+/* «Endreça»: gira la foto uns quants graus perquè l'horitzó quedi recte, i la
+   retalla el just perquè no quedin cantonades buides, amb la mateixa forma.
+   Mentre es mou el control només es gira la imatge de la pantalla, amb una
+   reixa al damunt per veure-hi les rectes; la foto no es toca fins a APLICA,
+   que si no, cada retoc la tornaria a passar pel girat i la perdria. */
+S.endreca=0;
+function escalaEndreca(W,H,rad){
+  const c=Math.abs(Math.cos(rad)), s=Math.abs(Math.sin(rad));
+  return Math.min(W/(W*c+H*s), H/(W*s+H*c));
+}
+const grausText = g => (g>0?'+':'')+String(round(g*10)/10).replace('.',',')+'°';
+function previsualitzaEndreca(){
+  const g=S.endreca, wrap=$('#wrap');
+  if(!g || !baseCanvas){ view.style.transform=''; wrap.style.overflow=''; $('#reixa').hidden=true; return; }
+  const k=escalaEndreca(baseCanvas.width,baseCanvas.height,g*Math.PI/180);
+  view.style.transform='rotate('+g+'deg) scale('+(1/k)+')';
+  wrap.style.overflow='hidden';
+  $('#reixa').hidden=false;
+}
+function pintaEndreca(){
+  const g=S.endreca;
+  const v=$('#endrecaVal'), r=$('#sl-endreca'), b=$('#endrecaBotons');
+  if(!r) return;
+  r.value=g; v.textContent=g?grausText(g):'0°'; v.classList.toggle('zero',!g); r.classList.toggle('touched',!!g);
+  b.hidden=!g;
+  previsualitzaEndreca();
+}
+function cancelaEndreca(){ if(S.endreca){ S.endreca=0; pintaEndreca(); } }
+function aplicaEndreca(){
+  const graus=S.endreca; if(!graus||!baseCanvas||IA.treballant) return;
+  const rad=graus*Math.PI/180, W=baseCanvas.width, H=baseCanvas.height;
+  const k=escalaEndreca(W,H,rad)*0.998;            // un pèl més, que la vora no agafi res de fora
+  const ow=Math.max(8,Math.floor(W*k)), oh=Math.max(8,Math.floor(H*k));
+  const out=mkCanvas(ow,oh), x=out.getContext('2d');
+  x.imageSmoothingQuality='high';
+  x.translate(ow/2,oh/2); x.rotate(rad); x.drawImage(baseCanvas,-W/2,-H/2);
+  // les pinzellades giren amb la foto
+  const c=Math.cos(rad), s=Math.sin(rad);
+  mapOps((px,py)=>{ const dx=px-W/2, dy=py-H/2; return [dx*c-dy*s+ow/2, dx*s+dy*c+oh/2]; });
+  S.src=out; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
+  S.cloneSrc=null; $('#cloneSrc').style.display='none';
+  S.endreca=0; pintaEndreca();
+  buildBase(); fitToStage();
+  push('Endreça '+grausText(graus));
+  say('Endreçada '+grausText(graus)+'. Ara fa '+ow+' × '+oh+' px.');
+}
+function grupArregla(){
+  const box=el('div','grp arregla');
+  box.appendChild(el('h4',null,'Arregla la foto'));
+  box.appendChild(el('div','tiny','Corregeix la claredat, el contrast i el color de les fotos fosques, cremades o amb un color estrany.'));
+  const b=el('button','btn primary','✦ Arregla-la sola'); b.type='button'; b.id='arregla';
+  b.onclick=arreglaSola;
+  box.appendChild(b);
+  const res=el('div','tiny'); res.id='arreglaRes'; res.hidden=true; box.appendChild(res);
+
+  const row=el('div','row');
+  const l=el('label',null,'Endreça'); l.htmlFor='sl-endreca';
+  const v=el('span','val zero','0°'); v.id='endrecaVal';
+  const r=document.createElement('input');
+  r.type='range'; r.min=-15; r.max=15; r.step=0.1; r.value=0; r.id='sl-endreca';
+  r.setAttribute('aria-label','Endreça');
+  r.oninput=()=>{ S.endreca=+r.value; pintaEndreca(); };
+  l.ondblclick=cancelaEndreca;
+  row.append(l,v,r); box.appendChild(row);
+  const bot=el('div','optrow'); bot.id='endrecaBotons'; bot.hidden=true;
+  const ap=el('button','btn primary','Aplica'); ap.type='button'; ap.id='endrecaAplica'; ap.onclick=aplicaEndreca;
+  const ca=el('button','btn','Cancel·la'); ca.type='button'; ca.id='endrecaCancela'; ca.onclick=cancelaEndreca;
+  bot.append(ap,ca,el('span','tiny','Es retalla una mica, que no quedin cantonades buides.'));
+  box.appendChild(bot);
+  return box;
 }
 
 /* ---- els filtres ---- */
@@ -1642,6 +1899,8 @@ function loadImage(src,name,isSample){
 }
 function adopt(canvas,name,isSample){
   if(IA.treballant) IA.atura=true;
+  S.endreca=0; if($('#sl-endreca')) pintaEndreca();
+  if($('#arreglaRes')) $('#arreglaRes').hidden=true;
   IA.factorTriat=false;
   S.src=canvas; S.name=name||'imatge.png'; S.sample=!!isSample;
   S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
@@ -2058,6 +2317,7 @@ $('#velAtura').onclick=()=>{ IA.atura=true; $('#velText').textContent='Aturant�
 
 async function fesAmplia(){
   if(IA.treballant || !baseCanvas || !hiCap(IA.factor)) return;
+  cancelaEndreca();
   if(cropOn){ endCrop(false); setTool('move'); }
   hideTextEdit();
   IA.treballant=true; IA.atura=false; IA.error=null;
