@@ -340,6 +340,7 @@ select{
   background:rgba(108,193,143,.12);border:1px solid rgba(108,193,143,.4);
 }
 .ia-fet b{color:#6cc18f}
+.ia-detalls{margin-top:6px;font-family:var(--font-mono);font-size:10.5px;color:var(--fg-dim);overflow-wrap:anywhere}
 
 /* ---------- ratlla d'estat ---------- */
 .statusbar{
@@ -2103,10 +2104,11 @@ const IA={
   CAU:'cambra-fosca-ia-1',
   MARGE:16,               // píxels de context al voltant de cada tros, que no es vegin les costures
   models:{
-    mobil:{ fitxer:'models/realesr-general-x4v3.onnx', mb:4.9, nom:'Mòbil', model:'lleuger',
-            desc:'Model lleuger. Va ràpid i serveix a qualsevol aparell.', tros:{gpu:192,cpu:128}, maxMP:16 },
+    // macPx: multiplicacions per píxel d'entrada, per saber a quina velocitat ha anat
+    mobil:{ fitxer:'models/realesr-general-x4v3-v2.onnx', mb:4.9, nom:'Mòbil', model:'lleuger',
+            desc:'Model lleuger. Va ràpid i serveix a qualsevol aparell.', tros:{gpu:192,cpu:128}, maxMP:16, macPx:1.25e6 },
     ordinador:{ fitxer:'models/realesrgan-x4plus.onnx', mb:66.9, nom:'Ordinador', model:'gran',
-            desc:'Model gran: més qualitat, però més lent i amb més memòria.', tros:{gpu:128,cpu:96}, maxMP:64 },
+            desc:'Model gran: més qualitat, però més lent i amb més memòria.', tros:{gpu:128,cpu:96}, maxMP:64, macPx:1.79e7 },
   },
   motors:{
     gpu:{ script:'ort/ort.webgpu.min.js', wasm:'ort/ort-wasm-simd-threaded.asyncify.wasm', mb:28.7 },
@@ -2134,6 +2136,8 @@ const urlIA = cami => new URL(IA.DIR+cami, location.href).href;
 async function cauIA(){ try{ return self.caches ? await caches.open(IA.CAU) : null; }catch(e){ return null; } }
 async function miraBaixats(){
   const c=await cauIA(); if(!c) return;
+  // la primera versió del model lleuger, que la gràfica no sabia fer anar sencera
+  try{ await c.delete(urlIA('models/realesr-general-x4v3.onnx')); }catch(e){}
   const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
   for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
 }
@@ -2184,12 +2188,28 @@ async function preparaSessio(progres){
   const md=IA.models[IA.mode];
   const bytes=await baixaIA(md.fitxer, (a,t)=>progres('el model',a,t||md.mb*1048576));
   progres('preparant el model',0,0);
-  IA.sessio=await ort.InferenceSession.create(bytes, {
-    executionProviders: IA.motor==='gpu' ? ['webgpu','wasm'] : ['wasm'],
-    graphOptimizationLevel:'all',
-  });
+  // Primer amb la gràfica sola, i només si no arrenca, amb el processador. Abans
+  // es demanaven totes dues de cop, i si la gràfica fallava el motor passava al
+  // processador sense dir res: l'usuari va esperar una hora sense saber per què.
+  IA.motorReal=null; IA.errorGPU=null;
+  if(IA.motor==='gpu'){
+    try{
+      IA.sessio=await ort.InferenceSession.create(bytes.slice(0), { executionProviders:['webgpu'], graphOptimizationLevel:'all' });
+      IA.motorReal='gpu';
+    }catch(e){ IA.errorGPU=String(e&&e.message||e).replace(/\s+/g,' ').slice(0,140); console.warn('Amplia: la gràfica no arrenca',e); }
+  }
+  if(!IA.sessio){
+    IA.sessio=await ort.InferenceSession.create(bytes, { executionProviders:['wasm'], graphOptimizationLevel:'all' });
+    IA.motorReal='cpu';
+  }
   IA.sessioDe=IA.mode;
   return IA.sessio;
+}
+// el navegador i la versió, per a la línia de detalls (Edg/131 → Edge 131)
+function quinNavegador(){
+  const ua=navigator.userAgent, m=ua.match(/(Edg|OPR|SamsungBrowser|Firefox|Chrome|Version)\/(\d+)/);
+  if(!m) return 'navegador desconegut';
+  return ({Edg:'Edge',OPR:'Opera',SamsungBrowser:'Samsung Internet',Version:'Safari'}[m[1]]||m[1])+' '+m[2];
 }
 
 /* La feina, per trossos. Cada tros es passa pel model amb un marge de context
@@ -2274,6 +2294,7 @@ function pintaAmplia(){
   if(IA.fet && IA.fet.src===S.src){
     const ok=el('div','ia-fet'); ok.id='iaFet';
     ok.innerHTML='<b>✓ Feta.</b> '+IA.fet.text;
+    if(IA.fet.detalls){ const d=el('div','ia-detalls',IA.fet.detalls); d.id='iaDetalls'; ok.appendChild(d); }
     pane.appendChild(ok);
   }
   const g1=el('div','grp');
@@ -2331,6 +2352,10 @@ function pintaAmplia(){
   const linies=el('div','ia-linies'); linies.id='iaLinies';
   const linia=(t,c)=>linies.appendChild(el('div','tiny'+(c?' '+c:''),t));
   if(IA.motor==null) linia('Mirant si aquest aparell pot fer servir la gràfica…');
+  else if(IA.motor==='gpu' && IA.motorReal==='cpu'){
+    linia('El navegador diu que té gràfica, però el motor no l\'ha pogut fer arrencar: va amb el processador, que és molt més lent.','ia-avis');
+    if(IA.errorGPU) linia('Motiu: '+IA.errorGPU);
+  }
   else if(IA.motor==='gpu') linia('Farà servir la gràfica de l\'aparell, que és el que el fa anar de pressa.');
   else {
     linia('Aquest aparell no pot fer servir la gràfica: anirà amb el processador, que és més lent.');
@@ -2370,6 +2395,7 @@ function preguntaTemps(queda){
   return new Promise(resol=>{
     const t=$('#velPreguntaText');
     let h='Això trigarà <b>uns '+minuts(queda)+'</b>.';
+    if(IA.motor==='gpu' && IA.motorReal==='cpu') h+=' La gràfica no ha arrencat i va amb el processador.';
     if(IA.mode==='ordinador')
       h+=' El model gran fa unes 15 vegades més feina que el del mòbil. Si no et cal tanta qualitat, atura i tria <b>Mòbil</b>'+
          (hiCapEn('mobil',IA.factor)?'':', retallant primer el tros que vulguis')+'.';
@@ -2420,9 +2446,11 @@ async function fesAmplia(){
     vel('Preparant…',0,'');
     await preparaMotor(progres);
     const sessio=await preparaSessio(progres);
-    let tInici=0, preguntat=false;
+    let tInici=0, preguntat=false, trossos=0;
     vel('Ampliant…',0,'Començant pel primer tros…');
-    const out=await ampliaImatge(src, sessio, f, md.tros[IA.motor], async (n,total)=>{
+    const T=md.tros[IA.motor];
+    const out=await ampliaImatge(src, sessio, f, T, async (n,total)=>{
+      trossos=total;
       // el primer tros porta la preparació de la gràfica: el compte comença al segon
       if(n===1) tInici=performance.now();
       let detall='Tros '+n+' de '+total, queda=0;
@@ -2446,7 +2474,18 @@ async function fesAmplia(){
     buildBase(); fitToStage();
     push('Amplia ×'+f+' · model '+md.model);
     const temps=minuts((performance.now()-t0)/1000);
-    IA.fet={ src:S.src, text:'Ampliada ×'+f+' amb el model '+md.model+' en '+temps+': de '+midaAbans+' a '+out.width+' × '+out.height+' px. Ara desa-la amb el botó <b>Desa</b>.' };
+    // A quina velocitat ha anat (milers de milions d'operacions per segon),
+    // sense el primer tros, que porta la preparació. Amb la gràfica han de
+    // ser centenars; amb el processador, poques desenes. És el que diu, amb
+    // números, si la gràfica s'ha fet servir de debò.
+    const iw=Math.min(T,src.width)+2*IA.MARGE, ih=Math.min(T,src.height)+2*IA.MARGE;
+    const segons=(performance.now()-tInici)/1000;
+    const gflops=trossos>1&&segons>0 ? round(2*md.macPx*iw*ih*(trossos-1)/segons/1e9) : null;
+    const amb=IA.motorReal==='gpu'?'amb la gràfica':'amb el processador';
+    IA.fet={ src:S.src,
+      text:'Ampliada ×'+f+' amb el model '+md.model+', '+amb+', en '+temps+': de '+midaAbans+' a '+out.width+' × '+out.height+' px. Ara desa-la amb el botó <b>Desa</b>.',
+      detalls:'Detalls per a qui ho hagi de revisar: '+quinNavegador()+' · '+(IA.motorReal==='gpu'?'gràfica':'processador'+(IA.errorGPU?' (la gràfica no ha arrencat)':''))+
+              (gflops!=null?' · '+gflops+' GFLOP/s':'')+' · '+trossos+' trossos de '+iw+' × '+ih };
     say('Ampliada a '+out.width+' × '+out.height+' px en '+temps+'.');
     titolFet('✓ Ampliada · '+TITOL);
   }catch(e){

@@ -324,6 +324,14 @@ await p.close();
   await new Promise(ok => servidor.listen(0, '127.0.0.1', ok));
   const BASE = `http://127.0.0.1:${servidor.address().port}/cambra-fosca.html`;
   const abansDe = problemes.length;
+  // Cap model no pot fer servir peces que la gràfica (WebGPU) no sap fer:
+  // aquelles peces van al processador i tornen, i amb gràfica i tot va lent.
+  // El model lleuger en tenia 33 de PRelu. (La llista de les que sí que sap fer
+  // és a docs/webgpu-operators.md del paquet onnxruntime-web.)
+  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus']) {
+    const bytes = readFileSync(join(AQUI, 'ia/models', m + '.onnx'));
+    if (bytes.includes('PRelu')) problemes.push(`el model ${m} fa servir PRelu, que la gràfica no sap fer`);
+  }
   const p = await navegador.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
   vigila(p, 'amplia');
   await p.goto(BASE);
@@ -410,6 +418,10 @@ await p.close();
     return { text: f ? f.textContent : '', primer: !!f && (!a || (f.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING)) }; });
   if (!fet.text.includes('Feta') || !fet.text.includes('64 × 48 a 256 × 192')) problemes.push('en acabar d\'ampliar, no diu que s\'ha fet ni la mida: ' + fet.text);
   if (!fet.primer) problemes.push('en acabar d\'ampliar, el missatge de «Feta» no surt el primer');
+  // i diu amb què s'ha fet (aquí no hi ha gràfica): si no, no hi ha manera de
+  // saber per què ha trigat el que ha trigat
+  if (!fet.text.includes('amb el processador') || !(await p.locator('#iaDetalls').count()) || !(await text('#iaDetalls')).includes('processador'))
+    problemes.push('el missatge de «Feta» no diu si s\'ha fet amb la gràfica o amb el processador: ' + fet.text);
   // que s'assembli a la foto: comparada amb una ampliació normal, ha de ser a prop (no soroll) però no igual
   await p.click('#btnSave'); await p.waitForTimeout(300);
   const baixada = p.waitForEvent('download'); await p.click('.dlg .btn.primary');

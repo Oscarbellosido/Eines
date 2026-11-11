@@ -15,7 +15,7 @@ Llicència **BSD de 3 clàusules**: és a `models/LICENSE`, tal com la publiquen
 
 | Fitxer | Model original | Per a què |
 |---|---|---|
-| `realesr-general-x4v3.onnx` | `realesr-general-x4v3.pth` (versió v0.2.5.0) | el mode **Mòbil**: lleuger, 1,2 milions de paràmetres |
+| `realesr-general-x4v3-v2.onnx` | `realesr-general-x4v3.pth` (versió v0.2.5.0) | el mode **Mòbil**: lleuger, 1,2 milions de paràmetres |
 | `realesrgan-x4plus.onnx` | `RealESRGAN_x4plus.pth` (versió v0.1.0) | el mode **Ordinador**: el de més qualitat, 16,7 milions |
 
 Els originals, baixats de la pàgina de versions del projecte, tenien aquestes
@@ -44,6 +44,12 @@ scripts de `conversio/`, que **no necessiten PyTorch** (només `onnx` i
 `numpy`). `llegeix_pth.py` llegeix el fitxer de PyTorch sense executar res del
 que porta a dins (només accepta números), i `fes_onnx.py` construeix les dues
 xarxes peça a peça, igual que les defineix el projecte original.
+
+Una diferència a posta: el model lleuger original fa servir una peça (PRelu)
+que el motor no sap fer anar a la gràfica, i cada una anava al processador i
+tornava. Aquí es fa amb peces equivalents (ReLU, multiplicar i sumar), que dona
+el mateix resultat (diferència de 0,0000015) i va bé a la gràfica. Per això el
+fitxer es diu `-v2`: el primer, amb PRelu, ja no hi és.
 
 ```
 pip install onnx numpy

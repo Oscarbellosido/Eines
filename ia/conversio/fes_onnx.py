@@ -39,7 +39,12 @@ def lleuger(p):
         if w.ndim == 4:
             out = g.conv(out, w, p[f'body.{i}.bias'])
         else:
-            out = g.op('PRelu', [out, g.cte(w.reshape(-1, 1, 1).astype(np.float32), 'pendent')])
+            # PReLU(x) = (1-a)·ReLU(x) + a·x, amb peces que la gràfica sap fer.
+            # El motor no té PRelu a la gràfica (WebGPU): cada una anava al
+            # processador i tornava, 33 vegades per tros.
+            a_ = w.reshape(-1, 1, 1).astype(np.float32)
+            r = g.op('Relu', [out])
+            out = g.op('Add', [g.op('Mul', [r, g.cte(1 - a_, 'u')]), g.op('Mul', [out, g.cte(a_, 'a')])])
         i += 1
     out = g.op('DepthToSpace', [out], blocksize=4, mode='CRD')
     out = g.op('Add', [out, g.resize(x, 4)])
@@ -72,5 +77,5 @@ def gran(p):
 
 if __name__ == '__main__':
     M = sys.argv[1]; D = sys.argv[2]
-    onnx.save(lleuger(llegeix(f'{M}/realesr-general-x4v3.pth')['params']), f'{D}/realesr-general-x4v3.onnx')
+    onnx.save(lleuger(llegeix(f'{M}/realesr-general-x4v3.pth')['params']), f'{D}/realesr-general-x4v3-v2.onnx')
     onnx.save(gran(llegeix(f'{M}/RealESRGAN_x4plus.pth')['params_ema']), f'{D}/realesrgan-x4plus.onnx')

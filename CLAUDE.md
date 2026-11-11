@@ -181,7 +181,7 @@ ONNX Runtime Web. La foto no surt de l'aparell.
 
 | Mode | Model | Pes | Màxim del resultat |
 |---|---|---|---|
-| Mòbil | `realesr-general-x4v3` (lleuger) | 4,9 MB | 16 megapíxels |
+| Mòbil | `realesr-general-x4v3-v2` (lleuger) | 4,9 MB | 16 megapíxels |
 | Ordinador | `realesrgan-x4plus` (gran) | 67 MB | 64 megapíxels |
 
 De partida es tria el mode pel tipus de pantalla, però es pot canviar.
@@ -206,6 +206,26 @@ Coses que no s'han de desfer sense entendre-les:
 - **Cada aparell baixa només el motor que pot fer servir** (`IA.motors`): el
   de la gràfica (WebGPU, 29 MB) si en té, i el del processador (15 MB) si no.
   El de la gràfica també sap anar amb el processador si la gràfica falla.
+- **Primer es prova la gràfica sola, i només si no arrenca, el processador**
+  (`preparaSessio`), i es diu: al panell («el motor no l'ha pogut fer
+  arrencar», amb el motiu) i al «✓ Feta» («amb la gràfica» o «amb el
+  processador»). Abans es demanaven totes dues de cop, i si la gràfica fallava
+  el motor passava al processador sense dir res: l'usuari, amb l'Edge, va
+  esperar una hora i no hi havia manera de saber per què.
+- **El «✓ Feta» porta una línia de detalls** (`IA.fet.detalls`): el navegador,
+  gràfica o processador, i **a quina velocitat ha anat** (GFLOP/s, sense el
+  primer tros, que porta la preparació; `macPx` diu quantes multiplicacions fa
+  cada model per píxel). Amb la gràfica han de ser centenars; amb el
+  processador, poques desenes. És per a qui hagi de revisar per què ha trigat
+  tant: l'usuari en pot enviar una captura.
+- **Cap model no pot fer servir peces que la gràfica no sap fer** (la llista és
+  a `docs/webgpu-operators.md` del paquet `onnxruntime-web`): aquelles peces
+  van al processador i tornen, i amb gràfica i tot va lent. El model lleuger
+  original tenia 33 PRelu, que no hi són; ara es fa amb ReLU, multiplicar i
+  sumar (`fes_onnx.py`), dona el mateix i pel processador va fins i tot una
+  mica més de pressa. Per això el fitxer es diu `-v2`, i en obrir-se s'esborra
+  de la memòria del navegador el de la primera versió. La prova mira que cap
+  model porti PRelu.
 - **Sense gràfica, el motor treballa en un fil a part** (`ort.env.wasm.proxy`).
   Si no, el navegador es quedaria glaçat uns segons a cada tros.
 - **Es treballa per trossos** (`ampliaImatge`), sempre de la mateixa mida
@@ -377,9 +397,10 @@ de debò i comprova:
   llarga surti la pregunta (amb el temps i el consell del model del mòbil, i
   el percentatge a la pestanya) i que «Atura» deixi la foto com era; i que
   l'avís de «no hi cap» digui que la foto ja és molt gran quan ho és, sense
-  cap frase en minúscula. Es va comprovar que la prova falla si es canvien
-  els colors, si el botó d'aturar no atura o si l'avís torna a començar una
-  frase en minúscula.
+  cap frase en minúscula; que el «✓ Feta» digui amb què s'ha fet; i que cap
+  model porti peces que la gràfica no sap fer (PRelu). Es va comprovar que la
+  prova falla si es canvien els colors, si el botó d'aturar no atura, si
+  l'avís torna a començar una frase en minúscula o amb el model lleuger vell.
 - **la Revisió**: que no vessi, i feta sencera amb el dit a 320 px: que el
   pedaç no deixi continuar sense data i jutgi bé una data bona i una de
   vella, que enrere torni on eres, que les tretze comprovacions arribin al
