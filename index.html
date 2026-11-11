@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#17181a">
+<title>Eines</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* El calaix de les eines: una fitxa per cada una, amb la seva captura.
+   Mateixos colors que les eines mateixes, perque es vegi que son de casa. */
+:root{
+  color-scheme: dark;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#17181a;
+  --bg-2:#1e2023;
+  --bg-3:#272a2e;
+  --line:#34383d;
+  --fg:#e8eaed;
+  --fg-dim:#9ba2ab;
+  --fg-faint:#6f757d;
+  --accent:#f0a33c;
+  --font-ui:'IBM Plex Sans','Segoe UI',system-ui,-apple-system,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:14px;
+  -webkit-font-smoothing:antialiased;line-height:1.5;
+}
+img{max-width:100%}
+[hidden]{display:none!important}
+
+.full{
+  width:100%;max-width:880px;margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+
+header{border-bottom:1px solid var(--line);background:var(--bg-2)}
+header .full{padding-block:22px 20px}
+h1{
+  margin:0;font-size:26px;font-weight:600;letter-spacing:.04em;display:flex;align-items:center;gap:10px;
+}
+h1 i{
+  width:9px;height:9px;border-radius:50%;background:var(--accent);flex:0 0 auto;
+  box-shadow:0 0 12px var(--accent);
+}
+header p{margin:8px 0 0;color:var(--fg-dim);max-width:60ch}
+
+main .full{padding-block:22px 40px}
+h2{
+  margin:0 0 14px;font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--fg-faint);
+  font-weight:600;display:flex;align-items:center;gap:9px;
+}
+h2::after{content:"";flex:1 1 auto;height:1px;background:var(--line)}
+
+.graella{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.eina{
+  display:flex;flex-direction:column;background:var(--bg-2);border:1px solid var(--line);
+  border-radius:10px;overflow:hidden;text-decoration:none;color:inherit;
+  transition:border-color .15s,transform .15s;
+}
+.eina:hover,.eina:focus-visible{border-color:var(--accent);transform:translateY(-2px)}
+.eina:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.eina img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;background:var(--bg-3)}
+.eina .text{padding:11px 13px 13px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.eina b{font-size:15px;font-weight:600}
+.eina span{font-size:12.5px;color:var(--fg-dim);line-height:1.45}
+.eina em{
+  font-family:var(--font-mono);font-style:normal;font-size:10.5px;color:var(--fg-faint);
+  letter-spacing:.04em;margin-top:2px;
+}
+
+footer{border-top:1px solid var(--line);margin-top:10px}
+footer .full{padding-block:18px 26px;color:var(--fg-faint);font-size:12px}
+footer p{margin:0 0 6px}
+footer a{color:var(--fg-dim)}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header><div class="full">
+  <h1><i></i>EINES</h1>
+  <p>Coses petites que funcionen dins del navegador, sense instal·lar res i sense
+     servidor. El que hi poses no surt del teu aparell.</p>
+</div></header>
+
+<main><div class="full">
+  <h2>Imatge</h2>
+  <div class="graella">
+
+    <a class="eina" href="cambra-fosca.html">
+      <img src="thumbs/cambra-fosca.png" alt="" width="480" height="300">
+      <div class="text">
+        <b>La Cambra Fosca</b>
+        <span>Retoca fotografies: llum, color, filtres, retall, pinzell i tampó de clonar.</span>
+        <em>2026</em>
+      </div>
+    </a>
+
+  </div>
+</div></main>
+
+<footer><div class="full">
+  <p>Tot en català i fet per anar bé al mòbil.</p>
+  <p>Els jocs són a <a href="https://oscarbellosido.github.io/Jocs/">la seva col·lecció</a>.</p>
+</div></footer>
+
+</body>
+</html>
