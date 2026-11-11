@@ -229,10 +229,34 @@ Coses que no s'han de desfer sense entendre-les:
 - **Mentre amplia, no es pot tocar res**: un vel tapa la pantalla, amb la
   barra, quants trossos queden i quant temps, i el botó d'**Atura**. Aturar
   deixa la foto com era i no apunta res a l'historial.
+- **Si trigarà més de 3 minuts, ho diu de seguida i pregunta** (`IA.LLARG`,
+  `preguntaTemps`): al segon tros ja se sap el temps, i el vel diu quant
+  trigarà, que el model del mòbil va unes 15 vegades més de pressa, i
+  «Continua igualment» o «Atura». L'usuari va ampliar per 4 amb el model gran
+  una foto de 3 megapíxels i va estar **una hora** esperant sense que res li
+  hagués dit que trigaria tant. El temps de pensar-s'ho no compta per al
+  càlcul del que queda.
+- **Mentre amplia, la pantalla no s'apaga** (`navigator.wakeLock`): si
+  s'apaga, el mòbil atura la pàgina i la feina es queda a mig fer. Quan la
+  pàgina torna a ser visible es torna a demanar, que el navegador ho deixa
+  anar en amagar-la.
+- **La pestanya del navegador diu per on va** («37% · Ampliant»), i al final
+  «✓ Ampliada», que es veu des d'una altra pestanya. Torna a dir «La Cambra
+  Fosca» uns segons després de tornar a mirar la pàgina.
+- **En acabar, a dalt de tot del panell diu «✓ Feta»**, amb el temps i la
+  mida d'abans i de després (`IA.fet`, només mentre la foto és aquella). Sense
+  això, després de l'hora d'espera el primer que l'usuari va veure va ser
+  l'avís de «no hi cap», que parlava de **tornar-la a ampliar**, i es pensava
+  que havia fallat.
 - **Els límits del resultat (16 i 64 megapíxels) són per la memòria.** Si
-  la persona tria ×4 i no hi cap, es queda ×4 i se li diu per què no pot
-  (tria ×2, retalla primer, o fes-ho des de l'ordinador). Al principi passava
-  sol a ×2 sense dir res, i l'avís no sortia mai.
+  la persona tria ×4 i no hi cap, es queda ×4 i se li diu per què no pot. Al
+  principi passava sol a ×2 sense dir res, i l'avís no sortia mai. L'avís és
+  **taronja, no vermell** (no és cap error), i diu el que passa segons el
+  cas (`#iaNoHiCap`): que per 4 no hi cap però per 2 sí; que la foto **ja
+  l'has ampliada** (tornar-la a ampliar s'inventaria detall a sobre del que
+  ja s'havia inventat); que **ja és molt gran** (l'ampliació és per a fotos
+  petites); o, al mòbil, que des de l'ordinador sí que es pot. Abans deia
+  sempre el mateix, amb una frase que començava en minúscula.
 - **La capa de pintura i l'esborrany només existeixen si s'hi ha pintat**
   (`ensurePaint`, `ensureScratch`), i la base no és cap còpia quan la foto
   no està girada ni retallada. Abans hi havia quatre llenços de la mida de la
@@ -348,9 +372,14 @@ de debò i comprova:
   pestanyes hi càpiguen, els límits de cada mode, el model lleuger per 4, que
   el resultat s'assembli a la foto (ni soroll ni colors canviats), desfer i
   refer, que la segona vegada no torni a baixar res, que aturar a mig fer
-  deixi la foto com era, i el model gran per 4 amb una foto petita. Es va
-  comprovar que la prova falla si es canvien els colors o si el botó d'aturar
-  no atura.
+  deixi la foto com era, i el model gran per 4 amb una foto petita. També:
+  que en acabar surti «✓ Feta» el primer, amb la mida; que amb una feina
+  llarga surti la pregunta (amb el temps i el consell del model del mòbil, i
+  el percentatge a la pestanya) i que «Atura» deixi la foto com era; i que
+  l'avís de «no hi cap» digui que la foto ja és molt gran quan ho és, sense
+  cap frase en minúscula. Es va comprovar que la prova falla si es canvien
+  els colors, si el botó d'aturar no atura o si l'avís torna a començar una
+  frase en minúscula.
 - **la Revisió**: que no vessi, i feta sencera amb el dit a 320 px: que el
   pedaç no deixi continuar sense data i jutgi bé una data bona i una de
   vella, que enrere torni on eres, que les tretze comprovacions arribin al

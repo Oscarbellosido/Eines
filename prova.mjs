@@ -369,11 +369,31 @@ await p.close();
   await p.click('#iaMode-mobil');
   if (await text('#iaGo') !== 'Amplia ×2') problemes.push('al mòbil, amb una foto que per 4 no hi cap, no tria ×2 de partida: ' + await text('#iaGo'));
   await p.click('#iaF-4');
-  if (!await p.locator('#iaGo').isDisabled() || !(await p.locator('#pane-amp .ia-mal').count()))
+  if (!await p.locator('#iaGo').isDisabled() || !(await p.locator('#iaNoHiCap').count()))
     problemes.push('triant ×4 quan no hi cap, no avisa o el botó no queda desactivat');
   await p.click('#iaMode-ordinador');
   if (await text('#iaGo') !== 'Amplia ×4' || await p.locator('#iaGo').isDisabled())
     problemes.push('a l\'ordinador, la mateixa foto per 4 hauria de cabre');
+  // quan no hi cap, el missatge ha de dir per què, segons el cas, i ben escrit
+  // (abans deia sempre el mateix, i amb una frase que començava en minúscula)
+  const avisBenEscrit = async on => {
+    const t = await text('#iaNoHiCap');
+    // després d'un punt, majúscula (després de dos punts, en català, minúscula)
+    if (/\. [a-zàèéíòóúç]/.test(t)) problemes.push(`l'avís de mida (${on}) té una frase que comença en minúscula: ${t}`);
+    return t;
+  };
+  await p.click('#iaMode-mobil'); await p.click('#iaF-4');
+  if (!(await avisBenEscrit('mòbil ×4')).startsWith('Per 4 faria')) problemes.push('al mòbil ×4 amb la foto de mostra, l\'avís no diu que triï ×2');
+  {  // una foto de 24 megapíxels, a l'ordinador: ja és molt gran
+    const gran = await p.evaluate(() => { const c = document.createElement('canvas'); c.width = 6000; c.height = 4000;
+      const x = c.getContext('2d'); const g = x.createLinearGradient(0, 0, 6000, 4000); g.addColorStop(0, '#345'); g.addColorStop(1, '#dca');
+      x.fillStyle = g; x.fillRect(0, 0, 6000, 4000); return c.toDataURL('image/jpeg', .8); });
+    await p.setInputFiles('#file', { name: 'gran.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(gran.split(',')[1], 'base64') });
+    await p.waitForTimeout(1500);
+    await p.click('#tab-amp'); await p.click('#iaMode-ordinador');
+    if (!await p.locator('#iaGo').isDisabled()) problemes.push('una foto de 24 megapíxels es deixa ampliar a l\'ordinador');
+    if (!(await avisBenEscrit('foto molt gran')).includes('ja és molt gran')) problemes.push('amb una foto molt gran, l\'avís no diu que ja és molt gran');
+  }
 
   // el model lleuger, ×4
   await obre(64, 48);
@@ -383,6 +403,13 @@ await p.close();
   await acaba();
   if (await mida() !== '256 × 192 px') problemes.push('el model lleuger ×4 no dona la mida que toca: ' + await mida());
   if (!(await historial()).includes('Amplia ×4 · model lleuger')) problemes.push('l\'ampliació no surt a l\'historial');
+  // en acabar, a dalt del panell diu que s'ha fet, abans que cap avís de «no hi cap»
+  // (l'usuari va esperar una hora i el primer que va veure va ser un avís vermell)
+  await p.click('#tab-amp');
+  const fet = await p.evaluate(() => { const f = document.querySelector('#iaFet'), a = document.querySelector('#iaNoHiCap');
+    return { text: f ? f.textContent : '', primer: !!f && (!a || (f.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING)) }; });
+  if (!fet.text.includes('Feta') || !fet.text.includes('64 × 48 a 256 × 192')) problemes.push('en acabar d\'ampliar, no diu que s\'ha fet ni la mida: ' + fet.text);
+  if (!fet.primer) problemes.push('en acabar d\'ampliar, el missatge de «Feta» no surt el primer');
   // que s'assembli a la foto: comparada amb una ampliació normal, ha de ser a prop (no soroll) però no igual
   await p.click('#btnSave'); await p.waitForTimeout(300);
   const baixada = p.waitForEvent('download'); await p.click('.dlg .btn.primary');
@@ -419,6 +446,23 @@ await p.close();
   await acaba();
   if (await mida() !== '400 × 300 px') problemes.push('aturant a mig fer, la foto ha canviat: ' + await mida());
   if ((await historial()).some(h => h.startsWith('Amplia'))) problemes.push('una ampliació aturada surt a l\'historial');
+
+  // una feina llarga (el model gran sense gràfica): ho diu de seguida i pregunta,
+  // amb el percentatge a la pestanya; i «Atura» deixa la foto com era
+  await p.click('#tab-amp');
+  await p.click('#iaMode-ordinador'); await p.click('#iaF-2');
+  await p.click('#iaGo');
+  try {
+    await p.waitForSelector('#velPregunta:not([hidden])', { timeout: 240000 });
+    const preg = await text('#velPreguntaText');
+    if (!/trigarà uns .*min/.test(preg) || !preg.includes('Mòbil')) problemes.push('la pregunta d\'una feina llarga no diu quant trigarà ni que el model del mòbil va més de pressa: ' + preg);
+    if (!/^\d+% · Ampliant/.test(await p.title())) problemes.push('mentre amplia, la pestanya no diu per on va: ' + await p.title());
+    if (await p.locator('#velAtura').isVisible()) problemes.push('mentre pregunta, també surt l\'altre botó d\'aturar');
+    await p.click('#velNo');
+    await acaba();
+    if (await mida() !== '400 × 300 px') problemes.push('responent «Atura» a la pregunta, la foto ha canviat: ' + await mida());
+    if (await p.title() !== 'La Cambra Fosca') problemes.push('després d\'aturar, la pestanya no torna a dir «La Cambra Fosca»: ' + await p.title());
+  } catch (e) { problemes.push('amb una feina llarga no ha sortit la pregunta de si es vol continuar'); await p.click('#velAtura').catch(() => {}); await acaba(); }
 
   // el model gran, ×4, amb una foto petita (sense gràfica va molt a poc a poc)
   await obre(32, 24);

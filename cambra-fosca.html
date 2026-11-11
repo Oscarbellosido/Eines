@@ -333,6 +333,13 @@ select{
 #vel b{font-size:13px;font-weight:600}
 #vel .tiny{min-height:1.45em}
 #velAtura{margin-top:10px}
+#velPregunta p{margin:10px 0;color:var(--fg);line-height:1.5}
+#velPregunta p b{color:#f4c789}
+.ia-fet{
+  margin:0 0 14px;padding:9px 11px;border-radius:8px;font-size:12px;line-height:1.45;color:var(--fg);
+  background:rgba(108,193,143,.12);border:1px solid rgba(108,193,143,.4);
+}
+.ia-fet b{color:#6cc18f}
 
 /* ---------- ratlla d'estat ---------- */
 .statusbar{
@@ -488,6 +495,13 @@ select{
         <div class="barra-ia"><i id="velBarra"></i></div>
         <div class="tiny" id="velDetall"></div>
         <button class="btn" id="velAtura" type="button">Atura</button>
+        <div id="velPregunta" hidden>
+          <p class="tiny" id="velPreguntaText"></p>
+          <div class="optrow">
+            <button class="btn primary" id="velSegueix" type="button">Continua igualment</button>
+            <button class="btn" id="velNo" type="button">Atura</button>
+          </div>
+        </div>
       </div></div>
     </main>
 
@@ -2227,13 +2241,20 @@ async function ampliaImatge(src, sessio, f, T, cadaTros){
     if(f===4) ox.drawImage(t4, 4*P,4*P,4*tw,4*th, dx,dy,dw,dh);
     else { t2x.clearRect(0,0,t2.width,t2.height); t2x.drawImage(t4,0,0,t2.width,t2.height);
            ox.drawImage(t2, 2*P,2*P,2*tw,2*th, dx,dy,dw,dh); }
-    n++; cadaTros(n,total);
+    n++; await cadaTros(n,total);      // pot esperar una resposta (si trigarà molt)
   }
   return out;
 }
 
 const mb = n => (n>=10 ? Math.round(n) : n.toFixed(1).replace('.',','))+' MB';
-const minuts = s => s<60 ? Math.max(1,round(s))+' s' : Math.floor(s/60)+' min '+String(round(s%60)).padStart(2,'0')+' s';
+// «45 s», «3 min 20 s», «55 min», «1 h 10 min»: a partir de deu minuts els segons ja no diuen res
+const minuts = s => {
+  s=Math.max(1,round(s));
+  if(s<60) return s+' s';
+  if(s<3600){ const m=Math.floor(s/60), r=s%60; return m+' min'+(m<10&&r?' '+String(r).padStart(2,'0')+' s':''); }
+  const h=Math.floor(s/3600), m=round((s%3600)/60);
+  return h+' h'+(m?' '+m+' min':'');
+};
 function midaResultat(f){
   return { w:baseCanvas.width*f, h:baseCanvas.height*f, mp:baseCanvas.width*f*baseCanvas.height*f/1e6 };
 }
@@ -2247,6 +2268,14 @@ function pintaAmplia(){
   const md=IA.models[IA.mode], res=midaResultat(IA.factor), cap=hiCap(IA.factor);
   pane.textContent='';
 
+  // Després d'ampliar, a dalt de tot es diu que s'ha fet. Sense això, l'usuari
+  // va esperar una hora i el primer que va veure va ser l'avís vermell de «no
+  // hi cap», que parlava de tornar-la a ampliar: es pensava que havia fallat.
+  if(IA.fet && IA.fet.src===S.src){
+    const ok=el('div','ia-fet'); ok.id='iaFet';
+    ok.innerHTML='<b>✓ Feta.</b> '+IA.fet.text;
+    pane.appendChild(ok);
+  }
   const g1=el('div','grp');
   g1.appendChild(el('h4',null,'Amplia amb IA'));
   g1.appendChild(el('div','tiny','Fa la foto més gran i s\'inventa el detall que hi falta, com Upscayl. Va molt bé amb fotos petites o borroses; el que s\'ha perdut del tot no ho recupera. La foto no surt del teu aparell.'));
@@ -2275,9 +2304,27 @@ function pintaAmplia(){
   g3.appendChild(el('div','ia-res'+(cap?'':' ia-mal'),
     baseCanvas.width+' × '+baseCanvas.height+' → '+res.w+' × '+res.h+' px'));
   if(!cap){
-    g3.appendChild(el('div','tiny ia-mal','Faria '+round(res.mp)+' megapíxels, i en aquest mode el màxim és '+md.maxMP+
-      ': no cabria a la memòria. '+(IA.factor===4&&hiCap(2)?'Tria ×2, o ':'')+'retalla primer la part que vulguis'+
-      (IA.mode==='mobil'?', o fes-ho des de l\'ordinador.':'.')));
+    // Quan no hi cap, es diu per què, segons el cas. Abans sortia sempre el
+    // mateix («faria tants megapíxels, retalla»), i amb una foto de 50
+    // megapíxels l'usuari no entenia per què no la deixava ampliar.
+    const ara=round(baseCanvas.width*baseCanvas.height/1e6);
+    const enOrdinador=midaResultat(IA.factor).mp<=IA.models.ordinador.maxMP;
+    const jaAmpliada=S.history.slice(0,S.hIndex+1).some(h=>h.label.startsWith('Amplia'));
+    let t;
+    if(hiCap(2))          // només ×4 és massa
+      t='Per 4 faria '+round(res.mp)+' megapíxels, i en aquest mode el màxim és '+md.maxMP+': no cabria a la memòria. Tria ×2'+
+        (IA.mode==='mobil'&&enOrdinador?', o fes-ho des de l\'ordinador.':'.');
+    else if(jaAmpliada)
+      t='Aquesta foto ja l\'has ampliada, i ja fa '+ara+' megapíxels. Tornar-la a ampliar no hi afegiria res: el model s\'inventaria detall a sobre del que ja s\'havia inventat, i no cabria a la memòria.';
+    else if(ara>IA.models.ordinador.maxMP/4)
+      t='Aquesta foto ja és molt gran: fa '+ara+' megapíxels, més del que cal per veure-la o imprimir-la. Ampliar-la no hi guanya res, i no cabria a la memòria. L\'ampliació és per a fotos petites o borroses.';
+    else                  // al mòbil, una foto normal
+      t='Al mòbil, el resultat pot fer com a molt '+md.maxMP+' megapíxels, i aquesta foto ja en fa '+ara+'.'+
+        (enOrdinador?' Des de l\'ordinador sí que es pot.':'');
+    t+=' Si vols veure més gran un tros, retalla\'l primer i amplia només aquell tros.';
+    // en taronja i no en vermell: no és cap error, és per què no es pot
+    const avis=el('div','tiny ia-avis',t); avis.id='iaNoHiCap';
+    g3.appendChild(avis);
   }
   pane.appendChild(g3);
 
@@ -2315,6 +2362,47 @@ function vel(text, part, detall){
 }
 $('#velAtura').onclick=()=>{ IA.atura=true; $('#velText').textContent='Aturant…'; };
 
+/* Si veu que trigarà més de 3 minuts (IA.LLARG), ho diu de seguida i
+   pregunta. L'usuari va ampliar amb el model gran una foto de 3 megapíxels i
+   va estar una hora esperant sense que ningú li hagués dit res. */
+IA.LLARG=180;
+function preguntaTemps(queda){
+  return new Promise(resol=>{
+    const t=$('#velPreguntaText');
+    let h='Això trigarà <b>uns '+minuts(queda)+'</b>.';
+    if(IA.mode==='ordinador')
+      h+=' El model gran fa unes 15 vegades més feina que el del mòbil. Si no et cal tanta qualitat, atura i tria <b>Mòbil</b>'+
+         (hiCapEn('mobil',IA.factor)?'':', retallant primer el tros que vulguis')+'.';
+    else h+=' Si vols que vagi més de pressa, atura i retalla primer el tros que vulguis.';
+    h+=' Si continues, deixa aquesta pàgina oberta.';
+    t.innerHTML=h;
+    $('#velAtura').hidden=true; $('#velPregunta').hidden=false;
+    const acaba=si=>{ $('#velPregunta').hidden=true; $('#velAtura').hidden=false; resol(si); };
+    $('#velSegueix').onclick=()=>acaba(true);
+    $('#velNo').onclick=()=>acaba(false);
+  });
+}
+function hiCapEn(mode,f){ return midaResultat(f).mp <= IA.models[mode].maxMP; }
+
+/* Mentre amplia, que la pantalla no s'apagui: si s'apaga, el mòbil atura la
+   pàgina i la feina es queda a mig fer. Quan la pàgina torna a ser visible,
+   es torna a demanar (el navegador ho deixa anar en amagar-la). */
+let bloqueigPantalla=null;
+async function mantenEncesa(){
+  try{ if(navigator.wakeLock && IA.treballant && document.visibilityState==='visible') bloqueigPantalla=await navigator.wakeLock.request('screen'); }catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{ if(IA.treballant) mantenEncesa(); });
+
+/* El títol de la pestanya diu per on va, i al final una ✓: així es veu des
+   d'una altra pestanya. Es torna a deixar com era quan es mira la pàgina. */
+const TITOL=document.title;
+function titolFet(text){
+  document.title=text;
+  const torna=()=>setTimeout(()=>{ if(!IA.treballant) document.title=TITOL; },6000);
+  if(document.visibilityState==='visible') torna();
+  else document.addEventListener('visibilitychange',function v(){ if(document.visibilityState==='visible'){ document.removeEventListener('visibilitychange',v); torna(); } });
+}
+
 async function fesAmplia(){
   if(IA.treballant || !baseCanvas || !hiCap(IA.factor)) return;
   cancelaEndreca();
@@ -2322,6 +2410,8 @@ async function fesAmplia(){
   hideTextEdit();
   IA.treballant=true; IA.atura=false; IA.error=null;
   const f=IA.factor, md=IA.models[IA.mode], src=baseCanvas, t0=performance.now();
+  const midaAbans=src.width+' × '+src.height;
+  mantenEncesa();
   try{
     const progres=(que,a,t)=>{
       if(IA.atura) throw new Error('aturat');
@@ -2330,14 +2420,21 @@ async function fesAmplia(){
     vel('Preparant…',0,'');
     await preparaMotor(progres);
     const sessio=await preparaSessio(progres);
-    let tInici=0;
+    let tInici=0, preguntat=false;
     vel('Ampliant…',0,'Començant pel primer tros…');
-    const out=await ampliaImatge(src, sessio, f, md.tros[IA.motor], (n,total)=>{
+    const out=await ampliaImatge(src, sessio, f, md.tros[IA.motor], async (n,total)=>{
       // el primer tros porta la preparació de la gràfica: el compte comença al segon
       if(n===1) tInici=performance.now();
-      let detall='Tros '+n+' de '+total;
-      if(n>=2){ const queda=(performance.now()-tInici)/(n-1)*(total-n)/1000; detall+=' · queden uns '+minuts(queda); }
+      let detall='Tros '+n+' de '+total, queda=0;
+      if(n>=2){ queda=(performance.now()-tInici)/(n-1)*(total-n)/1000; detall+=' · queden uns '+minuts(queda); }
       vel('Ampliant ×'+f+'…', n/total, detall);
+      document.title=round(n/total*100)+'% · Ampliant · '+TITOL;
+      if(n>=2 && !preguntat && queda>IA.LLARG){
+        preguntat=true;
+        const t=performance.now();
+        if(!(await preguntaTemps(queda))) IA.atura=true;
+        tInici+=performance.now()-t;     // el temps de pensar-s'ho no compta per al càlcul
+      }
     });
     if(IA.atura) throw new Error('aturat');
     // La foto ampliada passa a ser la foto: els girs i el retall ja hi són
@@ -2348,14 +2445,20 @@ async function fesAmplia(){
     S.cloneSrc=null; $('#cloneSrc').style.display='none';
     buildBase(); fitToStage();
     push('Amplia ×'+f+' · model '+md.model);
-    say('Ampliada a '+out.width+' × '+out.height+' px en '+minuts((performance.now()-t0)/1000)+'.');
+    const temps=minuts((performance.now()-t0)/1000);
+    IA.fet={ src:S.src, text:'Ampliada ×'+f+' amb el model '+md.model+' en '+temps+': de '+midaAbans+' a '+out.width+' × '+out.height+' px. Ara desa-la amb el botó <b>Desa</b>.' };
+    say('Ampliada a '+out.width+' × '+out.height+' px en '+temps+'.');
+    titolFet('✓ Ampliada · '+TITOL);
   }catch(e){
     const msg=String(e&&e.message||e);
+    document.title=TITOL;
     if(msg==='aturat') say('Ampliació aturada. La foto és com era.');
     else { IA.error=msg; say('No s\'ha pogut ampliar: '+msg+'.'); console.warn('Amplia:',e); }
   }finally{
     IA.treballant=false; IA.atura=false;
-    $('#vel').hidden=true;
+    try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
+    bloqueigPantalla=null;
+    $('#vel').hidden=true; $('#velPregunta').hidden=true; $('#velAtura').hidden=false;
     pintaAmplia();
   }
 }
