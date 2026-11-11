@@ -162,6 +162,50 @@ if (!desat) problemes.push('el botó de desar no ha generat cap fitxer');
 console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename() : 'no s\'ha baixat res'}`);
 await p.close();
 
+// ------------------------------- la Cambra Fosca: el retall amb el dit
+// Al mòbil, arrossegant un tirador del marc amunt o avall, el navegador
+// s'emportava el gest per desplaçar la pàgina i el marc es quedava a mig camí
+// (ho va trobar l'usuari). Es prova amb un dit de debò, no amb el ratolí.
+{
+  const abansDe = problemes.length;
+  const { devices } = await import('/opt/node22/lib/node_modules/playwright/index.mjs');
+  const ctx = await navegador.newContext({ ...devices['Pixel 7'] });
+  const p = await ctx.newPage();
+  vigila(p, 'retall amb el dit');
+  await p.goto(fitxer('cambra-fosca.html'));
+  await p.waitForTimeout(1200);
+  await p.tap('#tool-crop'); await p.waitForTimeout(300);
+  const cdp = await ctx.newCDPSession(p);
+  const arrossega = async (sel, dx, dy) => {
+    await p.locator(sel).scrollIntoViewIfNeeded(); await p.waitForTimeout(200);
+    const c = await p.locator(sel).boundingBox(), x = c.x + c.width / 2, y = c.y + c.height / 2;
+    const abans = { marc: await p.locator('#cropBox').boundingBox(), scroll: await p.evaluate(() => scrollY + document.querySelector('#stage').scrollTop) };
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let i = 1; i <= 12; i++) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + dx * i / 12, y: y + dy * i / 12 }] });
+      await p.waitForTimeout(16);
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await p.waitForTimeout(300);
+    return { abans, despres: { marc: await p.locator('#cropBox').boundingBox(), scroll: await p.evaluate(() => scrollY + document.querySelector('#stage').scrollTop) } };
+  };
+  // el tirador de baix, 60 px amunt: el marc s'ha d'escurçar 60 px, i la pàgina no s'ha de moure
+  let r = await arrossega('#cropBox .h.s', 0, -60);
+  const escurca = r.abans.marc.height - r.despres.marc.height;
+  if (Math.abs(escurca - 60) > 3) problemes.push(`arrossegant el tirador de baix 60 px amb el dit, el marc s'escurça ${escurca.toFixed(0)} px`);
+  if (r.despres.scroll !== r.abans.scroll) problemes.push('arrossegant un tirador del retall amb el dit, es desplaça la pàgina');
+  // el marc sencer, 30 px avall
+  r = await arrossega('#cropBox .g.h1', 0, 30);
+  const baixa = r.despres.marc.y - r.abans.marc.y;
+  if (Math.abs(baixa - 30) > 3) problemes.push(`arrossegant el marc 30 px avall amb el dit, es mou ${baixa.toFixed(0)} px`);
+  if (r.despres.scroll !== r.abans.scroll) problemes.push('arrossegant el marc del retall amb el dit, es desplaça la pàgina');
+  // els tiradors, prou grossos per al dit
+  const t = await p.locator('#cropBox .h.se').boundingBox();
+  if (t.width < 18) problemes.push(`al mòbil, els tiradors del retall fan ${t.width.toFixed(0)} px: massa petits per al dit`);
+  console.log(`${problemes.length > abansDe ? '✗' : '✓'} el retall amb el dit: el tirador i el marc es mouen el que toca, i la pàgina no es desplaça`);
+  await ctx.close();
+}
+
 // ------------------------------- la Cambra Fosca: Arregla-la sola i Endreça
 // Es fa una foto «bona» (cel, paret grisa, un full blanc i objectes de color),
 // s'espatlla de les maneres típiques i es mira si «Arregla-la sola» l'acosta a

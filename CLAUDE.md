@@ -397,6 +397,13 @@ Les mateixes que al repositori dels jocs, i ja ens han mossegat allà:
   serveixen de res. A 400 px les eines de la tira es fan més petites.
 - **Un botó que et pot perjudicar no pot tocar el que prems sempre**, i va a
   l'altra punta de la filera i més petit.
+- **Tot el que s'arrossega amb el dit porta `touch-action:none`**, que si no
+  el navegador s'emporta el gest per desplaçar la pàgina. Va passar amb el
+  marc del retall: arrossegant un tirador amunt o avall, la pàgina es movia i
+  el marc es quedava a mig camí (es movia 20 px de 60). El llenç ja el
+  portava; el retall, no. Al mòbil, a més, els tiradors fan 20 px i tenen una
+  zona invisible al voltant per al dit (44 px en total): de 13 px no hi havia
+  manera d'encertar-los.
 - **Un sol tema, el fosc.** A la Cambra Fosca és a posta: els tons d'una
   fotografia es jutgen amb un voltant fosc i neutre. Qui vulgui mirar-la sobre
   blanc té els tres fons de taula a les opcions de l'eina Mou.
@@ -414,6 +421,11 @@ de debò i comprova:
   error, que els filtres, els controls d'ajust, el pinzell, el retall, desfer
   i refer i l'historial facin el que han de fer, i que el botó de desar generi
   el fitxer de debò;
+- **el retall amb el dit**, amb un mòbil simulat i un dit de debò (no el
+  ratolí): que arrossegant el tirador de baix 60 px el marc s'escurci 60 px,
+  que arrossegant el marc es mogui el que toca, que la pàgina no es desplaci,
+  i que els tiradors siguin prou grossos. Es va comprovar que la prova falla
+  sense el `touch-action:none`;
 - **arregla la foto**: es fa una foto «bona» (cel, paret grisa, un full
   blanc, objectes de color) i s'espatlla de cinc maneres (fosca, cremada,
   groga, blava, i fosca i groga). «Arregla-la sola» ha de deixar la bona com
