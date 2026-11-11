@@ -26,6 +26,9 @@ index.html            la portada, amb una fitxa per eina
 cambra-fosca.html     l'editor de fotografies
 revisio.html          la revisió de seguretat del mòbil
 ia/                   el motor i els models de l'ampliació amb IA (vegeu ia/LLEGEIX.md)
+cambra-fosca.webmanifest   la fitxa de la Cambra Fosca com a app (nom, icones, colors)
+cambra-fosca-sw.js         el que la fa anar sense connexió, un cop instal·lada
+icones/               les icones de l'app
 thumbs/               una captura de cada eina, 480 × 300
 prova.mjs             la prova: la portada i totes les eines
 ```
@@ -294,6 +297,40 @@ Com va de temps, sense gràfica i en un sol fil (el contenidor): una imatge de
 200 × 150 per 4 triga 11 segons amb el model lleuger, i per 2 triga dos minuts
 i mig amb el gran. El gran, sense gràfica, és per a fotos petites.
 
+## La Cambra Fosca com a app
+
+L'usuari la va voler **sola, separada de la Revisió, i que es pogués
+instal·lar**. No cal cap repositori a part: es pot instal·lar des d'on és, i
+instal·lada és una app per si sola, amb la seva icona (el llum taronja de la
+cambra fosca amb una lent al mig), que s'obre directament a l'editor, sense
+la barra del navegador, sense la portada i també sense connexió.
+
+- **`cambra-fosca.webmanifest`** és la fitxa: nom, icones, colors, i que
+  s'obri sola (`display: standalone`) començant a `cambra-fosca.html`.
+- **L'abast és `./cambra-fosca`, no tota la carpeta**: així l'app només és la
+  Cambra Fosca. Si l'abast fos `/Eines/`, la portada i la Revisió també
+  quedarien dins de l'app.
+- **`cambra-fosca-sw.js`** és el que la fa anar sense connexió. Es registra
+  amb el mateix abast (la Revisió no hi passa), demana sempre primer a la
+  xarxa (així sempre és la versió nova) i, si no n'hi ha, treu la còpia
+  desada. **No toca els models ni el motor** (`.onnx`, `.wasm`): ja els desa
+  l'app mateixa, i desats dues vegades ocuparien el doble. **Cada canvi en un
+  dels fitxers de la seva llista, pujar `VERSIO`**, que si no l'app sense
+  connexió serviria la vella.
+- **El botó INSTAL·LA** (`#btnInstal`) només surt quan el navegador diu que
+  es pot (`beforeinstallprompt`: Chrome i Edge). A la resta, l'ajuda explica
+  com fer-ho des del menú.
+- **Instal·lada, no hi ha l'enllaç «← EINES»**
+  (`@media (display-mode: standalone)`): l'app va sola.
+- **Les icones**: 192 i 512 per a tot, una de 512 «maskable» amb el dibuix
+  dins la zona del mig (el mòbil hi retalla la forma que vol, rodona o
+  quadrada) i una de 180 per als iPhone. Es van fer dibuixant-les amb el
+  navegador.
+- **Chrome no serveix per comprovar si està ben feta**: les versions noves
+  deixen «instal·lar» gairebé qualsevol pàgina, i amb una fitxa que l'obria
+  com una pàgina normal no s'hi va queixar. Per això la prova mira la fitxa
+  ella mateixa.
+
 ## La Revisió
 
 L'usuari va demanar una eina que vigilés el mòbil «en pla antivirus», per si
@@ -401,6 +438,13 @@ de debò i comprova:
   model porti peces que la gràfica no sap fer (PRelu). Es va comprovar que la
   prova falla si es canvien els colors, si el botó d'aturar no atura, si
   l'avís torna a començar una frase en minúscula o amb el model lleuger vell.
+- **com a app**: la fitxa (que s'obri sola, que comenci a la Cambra Fosca,
+  que l'abast no agafi tota la carpeta, el nom i els colors, i que les icones
+  hi siguin i facin la mida que diuen, amb una de «maskable»), que el programa
+  de sense connexió s'ocupi de la Cambra Fosca i no de la Revisió, que sense
+  xarxa l'editor s'obri igual, i que el botó INSTAL·LA hi càpiga a 320 px. Es
+  va comprovar que la prova falla amb una fitxa que l'obre com una pàgina
+  normal, o sense la icona «maskable»;
 - **la Revisió**: que no vessi, i feta sencera amb el dit a 320 px: que el
   pedaç no deixi continuar sense data i jutgi bé una data bona i una de
   vella, que enrere torni on eres, que les tretze comprovacions arribin al

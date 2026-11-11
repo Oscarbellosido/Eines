@@ -13,6 +13,10 @@ estadístiques.
 | [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text. Arregla soles les fotos fosques, cremades o de colors estranys, les endreça si són tortes, i les amplia amb IA |
 | [La Revisió](https://oscarbellosido.github.io/Eines/revisio.html) | Repassa la seguretat d'un mòbil Android en tretze comprovacions guiades |
 
+La Cambra Fosca **es pot instal·lar com una app**, amb la seva icona i sense
+connexió: el botó INSTAL·LA de dalt, o al menú del navegador «Instal·la
+l'aplicació» o «Afegeix a la pantalla d'inici».
+
 Els jocs són a [la seva col·lecció](https://oscarbellosido.github.io/Jocs/).
 
 L'ampliació amb IA fa servir els models de

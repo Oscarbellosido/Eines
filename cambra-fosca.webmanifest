@@ -1,0 +1,19 @@
+{
+  "id": "./cambra-fosca.html",
+  "name": "La Cambra Fosca",
+  "short_name": "Cambra Fosca",
+  "description": "Retoca, arregla i amplia fotografies dins del mòbil. Les fotos no surten de l'aparell.",
+  "lang": "ca",
+  "start_url": "./cambra-fosca.html",
+  "scope": "./cambra-fosca",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#17181a",
+  "theme_color": "#17181a",
+  "categories": ["photo", "utilities"],
+  "icons": [
+    { "src": "icones/cambra-fosca-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icones/cambra-fosca-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icones/cambra-fosca-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

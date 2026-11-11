@@ -489,6 +489,82 @@ await p.close();
   servidor.close();
 }
 
+// ------------------------------- la Cambra Fosca com a app que s'instal·la
+// Chrome mateix diu si es pot instal·lar (i per què no), el programa de sense
+// connexió només s'ha d'ocupar de la Cambra Fosca, i amb la xarxa tallada
+// l'editor s'ha d'obrir igual. Es serveix com a GitHub, a /Eines/.
+{
+  const { createServer } = await import('http');
+  const { readFileSync, statSync } = await import('fs');
+  const { extname, join } = await import('path');
+  const TIPUS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript',
+                  '.wasm': 'application/wasm', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+  const servidor = createServer((q, r) => {
+    const f = join(AQUI, decodeURIComponent(q.url.split('?')[0]).replace(/^\/Eines/, ''));
+    if (!f.startsWith(AQUI) || !existsSync(f) || statSync(f).isDirectory()) { r.writeHead(404); return r.end(); }
+    r.writeHead(200, { 'content-type': TIPUS[extname(f)] || 'application/octet-stream' });
+    r.end(readFileSync(f));
+  });
+  await new Promise(ok => servidor.listen(0, '127.0.0.1', ok));
+  const BASE = `http://127.0.0.1:${servidor.address().port}/Eines/`;
+  const abansDe = problemes.length;
+
+  // la fitxa de l'app: les icones hi són i fan la mida que diuen
+  const fitxa = JSON.parse(readFileSync(join(AQUI, 'cambra-fosca.webmanifest'), 'utf8'));
+  for (const ic of fitxa.icons) {
+    const f = join(AQUI, ic.src);
+    if (!existsSync(f)) { problemes.push(`la icona ${ic.src} no existeix`); continue; }
+    const png = readFileSync(f), w = png.readUInt32BE(16), h = png.readUInt32BE(20);
+    if (`${w}x${h}` !== ic.sizes) problemes.push(`la icona ${ic.src} fa ${w}x${h} i diu ${ic.sizes}`);
+  }
+  if (!fitxa.icons.some(i => i.purpose === 'maskable')) problemes.push('l\'app no té cap icona «maskable» (la que el mòbil retalla en rodó)');
+  // El que fa que s'obri de debò com una app. Chrome no ho comprova: les
+  // versions noves deixen «instal·lar» gairebé qualsevol pàgina, i amb una
+  // fitxa que l'obria com una pàgina normal no s'hi va queixar.
+  if (fitxa.display !== 'standalone') problemes.push('l\'app no s\'obre sola, sense la barra del navegador (display: ' + fitxa.display + ')');
+  { const u = new URL(fitxa.start_url, 'https://x/Eines/cambra-fosca.webmanifest').pathname, a = new URL(fitxa.scope, 'https://x/Eines/cambra-fosca.webmanifest').pathname;
+    if (!u.startsWith(a)) problemes.push(`l'app comença a ${u}, fora del que és seu (${a})`);
+    if (u !== '/Eines/cambra-fosca.html') problemes.push('l\'app no comença a la Cambra Fosca: ' + u);
+    if (a.endsWith('/Eines/')) problemes.push('l\'abast de l\'app és tota la carpeta de les Eines, i agafaria també la portada i la Revisió'); }
+  for (const k of ['name', 'short_name', 'theme_color', 'background_color', 'lang'])
+    if (!fitxa[k]) problemes.push(`a la fitxa de l'app hi falta «${k}»`);
+
+  const ctx = await navegador.newContext({ viewport: { width: 1280, height: 800 } });
+  const p = await ctx.newPage();
+  vigila(p, 'app');
+  await p.goto(BASE + 'cambra-fosca.html');
+  await p.waitForTimeout(1500);
+  const cdp = await ctx.newCDPSession(p);
+  const { installabilityErrors } = await cdp.send('Page.getInstallabilityErrors');
+  if (installabilityErrors.length) problemes.push('Chrome diu que no es pot instal·lar: ' + installabilityErrors.map(e => e.errorId).join(', '));
+  const { errors: errorsFitxa } = await cdp.send('Page.getAppManifest');
+  if (errorsFitxa.length) problemes.push('la fitxa de l\'app té errors: ' + errorsFitxa.map(e => e.message).join('; '));
+
+  await p.reload(); await p.waitForTimeout(1200);
+  const sw = await p.evaluate(async () => ({ ctrl: !!navigator.serviceWorker.controller, abast: (await navigator.serviceWorker.getRegistration())?.scope || '' }));
+  if (!sw.ctrl) problemes.push('el programa de sense connexió no s\'ocupa de la Cambra Fosca');
+  if (!sw.abast.endsWith('/Eines/cambra-fosca')) problemes.push('el programa de sense connexió no té l\'abast que toca: ' + sw.abast);
+  const p2 = await ctx.newPage(); await p2.goto(BASE + 'revisio.html'); await p2.waitForTimeout(400);
+  if (await p2.evaluate(() => !!navigator.serviceWorker.controller)) problemes.push('el programa de sense connexió de la Cambra Fosca també s\'ocupa de la Revisió');
+  await p2.close();
+
+  await ctx.setOffline(true);
+  await p.reload().catch(() => {});
+  await p.waitForTimeout(1200);
+  if (await p.locator('#stDims').innerText().catch(() => '') !== '1500 × 1000 px') problemes.push('sense connexió, la Cambra Fosca no s\'obre');
+  await ctx.setOffline(false);
+
+  // el botó d'instal·lar (quan el navegador el deixa sortir) hi cap a 320
+  await p.setViewportSize({ width: 320, height: 700 }); await p.waitForTimeout(200);
+  await p.evaluate(() => { document.querySelector('#btnInstal').hidden = false; });
+  if (await p.evaluate(() => { const t = document.querySelector('.topbar'); return t.scrollWidth > t.clientWidth + 1; }))
+    problemes.push('amb el botó INSTAL·LA, la barra de dalt no hi cap a 320 px');
+
+  console.log(`${problemes.length > abansDe ? '✗' : '✓'} com a app: Chrome la deixa instal·lar, s'obre sense connexió, i no toca la Revisió`);
+  await ctx.close();
+  servidor.close();
+}
+
 // --------------------------------------------------------------- la Revisió
 await noVessa(navegador, 'revisio.html', async p => {
   const r = await p.evaluate(() => ({

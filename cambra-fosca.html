@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#17181a">
 <title>La Cambra Fosca</title>
+<link rel="manifest" href="cambra-fosca.webmanifest">
+<link rel="icon" href="icones/cambra-fosca-192.png">
+<link rel="apple-touch-icon" href="icones/cambra-fosca-180.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Disposicio: barra de dalt, tira d'eines a l'esquerra, el llenc al mig, els
@@ -62,6 +65,8 @@ button{background:none;border:0;cursor:pointer}
 }
 .back:hover{background:var(--bg-4);color:var(--fg)}
 .back span{font-size:11px;letter-spacing:.06em}
+/* Instal·lada com a app, la Cambra Fosca va sola: no hi ha portada on tornar. */
+@media (display-mode: standalone){ .back{display:none} }
 .brand{display:flex;align-items:baseline;gap:8px;min-width:0}
 .brand b{font-weight:600;letter-spacing:-.015em;font-size:14px;white-space:nowrap}
 .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:0 0 auto;align-self:center;box-shadow:0 0 10px var(--accent)}
@@ -448,6 +453,10 @@ select{
       </button>
       <button class="btn icon" id="btnRedo" title="Refés (Ctrl+Maj+Z)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 14 5-5-5-5"/><path d="M20 9h-9a6 6 0 0 0 0 12h5"/></svg>
+      </button>
+      <button class="btn" id="btnInstal" title="Instal·la-la com una app" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 7v7"/><path d="m9 11 3 3 3-3"/><path d="M10.5 18.5h3"/></svg>
+        <span class="lbl">Instal·la</span>
       </button>
     </div>
     <div class="group g-zoom">
@@ -2090,6 +2099,7 @@ $('#btnHelp').onclick=()=>dialog('Dreceres de teclat',body=>{
   for(const [k,v] of L){ g.appendChild(el('b',null,k)); g.appendChild(el('span',null,v)); }
   body.appendChild(g);
   body.appendChild(el('div','tiny','També pots arrossegar un fitxer sobre el llenç o enganxar una imatge del porta-retalls.'));
+  body.appendChild(el('div','tiny','Per tenir-la com una app, amb la seva icona i sense connexió: el botó INSTAL·LA de dalt, o al menú del navegador, «Instal·la l\'aplicació» o «Afegeix a la pantalla d\'inici».'));
 });
 
 /* ===================================================================
@@ -2579,6 +2589,24 @@ miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats(); pintaAmpl
 if(window.claude && typeof window.claude.use==='function'){
   window.claude.use('downloads').then(d=>{ downloads=d; }).catch(()=>{});
 }
+
+/* Instal·lar-la com una app. El programa que la deixa anar sense connexió
+   (cambra-fosca-sw.js) només s'ocupa d'aquesta pàgina, no de la portada ni de
+   la Revisió. El botó INSTAL·LA només surt quan el navegador diu que es pot
+   (al Chrome i l'Edge); a la resta, ho diu l'ajuda. */
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+  navigator.serviceWorker.register('cambra-fosca-sw.js',{scope:'./cambra-fosca'}).catch(e=>console.warn('Sense connexió no anirà:',e));
+}
+let promptInstal=null;
+addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); promptInstal=e; $('#btnInstal').hidden=false; });
+$('#btnInstal').onclick=async()=>{
+  if(!promptInstal) return;
+  promptInstal.prompt();
+  const r=await promptInstal.userChoice.catch(()=>({outcome:'dismissed'}));
+  promptInstal=null; $('#btnInstal').hidden=true;
+  if(r.outcome!=='accepted') say('D\'acord. Si més endavant la vols instal·lar, ho tens al menú del navegador.');
+};
+addEventListener('appinstalled',()=>{ $('#btnInstal').hidden=true; say('Instal·lada. La trobaràs entre les apps, amb el llum taronja.'); });
 
 })();
 </script>
