@@ -3,7 +3,7 @@
 Eines petites que funcionen dins del navegador, en català i pensades per al
 mòbil. **Cada eina és un sol fitxer** HTML autocontingut, sense cap llibreria,
 sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepció
-és la carpeta `ia/`, que fa servir l'ampliació de La Cambra Fosca (més avall).
+és la carpeta `ia/`, que fan servir l'ampliació i l'esborrat amb IA de La Cambra Fosca (més avall).
 
 - Publicat a: https://oscarbellosido.github.io/Eines/
 - **El que hi posa qui la fa servir no surt mai del seu aparell.** No hi ha
@@ -16,7 +16,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepci
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla i amplia fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla, esborra coses i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -25,7 +25,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepci
 index.html            la portada, amb una fitxa per eina
 cambra-fosca.html     l'editor de fotografies
 revisio.html          la revisió de seguretat del mòbil
-ia/                   el motor i els models de l'ampliació amb IA (vegeu ia/LLEGEIX.md)
+ia/                   el motor i els models de la IA: ampliar i esborrar (vegeu ia/LLEGEIX.md)
 cambra-fosca.webmanifest   la fitxa de la Cambra Fosca com a app (nom, icones, colors)
 cambra-fosca-sw.js         el que la fa anar sense connexió, un cop instal·lada
 icones/               les icones de l'app
@@ -310,6 +310,67 @@ Com va de temps, sense gràfica i en un sol fil (el contenidor): una imatge de
 200 × 150 per 4 triga 11 segons amb el model lleuger, i per 2 triga dos minuts
 i mig amb el gran. El gran, sense gràfica, és per a fotos petites.
 
+## La Cambra Fosca: esborrar coses amb el dit
+
+L'usuari va demanar poder **treure coses d'una foto pintant-les amb el dit**
+(una persona del fons, un cable, una taca), que és el que fa ChatGPT i que
+abans s'havia deixat per més endavant. Es van mirar tres models que corren
+dins del navegador: **LaMa** (200 MB, el millor però massa pesat per al
+mòbil), **MI-GAN** (25 MB, de Picsart, fet a posta per a mòbils) i
+OpenCV (sense IA, només difumina). L'usuari va triar **MI-GAN**. És l'eina
+**Esborra coses (IA)** de la tira (la vareta, tecla X).
+
+- Es pinta de **vermell** el que es vol treure (`S.mascara`, ratlles en
+  coordenades de la base, com les pinzellades) i es prem **Esborra-ho**. El
+  vermell **només es dibuixa a la pantalla** (`pintaVista`, damunt del que ja
+  s'ha tractat), no és cap capa: desant no hi surt mai. **Neteja el vermell**,
+  Esc i canviar d'eina el treuen, i qualsevol canvi de la foto també
+  (`buildBase`), que ja no seria al seu lloc. No va a l'historial.
+- **El model només treballa a 512 × 512** (`treuAmbIA`). Es retalla un tros
+  al voltant del vermell, **2,2 vegades més gran que el forat** i com a mínim
+  de 160 px (perquè vegi què hi ha al voltant), es fa de 512, el model
+  l'omple i es torna a la mida de debò. **Només s'enganxa on hi havia vermell**,
+  amb la vora esvaïda: la resta de la foto queda exactament com era, i la
+  prova ho mira píxel a píxel. Si el tros fa més de 512, el que s'hi posa és
+  una mica més tou que la resta; amb objectes petits, ni es nota.
+- **El forat es fa 4 píxels (a 512) més gros que el vermell**: la vora d'un
+  objecte gairebé mai no es pinta del tot, i sense això en quedava una aura.
+- **L'entrada del model és com la del projecte original**: quatre canals, el
+  primer la màscara menys 0,5 (1 = es queda, 0 = s'esborra) i els altres la
+  foto de −1 a 1 amb el forat a zero. Si s'inverteix la màscara, el model
+  omple amb una taca llisa: la prova ho veu perquè hi ha d'haver maons.
+- **La foto esborrada passa a ser la foto**, com quan s'amplia: els girs i el
+  retall hi queden aplicats, les pinzellades no es mouen (la mida és la
+  mateixa) i desfer torna a la d'abans. **Treballa amb la foto, no amb el que
+  s'hi ha pintat a sobre**: el pinzell i el text queden com eren, i l'eina ho
+  diu.
+- **Fa servir el mateix motor que ampliar** (`preparaMotor`, `creaSessio`:
+  primer la gràfica, i si no arrenca, el processador), amb una sessió seva
+  (`IA.treu`). La primera vegada baixa el model (25 MB) i, si no s'havia
+  ampliat mai, el motor; després va sense connexió. Sense gràfica, el
+  contenidor ho fa en uns 4 segons comptant la preparació.
+- **Mentre treballa, el mateix vel que ampliar**, que no deixa tocar res.
+
+**L'historial ja no guarda fotos sense límit** (`retallaHistorial`). Ampliar i
+esborrar fan una foto nova sencera, i per poder desfer l'historial guarda les
+d'abans: amb una foto de 12 megapíxels, cada una són 48 MB, i deu esborrades
+deixarien el mòbil sense memòria. Quan les fotos guardades passen de 300 MB
+(900 a l'ordinador, `MEMORIA_HIST`), es llencen els passos més vells, i sempre
+se'n queden dues (l'actual i la d'abans): desfer l'últim sempre es pot, però
+després de moltes esborrades potser ja no es pot tornar a la foto del principi.
+
+**Com es va fer el model.** Picsart publica MI-GAN en PyTorch, i la versió que
+es podia baixar d'aquí és la «TorchScript» (`migan_traced.pt`), que porta el
+model escrit a dins en una mena de Python. `ia/conversio/fes_migan.py` el
+llegeix **sense executar-lo** (el desmunta amb el mòdul `ast`) i tradueix cada
+operació a ONNX; si hi troba res que no coneix, s'atura. Només hi surten peces
+que la gràfica sap fer (Conv, ConvTranspose, LeakyRelu, Mul, Add, Clip, Pad).
+**Va estar malament la primera vegada**: les constants del codi (el guany √2
+de cada capa) són a la carpeta `constants/` del fitxer, no a `data/` amb els
+pesos, i llegint-les d'allà sortia un número qualsevol i el model omplia
+sempre amb gris llis. Es va veure perquè, mirant capa per capa, tot quedava a
+zero després de la primera multiplicació.
+
 ## La Cambra Fosca com a app
 
 L'usuari la va voler **sola, separada de la Revisió, i que es pogués
@@ -463,6 +524,17 @@ de debò i comprova:
   model porti peces que la gràfica no sap fer (PRelu). Es va comprovar que la
   prova falla si es canvien els colors, si el botó d'aturar no atura, si
   l'avís torna a començar una frase en minúscula o amb el model lleuger vell.
+- **esborrar coses amb el dit**, amb un mòbil simulat i un dit de debò (també
+  serveix el repositori ella mateixa): que la tira d'eines, amb l'eina nova,
+  hi càpiga a 320 px; que «Esborra-ho» no es pugui prémer sense vermell; que
+  pintant amb el dit la pàgina no es desplaci i el vermell es vegi; que el
+  vermell no surti al fitxer desat; que «Neteja el vermell» i canviar d'eina
+  el treguin; i que, sobre una paret de maons amb un objecte vermell, l'objecte
+  desaparegui, hi quedi paret amb maons (no una taca llisa) i **la resta de la
+  foto no canviï ni un nivell**; desfer i refer; i el mateix amb una foto de
+  1.600 px, més gran que el model. Es va comprovar que la prova falla amb la
+  màscara al revés, enganxant el tros sencer, sense el vermell a la pantalla i
+  si canviar d'eina no el treu;
 - **com a app**: la fitxa (que s'obri sola, que comenci a la Cambra Fosca,
   que l'abast no agafi tota la carpeta, el nom i els colors, i que les icones
   hi siguin i facin la mida que diuen, amb una de «maskable»), que el programa

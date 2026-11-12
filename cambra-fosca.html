@@ -123,7 +123,7 @@ button{background:none;border:0;cursor:pointer}
 .stage.panning{cursor:grabbing}
 .wrap{position:relative;flex:0 0 auto;box-shadow:0 10px 40px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}
 #view{display:block;touch-action:none;image-rendering:auto}
-.wrap[data-tool="brush"] #view,.wrap[data-tool="eraser"] #view,.wrap[data-tool="clone"] #view{cursor:none}
+.wrap[data-tool="brush"] #view,.wrap[data-tool="eraser"] #view,.wrap[data-tool="clone"] #view,.wrap[data-tool="treu"] #view{cursor:none}
 .wrap[data-tool="text"] #view{cursor:text}
 .wrap[data-tool="pick"] #view{cursor:crosshair}
 .wrap[data-tool="move"] #view{cursor:grab}
@@ -435,7 +435,7 @@ select{
   .statusbar{position:sticky;bottom:0;z-index:30}
 }
 @media (max-width:400px){
-  /* les set eines han de cabre sense haver de desplaçar la tira */
+  /* les vuit eines han de cabre sense haver de desplaçar la tira */
   .rail{gap:2px;padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:8px}
   .tool{width:32px;height:32px}
   .tool svg{width:17px;height:17px}
@@ -641,6 +641,7 @@ const S = {
   brush:{ size:46, hardness:60, opacity:85, color:'#f0a33c' },
   text:{ size:64, font:'sans', bold:false },
   cloneSrc:null,
+  mascara:[],             // «Esborra coses»: les ratlles vermelles, en coordenades de la base (no van a l'historial)
   history:[], hIndex:-1,
   stageBg:'dark',
 };
@@ -769,6 +770,7 @@ function orientedSize(){
   return (S.rot%180) ? {w:h,h:w} : {w,h};
 }
 function buildBase(){
+  S.mascara=[];        // si la foto canvia, les ratlles ja no serien al seu lloc
   // Sense girs, inversions ni retall, la base és la foto mateixa: no se'n fa
   // cap còpia. Cap llenç no hi dibuixa a sobre, i amb una foto ampliada a
   // 6000 px una còpia són 144 MB més.
@@ -1124,12 +1126,50 @@ function render(){
   composite(workCtx,w,h);
   pipeline(workCtx,w,h,S.adj,renderScale);
   if(view.width!==w||view.height!==h){ view.width=w; view.height=h; }
-  vctx.clearRect(0,0,w,h);
-  vctx.drawImage(workCanvas,0,0);
+  pintaVista();
   applyZoomCss();
   $('#stDims').textContent=bw+' × '+bh+' px';
   const ms=performance.now()-t0;
   $('#stPos').dataset.ms=ms.toFixed(0);
+}
+/* El que es veu: la foto ja tractada i, a sobre, el vermell de «Esborra
+   coses». El vermell només va a la pantalla: desant no hi surt mai. Mentre es
+   pinta, només es torna a fer això, sense tornar a passar la foto pels ajustos. */
+let mascVista=null, vistaDemanada=false;
+function pintaVista(){
+  if(!workCanvas) return;
+  const w=view.width, h=view.height;
+  vctx.clearRect(0,0,w,h);
+  vctx.drawImage(workCanvas,0,0);
+  if(!S.mascara.length) return;
+  if(!mascVista||mascVista.width!==w||mascVista.height!==h) mascVista=mkCanvas(w,h);
+  const mx=mascVista.getContext('2d');
+  mx.setTransform(1,0,0,1,0,0); mx.clearRect(0,0,w,h);
+  mx.setTransform(renderScale,0,0,renderScale,0,0);
+  tracaMascara(mx,'#ff2a44',0);
+  // primer opac i després tot junt mig transparent: on dues ratlles es
+  // creuen no es fa més fosc
+  vctx.save(); vctx.globalAlpha=0.5; vctx.drawImage(mascVista,0,0); vctx.restore();
+}
+function demanaVista(){
+  if(vistaDemanada) return;
+  vistaDemanada=true;
+  requestAnimationFrame(()=>{ vistaDemanada=false; pintaVista(); });
+}
+/* Dibuixa les ratlles de la màscara amb la transformació que ja tingui el
+   llenç. «extra» són els píxels (de la base) que es fa més gruixuda. */
+function tracaMascara(cx,color,extra){
+  cx.save();
+  cx.strokeStyle=cx.fillStyle=color; cx.lineCap='round'; cx.lineJoin='round';
+  for(const m of S.mascara){
+    const p=m.pts, gruix=m.size+extra;
+    if(p.length===2){ cx.beginPath(); cx.arc(p[0],p[1],gruix/2,0,Math.PI*2); cx.fill(); continue; }
+    cx.lineWidth=gruix;
+    cx.beginPath(); cx.moveTo(p[0],p[1]);
+    for(let i=2;i<p.length;i+=2) cx.lineTo(p[i],p[i+1]);
+    cx.stroke();
+  }
+  cx.restore();
 }
 function applyZoomCss(){
   if(!baseCanvas) return;
@@ -1173,7 +1213,24 @@ function push(label){
   S.history.push({label, st:snap()});
   if(S.history.length>60) S.history.shift();
   S.hIndex=S.history.length-1;
+  retallaHistorial();
   drawHistory(); syncButtons(); drawThumbs();
+}
+/* Ampliar i esborrar amb IA fan una foto nova sencera, i l'historial guarda
+   les d'abans per poder desfer. Amb una foto de 12 megapíxels, cada una són
+   48 MB: deu esborrades i el mòbil es quedaria sense memòria. Quan les fotos
+   guardades passen del pressupost, es llencen els passos més vells (sempre
+   se'n queden almenys dues: l'actual i la d'abans, que desfer l'últim pas
+   sempre es pugui). */
+const MEMORIA_HIST=(matchMedia('(pointer:coarse)').matches && Math.min(screen.width,screen.height)<820 ? 300 : 900)*1048576;
+function retallaHistorial(){
+  for(;;){
+    const fotos=[...new Set(S.history.map(e=>e.st.src))];
+    if(fotos.length<=2) return;
+    if(fotos.reduce((t,c)=>t+c.width*c.height*4,0)<=MEMORIA_HIST) return;
+    const vella=S.history[0].st.src;
+    while(S.history.length>1 && S.history[0].st.src===vella){ S.history.shift(); S.hIndex--; }
+  }
 }
 function restore(i){
   const e=S.history[i]; if(!e) return;
@@ -1222,6 +1279,7 @@ const ICON={
   eraser:'<path d="m14 4 6 6-8 8H6l-3-3 8-8z"/><path d="M9 21h12"/>',
   clone:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
   text:'<path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/>',
+  treu:'<path d="m4 20 10-10"/><path d="m12 8 4 4"/><path d="M18 3v4M16 5h4M20 11v2M19 12h2M9 3v2M8 4h2"/>',
   pick:'<path d="m13 3 8 8-9.5 9.5a2 2 0 0 1-1.1.6l-5 1 1-5a2 2 0 0 1 .6-1.1z"/><path d="M15 5l4 4"/>',
 };
 const TOOLS=[
@@ -1231,6 +1289,7 @@ const TOOLS=[
   { id:'brush',  key:'B', name:'Pinzell', hint:'Pinta a sobre de la imatge. [ i ] canvien la mida.' },
   { id:'eraser', key:'E', name:'Goma', hint:'Esborra el que has pintat. Els píxels originals no es toquen.' },
   { id:'clone',  key:'S', name:'Tampó de clonar', hint:'Alt+clic fixa l\'origen; després arrossega per copiar-hi píxels.' },
+  { id:'treu',   key:'X', name:'Esborra coses (IA)', hint:'Pinta de vermell el que vulguis treure (una persona, un cable, una taca) i prem «Esborra-ho»: la IA hi posa el que hi hauria al darrere. Pinta-ho tot, també la vora i l\'ombra. Treballa amb la foto: el que hi has pintat a sobre amb el pinzell o el text es queda com és.' },
   { sep:true },
   { id:'text',   key:'T', name:'Text', hint:'Fes clic on vulguis el text i escriu-lo.' },
   { id:'pick',   key:'I', name:'Comptagotes', hint:'Fes clic per agafar un color de la imatge.' },
@@ -1249,6 +1308,7 @@ function buildRail(){
 }
 function setTool(id){
   cancelaEndreca();
+  if(id!=='treu' && S.mascara.length){ S.mascara=[]; pintaVista(); }
   if(id!=='crop' && cropOn) endCrop(false);
   S.tool=id;
   for(const t of TOOLS) if(!t.sep) $('#tool-'+t.id).setAttribute('aria-pressed', t.id===id?'true':'false');
@@ -1297,6 +1357,17 @@ function buildOpts(id,hint){
       box.appendChild(b);
     }
     addHint();
+  }
+  else if(id==='treu'){
+    slider('Mida',S.brush.size,4,400,' px',v=>{S.brush.size=v;updateCursorSize();});
+    const row=el('div','optrow');
+    const go=el('button','btn primary','Esborra-ho'); go.type='button'; go.id='treuGo'; go.onclick=fesTreu;
+    const net=el('button','btn ghost','Neteja el vermell'); net.type='button'; net.id='treuNeteja';
+    net.onclick=()=>{ S.mascara=[]; pintaVista(); estatTreu(); };
+    row.append(go,net); box.appendChild(row);
+    const info=el('div','tiny'); info.id='treuInfo'; box.appendChild(info);
+    addHint();
+    estatTreu();
   }
   else if(id==='text'){
     slider('Cos',S.text.size,8,400,' px',v=>S.text.size=v);
@@ -1802,7 +1873,7 @@ function updateCursorSize(){
 /* Mentre pintes, nomes es torna a dibuixar la pinzellada d'ara damunt de com
    estava la capa abans de comencar-la. Si es tornessin a pintar totes a cada
    moviment del dit, amb cent pinzellades fetes el pinzell ja aniria a batzegades. */
-let stroke=null, paintSnap=null, paintSnapCtx=null;
+let stroke=null, paintSnap=null, paintSnapCtx=null, ratllaMasc=null;
 function savePaintSnap(){
   if(!paintSnap||paintSnap.width!==paintCanvas.width||paintSnap.height!==paintCanvas.height){
     paintSnap=mkCanvas(paintCanvas.width,paintCanvas.height);
@@ -1847,6 +1918,15 @@ view.addEventListener('pointerdown',e=>{
     }
     if(!S.cloneSrc){ say('Fes Alt+clic per fixar l\'origen del tampó.'); return; }
   }
+  if(t==='treu'){
+    if(IA.treballant) return;
+    e.preventDefault();
+    view.setPointerCapture(e.pointerId);
+    ratllaMasc={pts:[p.x,p.y], size:S.brush.size};
+    S.mascara.push(ratllaMasc);
+    demanaVista();
+    return;
+  }
   if(t!=='brush'&&t!=='eraser'&&t!=='clone') return;
 
   e.preventDefault();
@@ -1867,12 +1947,18 @@ view.addEventListener('pointermove',e=>{
   if(!baseCanvas) return;
   const p=evToBase(e);
   $('#stPos').textContent=round(p.x)+', '+round(p.y);
-  const painty=(S.tool==='brush'||S.tool==='eraser'||S.tool==='clone')&&!cropOn;
+  const painty=(S.tool==='brush'||S.tool==='eraser'||S.tool==='clone'||S.tool==='treu')&&!cropOn;
   const cur=$('#cursor');
   if(painty){
     cur.style.display='block'; updateCursorSize();
     cur.style.left=(p.x*S.zoom)+'px'; cur.style.top=(p.y*S.zoom)+'px';
   } else cur.style.display='none';
+  if(ratllaMasc){
+    const q=ratllaMasc.pts, m=q.length;
+    if(Math.hypot(p.x-q[m-2],p.y-q[m-1])<Math.max(0.7,ratllaMasc.size*0.07)) return;
+    q.push(p.x,p.y); demanaVista();
+    return;
+  }
   if(!stroke) return;
   const n=stroke.pts.length;
   if(Math.hypot(p.x-stroke.pts[n-2],p.y-stroke.pts[n-1])<Math.max(0.7,S.brush.size*0.07)) return;
@@ -1880,6 +1966,13 @@ view.addEventListener('pointermove',e=>{
   restorePaintSnap(); drawOp(stroke); scheduleRender();
 });
 function endStroke(e){
+  if(ratllaMasc){
+    ratllaMasc=null;
+    try{ view.releasePointerCapture(e.pointerId); }catch(_){}
+    estatTreu();
+    say('Quan ho tinguis tot de vermell, prem «Esborra-ho».');
+    return;
+  }
   if(!stroke) return;
   const label={brush:'Pinzellada',erase:'Esborrat',clone:'Clonació'}[stroke.type];
   stroke=null;
@@ -1888,7 +1981,7 @@ function endStroke(e){
 }
 view.addEventListener('pointerup',endStroke);
 view.addEventListener('pointercancel',endStroke);
-view.addEventListener('pointerleave',()=>{ if(!stroke) $('#cursor').style.display='none'; });
+view.addEventListener('pointerleave',()=>{ if(!stroke&&!ratllaMasc) $('#cursor').style.display='none'; });
 
 /* posar el text */
 let textAt=null;
@@ -2144,6 +2237,8 @@ const IA={
   treballant:false, atura:false,
   baixats:{},             // què ja hi ha a la memòria del navegador
   error:null,
+  // «Esborra coses»: MI-GAN, de Picsart. Sempre treballa a 512 × 512.
+  treu:{ fitxer:'models/migan-512.onnx', mb:25.5, N:512, sessio:null, motorReal:null, errorGPU:null, ultim:null },
 };
 
 /* El que és un mòbil, de partida: pantalla de dit i petita. Es pot canviar. */
@@ -2161,7 +2256,7 @@ async function miraBaixats(){
   const c=await cauIA(); if(!c) return;
   // la primera versió del model lleuger, que la gràfica no sabia fer anar sencera
   try{ await c.delete(urlIA('models/realesr-general-x4v3.onnx')); }catch(e){}
-  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
+  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
   for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
 }
 /* Baixa un fitxer gros una sola vegada: després el treu de la memòria del
@@ -2211,22 +2306,27 @@ async function preparaSessio(progres){
   const md=IA.models[IA.mode];
   const bytes=await baixaIA(md.fitxer, (a,t)=>progres('el model',a,t||md.mb*1048576));
   progres('preparant el model',0,0);
-  // Primer amb la gràfica sola, i només si no arrenca, amb el processador. Abans
-  // es demanaven totes dues de cop, i si la gràfica fallava el motor passava al
-  // processador sense dir res: l'usuari va esperar una hora sense saber per què.
-  IA.motorReal=null; IA.errorGPU=null;
-  if(IA.motor==='gpu'){
-    try{
-      IA.sessio=await ort.InferenceSession.create(bytes.slice(0), { executionProviders:['webgpu'], graphOptimizationLevel:'all' });
-      IA.motorReal='gpu';
-    }catch(e){ IA.errorGPU=String(e&&e.message||e).replace(/\s+/g,' ').slice(0,140); console.warn('Amplia: la gràfica no arrenca',e); }
-  }
-  if(!IA.sessio){
-    IA.sessio=await ort.InferenceSession.create(bytes, { executionProviders:['wasm'], graphOptimizationLevel:'all' });
-    IA.motorReal='cpu';
-  }
+  const r=await creaSessio(bytes);
+  IA.sessio=r.sessio; IA.motorReal=r.motorReal; IA.errorGPU=r.errorGPU;
   IA.sessioDe=IA.mode;
   return IA.sessio;
+}
+// Primer amb la gràfica sola, i només si no arrenca, amb el processador. Abans
+// es demanaven totes dues de cop, i si la gràfica fallava el motor passava al
+// processador sense dir res: l'usuari va esperar una hora sense saber per què.
+async function creaSessio(bytes){
+  let sessio=null, motorReal=null, errorGPU=null;
+  if(IA.motor==='gpu'){
+    try{
+      sessio=await ort.InferenceSession.create(bytes.slice(0), { executionProviders:['webgpu'], graphOptimizationLevel:'all' });
+      motorReal='gpu';
+    }catch(e){ errorGPU=String(e&&e.message||e).replace(/\s+/g,' ').slice(0,140); console.warn('IA: la gràfica no arrenca',e); }
+  }
+  if(!sessio){
+    sessio=await ort.InferenceSession.create(bytes, { executionProviders:['wasm'], graphOptimizationLevel:'all' });
+    motorReal='cpu';
+  }
+  return { sessio, motorReal, errorGPU };
 }
 // El navegador i la versió, per a la línia de detalls (Edg/131 → Edge 131).
 // L'Edge, l'Opera i el Samsung també diuen «Chrome/...», i abans d'això: es
@@ -2531,6 +2631,145 @@ async function fesAmplia(){
 }
 
 /* ===================================================================
+   16b. esborrar coses amb el dit (MI-GAN)
+   Es pinta de vermell el que es vol treure i una xarxa neuronal petita
+   (MI-GAN, de Picsart, 25 MB) omple el forat amb el que hi hauria al darrere.
+   Fa servir el mateix motor que ampliar, i tampoc no envia res enlloc.
+=================================================================== */
+function estatTreu(){
+  const go=$('#treuGo'); if(!go) return;
+  go.disabled=!S.mascara.length || IA.treballant;
+  $('#treuNeteja').disabled=!S.mascara.length;
+  const info=$('#treuInfo'); if(!info) return;
+  const t=IA.treu;
+  let h;
+  if(t.ultim) h='L\'última, en '+t.ultim.temps+', '+(t.ultim.motor==='gpu'?'amb la gràfica':'amb el processador')+'. Si no t\'agrada, desfés-la.';
+  else if(!IA.baixats[t.fitxer]){
+    const motor=IA.motor&&!IA.baixats[IA.motors[IA.motor].wasm] ? IA.motors[IA.motor].mb : 0;
+    h='La primera vegada es baixa la IA ('+mb(t.mb+motor)+'); després funciona sense connexió.';
+  } else h='La IA ja és en aquest aparell.';
+  info.textContent=h+' La foto no surt de l\'aparell.';
+}
+async function preparaSessioTreu(progres){
+  const t=IA.treu;
+  if(t.sessio) return t.sessio;
+  const bytes=await baixaIA(t.fitxer, (a,n)=>progres('la IA',a,n||t.mb*1048576));
+  progres('preparant el model',0,0);
+  const r=await creaSessio(bytes);
+  t.sessio=r.sessio; t.motorReal=r.motorReal; t.errorGPU=r.errorGPU;
+  return t.sessio;
+}
+
+/* La feina. El model només sap treballar a 512 × 512, així que es retalla un
+   tros de la foto al voltant del vermell (2,2 vegades més gran que el forat,
+   perquè vegi què hi ha al voltant), es fa de 512, el model l'omple, es torna
+   a la mida de debò i només s'enganxa on hi havia vermell, amb la vora
+   esvaïda. La resta de la foto no es toca gens: es queda tan nítida com era. */
+async function treuAmbIA(src, sessio){
+  const N=IA.treu.N, W=src.width, H=src.height;
+  let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
+  for(const m of S.mascara){
+    const r=m.size/2;
+    for(let i=0;i<m.pts.length;i+=2){
+      x0=Math.min(x0,m.pts[i]-r); x1=Math.max(x1,m.pts[i]+r);
+      y0=Math.min(y0,m.pts[i+1]-r); y1=Math.max(y1,m.pts[i+1]+r);
+    }
+  }
+  x0=clamp(x0,0,W); x1=clamp(x1,0,W); y0=clamp(y0,0,H); y1=clamp(y1,0,H);
+  if(x1-x0<1 || y1-y0<1) return null;
+  const L=Math.max(Math.max(x1-x0,y1-y0)*2.2, 160);
+  const w=round(Math.min(W,L)), h=round(Math.min(H,L));
+  const rx=round(clamp((x0+x1)/2-w/2,0,W-w)), ry=round(clamp((y0+y1)/2-h/2,0,H-h));
+  const sx=N/w, sy=N/h;
+  // el forat es fa una mica més gros (4 píxels a 512): si no, la vora de
+  // l'objecte, que gairebé mai no es pinta del tot, hi quedaria com una aura
+  const engreix=2*4/Math.min(sx,sy);
+
+  const ent=mkCanvas(N,N), ex=ent.getContext('2d',{willReadFrequently:true});
+  ex.imageSmoothingQuality='high';
+  ex.drawImage(src,rx,ry,w,h,0,0,N,N);
+  const im=ex.getImageData(0,0,N,N);
+  const mc=mkCanvas(N,N), mx=mc.getContext('2d',{willReadFrequently:true});
+  mx.setTransform(sx,0,0,sy,-rx*sx,-ry*sy);
+  tracaMascara(mx,'#fff',engreix);
+  const md=mx.getImageData(0,0,N,N).data, d=im.data;
+
+  // l'entrada: la màscara menys 0,5 (1 = es queda, 0 = s'esborra) i la foto
+  // de -1 a 1, amb el forat a zero
+  const P=N*N, e=new Float32Array(4*P), forat=new Uint8Array(P);
+  for(let i=0,k=0;i<P;i++,k+=4){
+    const f=md[k+3]>127 ? 1 : 0, q=1-f;
+    forat[i]=f;
+    e[i]=q-0.5;
+    e[P+i]=(d[k]/127.5-1)*q; e[2*P+i]=(d[k+1]/127.5-1)*q; e[3*P+i]=(d[k+2]/127.5-1)*q;
+  }
+  const res=await sessio.run({[sessio.inputNames[0]]: new ort.Tensor('float32',e,[1,4,N,N])});
+  const sortida=res[sessio.outputNames[0]], y=sortida.data;
+  for(let i=0,k=0;i<P;i++,k+=4) if(forat[i]){
+    d[k]=(y[i]+1)*127.5; d[k+1]=(y[P+i]+1)*127.5; d[k+2]=(y[2*P+i]+1)*127.5; d[k+3]=255;
+  }
+  if(sortida.dispose) sortida.dispose();
+  ex.putImageData(im,0,0);
+
+  // de tornada a la mida de debò, retallat amb la forma del forat
+  const peca=mkCanvas(w,h), px=peca.getContext('2d');
+  px.imageSmoothingQuality='high';
+  px.drawImage(ent,0,0,w,h);
+  const fm=mkCanvas(w,h), fx=fm.getContext('2d');
+  if('filter' in fx) fx.filter='blur('+Math.max(1,engreix*0.3).toFixed(1)+'px)';
+  fx.translate(-rx,-ry);
+  tracaMascara(fx,'#fff',engreix);
+  px.globalCompositeOperation='destination-in';
+  px.drawImage(fm,0,0);
+  const nova=mkCanvas(W,H), nx=nova.getContext('2d');
+  nx.drawImage(src,0,0);
+  nx.drawImage(peca,rx,ry);
+  return nova;
+}
+
+async function fesTreu(){
+  if(IA.treballant || !baseCanvas || !S.mascara.length) return;
+  if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
+  hideTextEdit();
+  IA.treballant=true; IA.atura=false; estatTreu();
+  const t0=performance.now();
+  mantenEncesa();
+  try{
+    const progres=(que,a,t)=>{
+      if(IA.atura) throw new Error('aturat');
+      vel(t ? 'Baixant '+que+'…' : 'Preparant la IA…', t ? a/t : 0, t ? mb(a/1048576)+' de '+mb(t/1048576)+' · només la primera vegada' : 'Només la primera vegada.');
+    };
+    vel('Preparant…',0,'');
+    await preparaMotor(progres);
+    const sessio=await preparaSessioTreu(progres);
+    if(IA.atura) throw new Error('aturat');
+    vel('Esborrant…',1,IA.treu.motorReal==='gpu'?'Amb la gràfica.':'Amb el processador: pot trigar uns segons.');
+    const nova=await treuAmbIA(baseCanvas, sessio);
+    if(IA.atura) throw new Error('aturat');
+    if(!nova){ say('El vermell queda fora de la foto.'); return; }
+    // La foto esborrada passa a ser la foto, com quan s'amplia: els girs i el
+    // retall ja hi són aplicats. Les pinzellades no es mouen (la mida és la
+    // mateixa) i desfer torna a la d'abans.
+    S.src=nova; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
+    buildBase(); scheduleRender();
+    push('Esborra amb IA');
+    const temps=minuts((performance.now()-t0)/1000);
+    IA.treu.ultim={ temps, motor:IA.treu.motorReal };
+    say('Esborrat en '+temps+'. Si no t\'agrada, desfés-ho; si en queda un tros, torna-hi.');
+  }catch(e){
+    const msg=String(e&&e.message||e);
+    if(msg==='aturat') say('Aturat. La foto és com era.');
+    else { say('No s\'ha pogut esborrar: '+msg+'.'); console.warn('Esborra:',e); }
+  }finally{
+    IA.treballant=false; IA.atura=false;
+    try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
+    bloqueigPantalla=null;
+    $('#vel').hidden=true;
+    estatTreu();
+  }
+}
+
+/* ===================================================================
    17. pestanyes, ratlla d'estat i teclat
 =================================================================== */
 ['adj','fil','his','amp'].forEach(id=>{
@@ -2570,9 +2809,10 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&k==='s'){ e.preventDefault(); saveDialog(); return; }
   if((e.ctrlKey||e.metaKey)&&k==='o'){ e.preventDefault(); $('#file').click(); return; }
   if(e.ctrlKey||e.metaKey||e.altKey) return;
-  const map={v:'move',c:'crop',b:'brush',e:'eraser',s:'clone',t:'text',i:'pick'};
+  const map={v:'move',c:'crop',b:'brush',e:'eraser',s:'clone',x:'treu',t:'text',i:'pick'};
   if(map[k]){ e.preventDefault(); setTool(map[k]); return; }
   if(k==='enter'&&cropOn){ e.preventDefault(); endCrop(true); setTool('move'); return; }
+  if(k==='escape' && S.mascara.length){ S.mascara=[]; pintaVista(); estatTreu(); return; }
   if(k==='escape'){ if(cropOn){ endCrop(false); setTool('move'); } hideTextEdit(); return; }
   if(k==='0'){ e.preventDefault(); fitToStage(); return; }
   if(k==='1'){ e.preventDefault(); setZoom(1); return; }
@@ -2583,7 +2823,7 @@ document.addEventListener('keydown',e=>{
 });
 function refreshBrushUI(){
   updateCursorSize();
-  if(['brush','eraser','clone'].includes(S.tool)) buildOpts(S.tool,TOOLS.find(x=>x.id===S.tool).hint);
+  if(['brush','eraser','clone','treu'].includes(S.tool)) buildOpts(S.tool,TOOLS.find(x=>x.id===S.tool).hint);
   say('Pinzell: '+S.brush.size+' px');
 }
 
@@ -2602,7 +2842,7 @@ buildFilters();
 setTool('move');
 adopt(makeSample(),'exemple.png',true);
 requestAnimationFrame(()=>{ fitToStage(); drawThumbs(); });
-miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats(); pintaAmplia(); });
+miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats(); pintaAmplia(); estatTreu(); });
 
 if(window.claude && typeof window.claude.use==='function'){
   window.claude.use('downloads').then(d=>{ downloads=d; }).catch(()=>{});

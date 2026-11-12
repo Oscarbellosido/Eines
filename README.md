@@ -10,7 +10,7 @@ estadístiques.
 
 | Eina | Què fa |
 |---|---|
-| [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text. Arregla soles les fotos fosques, cremades o de colors estranys, les endreça si són tortes, i les amplia amb IA |
+| [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text. Arregla soles les fotos fosques, cremades o de colors estranys, les endreça si són tortes, hi esborra coses pintant-les amb el dit i les amplia amb IA |
 | [La Revisió](https://oscarbellosido.github.io/Eines/revisio.html) | Repassa la seguretat d'un mòbil Android en tretze comprovacions guiades |
 
 La Cambra Fosca **es pot instal·lar com una app**, amb la seva icona i sense
@@ -20,9 +20,11 @@ l'aplicació» o «Afegeix a la pantalla d'inici».
 Els jocs són a [la seva col·lecció](https://oscarbellosido.github.io/Jocs/).
 
 L'ampliació amb IA fa servir els models de
-[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) (llicència BSD) i el motor
+[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) (llicència BSD); esborrar
+coses, el model [MI-GAN](https://github.com/Picsart-AI-Research/MI-GAN) de
+Picsart AI Research (llicència MIT); i tots dos, el motor
 [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) (llicència MIT).
-Tots dos són a `ia/`, amb les seves llicències; `ia/LLEGEIX.md` ho explica.
+Tot és a `ia/`, amb les seves llicències; `ia/LLEGEIX.md` ho explica.
 
 ## Provar-les
 

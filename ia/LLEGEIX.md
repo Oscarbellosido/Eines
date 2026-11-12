@@ -1,8 +1,8 @@
-# Els fitxers de l'ampliació amb IA
+# Els fitxers de la IA de La Cambra Fosca
 
 Aquesta carpeta és l'única excepció a la norma d'«un sol fitxer» de les Eines.
-La fa servir la pestanya **Amplia** de La Cambra Fosca, i només es baixa quan
-algú amplia una foto. Res d'aquí no envia cap foto enlloc: el model corre dins
+La fan servir la pestanya **Amplia** i l'eina **Esborra coses (IA)** de La
+Cambra Fosca, i només es baixa el que cal quan algú les fa servir. Res d'aquí no envia cap foto enlloc: el model corre dins
 del navegador.
 
 ## D'on surt cada cosa
@@ -25,6 +25,26 @@ empremtes (SHA-256):
 8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292  realesr-general-x4v3.pth
 4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1  RealESRGAN_x4plus.pth
 ```
+
+### `models/migan-512.onnx` — esborrar coses
+
+És **MI-GAN**, de Picsart AI Research (https://github.com/Picsart-AI-Research/MI-GAN),
+la versió de 512 × 512 entrenada amb fotos de llocs (Places2). Llicència
+**MIT**, tant el codi com els pesos: és a `models/LICENSE-MIGAN`, tal com la
+publiquen. Són 25 MB.
+
+L'original és la versió «TorchScript» que publica el projecte IOPaint (del
+mateix model, sense canviar res), baixada de
+https://github.com/Sanster/models/releases/download/migan/migan_traced.pt,
+amb aquesta empremta:
+
+```
+038b82d90416f1d1af232486d76d07665aecdd988e0f16090b1e11a61820b800  migan_traced.pt
+```
+
+L'entrada són quatre canals de 512 × 512: la màscara menys 0,5 (1 = es queda,
+0 = s'esborra) i la foto de −1 a 1 amb el forat a zero. La sortida, la foto
+sencera de −1 a 1 (només se n'agafa el forat).
 
 ### `ort/` — el motor
 
@@ -54,4 +74,14 @@ fitxer es diu `-v2`: el primer, amb PRelu, ja no hi és.
 ```
 pip install onnx numpy
 python conversio/fes_onnx.py <carpeta amb els dos .pth> models
+```
+
+MI-GAN surt de `conversio/fes_migan.py`. Aquell fitxer de PyTorch porta el
+model escrit a dins en una mena de Python: l'script **el llegeix però no
+l'executa mai** (el desmunta com un text) i tradueix cada operació a la peça
+ONNX que li correspon; si en troba una que no coneix, s'atura. Només hi surten
+peces que la gràfica sap fer anar.
+
+```
+python conversio/fes_migan.py migan_traced.pt models/migan-512.onnx
 ```

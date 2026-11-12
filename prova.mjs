@@ -80,7 +80,7 @@ await noVessa(navegador, 'cambra-fosca.html', async p => {
     mides: document.querySelector('#stDims').textContent,
   }));
   if (r.barra > r.barraCap + 1) problemes.push(`la barra de dalt de la Cambra Fosca vessa (${r.barra} de ${r.barraCap})`);
-  if (r.eines !== 7) problemes.push(`la Cambra Fosca té ${r.eines} eines i n'ha de tenir 7`);
+  if (r.eines !== 8) problemes.push(`la Cambra Fosca té ${r.eines} eines i n'ha de tenir 8`);
   if (!r.tornar) problemes.push('la Cambra Fosca no té l\'enllaç de tornada a la portada');
   return `barra ${r.barra}/${r.barraCap} · ${r.mides}`;
 });
@@ -372,7 +372,7 @@ await p.close();
   // aquelles peces van al processador i tornen, i amb gràfica i tot va lent.
   // El model lleuger en tenia 33 de PRelu. (La llista de les que sí que sap fer
   // és a docs/webgpu-operators.md del paquet onnxruntime-web.)
-  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus']) {
+  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus', 'migan-512']) {
     const bytes = readFileSync(join(AQUI, 'ia/models', m + '.onnx'));
     if (bytes.includes('PRelu')) problemes.push(`el model ${m} fa servir PRelu, que la gràfica no sap fer`);
   }
@@ -544,6 +544,149 @@ await p.close();
 
   console.log(`${problemes.length > abansDe ? '✗' : '✓'} ampliar amb IA (pel processador): lleuger ×4, gran ×4, límits, aturar, desfer i refer, i la segona vegada sense baixar res`);
   await p.close();
+
+  // ----------------------------- esborrar coses amb el dit (MI-GAN)
+  // Amb un mòbil simulat i el dit de debò: es pinta de vermell un objecte
+  // d'una paret de maons i la IA l'ha de treure i continuar la paret, sense
+  // tocar res de la resta de la foto. El vermell només va a la pantalla.
+  {
+    const abansT = problemes.length;
+    const ctx = await navegador.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, acceptDownloads: true });
+    const q = await ctx.newPage();
+    vigila(q, 'esborra');
+    await q.goto(BASE);
+    await q.waitForTimeout(1500);
+    // una paret de maons amb un objecte vermell al davant; a escala «e»
+    const paret = e => q.evaluate(e => {
+      const c = document.createElement('canvas'); c.width = 640 * e; c.height = 480 * e;
+      const x = c.getContext('2d'); x.scale(e, e);
+      const g = x.createLinearGradient(0, 0, 0, 200); g.addColorStop(0, '#5b8fd0'); g.addColorStop(1, '#a8c8e8');
+      x.fillStyle = g; x.fillRect(0, 0, 640, 200);
+      x.fillStyle = '#8f8a82'; x.fillRect(0, 200, 640, 200);
+      x.strokeStyle = '#6f6a62'; x.lineWidth = 2;
+      for (let j = 200; j < 400; j += 20) for (let i = -40; i < 680; i += 40) x.strokeRect(i + ((j / 20) % 2) * 20, j, 40, 20);
+      x.fillStyle = '#5a544c'; x.fillRect(0, 400, 640, 80);
+      x.fillStyle = '#d02a2a'; x.fillRect(280, 250, 70, 120);
+      return c.toDataURL('image/png');
+    }, e);
+    const obreParet = async e => {
+      const dades = await paret(e);
+      await q.setInputFiles('#file', { name: 'paret.png', mimeType: 'image/png', buffer: Buffer.from(dades.split(',')[1], 'base64') });
+      await q.waitForTimeout(800);
+      return dades;
+    };
+    // el color mitjà, el més diferent de l'original i com de variat és (els
+    // maons) dins d'un rectangle del que es veu
+    const mira = (r, original) => q.evaluate(async ([r, original]) => {
+      const v = document.querySelector('#view'), d = v.getContext('2d').getImageData(r[0], r[1], r[2], r[3]).data;
+      let o = null;
+      if (original) {
+        const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = original; });
+        const c = document.createElement('canvas'); c.width = v.width; c.height = v.height;
+        const x = c.getContext('2d'); x.drawImage(i, 0, 0, v.width, v.height); o = x.getImageData(r[0], r[1], r[2], r[3]).data;
+      }
+      let s = [0, 0, 0], l2 = 0, max = 0; const n = d.length / 4;
+      for (let k = 0; k < d.length; k += 4) {
+        s[0] += d[k]; s[1] += d[k + 1]; s[2] += d[k + 2];
+        const l = (d[k] + d[k + 1] + d[k + 2]) / 3; l2 += l * l;
+        if (o) max = Math.max(max, Math.abs(d[k] - o[k]), Math.abs(d[k + 1] - o[k + 1]), Math.abs(d[k + 2] - o[k + 2]));
+      }
+      const m = s.map(v => v / n), lm = (m[0] + m[1] + m[2]) / 3;
+      return { m, var: Math.sqrt(Math.max(0, l2 / n - lm * lm)), max, ample: v.width };
+    }, [r, original]);
+    const cdp = await ctx.newCDPSession(q);
+    const dit = async punts => {      // punts en píxels de la foto
+      const v = await q.locator('#view').boundingBox(), e = v.width / (await mira([0, 0, 1, 1])).ample;
+      const a = ([x, y]) => ({ x: v.x + x * e, y: v.y + y * e });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [a(punts[0])] });
+      for (const pt of punts.slice(1)) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [a(pt)] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await q.waitForTimeout(150);
+    };
+    const ziga = (x0, x1, y0, y1, pas) => { const z = []; for (let y = y0; y <= y1; y += pas) z.push([x0, y], [x1, y + pas / 2]); return z; };
+    const acabaT = async () => { await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 }); };
+
+    // la tira d'eines, amb una eina més, encara hi cap a 320 px sense desplaçar-la
+    await q.setViewportSize({ width: 320, height: 700 });
+    await q.waitForTimeout(200);
+    const tira = await q.evaluate(() => { const r = document.querySelector('#rail'); return r.scrollWidth - r.clientWidth; });
+    if (tira > 1) problemes.push(`a 320 px la tira d'eines no hi cap (en sobren ${tira} px)`);
+    await q.setViewportSize({ width: 390, height: 844 });
+    await q.waitForTimeout(200);
+
+    const original = await obreParet(1);
+    await q.click('#tool-treu');
+    await q.waitForTimeout(200);
+    if (!await q.locator('#treuGo').isDisabled()) problemes.push('«Esborra-ho» es pot prémer sense haver pintat res');
+    if (!(await q.locator('#treuInfo').innerText()).includes('no surt de l\'aparell')) problemes.push('l\'eina d\'esborrar no diu que la foto no surt de l\'aparell');
+    await q.evaluate(() => { const r = document.querySelector('#opt-Mida'); r.value = 40; r.dispatchEvent(new Event('input')); });
+    const vora = [273, 300, 5, 5];            // un tros de paret que el pinzell agafa, al costat de l'objecte
+    const grisa = (await mira(vora)).m;
+    const scroll0 = await q.evaluate(() => scrollY);
+    await dit(ziga(290, 340, 250, 372, 12));
+    if (await q.evaluate(() => scrollY) !== scroll0) problemes.push('pintant el vermell amb el dit, la pàgina s\'ha desplaçat');
+    if (await q.locator('#treuGo').isDisabled()) problemes.push('després de pintar, «Esborra-ho» no es pot prémer');
+    const pintada = (await mira(vora)).m;
+    if (!(pintada[0] - grisa[0] > 30 && pintada[1] < grisa[1])) problemes.push('el que es pinta per esborrar no es veu vermell a la pantalla');
+    // el vermell no va mai al fitxer desat
+    {
+      await q.click('#btnSave'); await q.waitForTimeout(300);
+      const baixada = q.waitForEvent('download'); await q.click('.dlg .btn.primary');
+      const png = readFileSync(await (await baixada).path()).toString('base64');
+      const c = await q.evaluate(async png => { const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = 'data:image/png;base64,' + png; });
+        const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const x = c.getContext('2d'); x.drawImage(i, 0, 0);
+        return [...x.getImageData(275, 304, 1, 1).data]; }, png);
+      if (Math.abs(c[0] - c[1]) > 25) problemes.push('el vermell d\'esborrar ha sortit al fitxer desat');
+      await q.click('#tool-treu');     // desar no canvia d'eina, però per si de cas
+    }
+    // «Neteja el vermell» el treu, i canviar d'eina també
+    if (await q.locator('#treuGo').isDisabled()) await dit(ziga(290, 340, 250, 372, 12));
+    await q.click('#treuNeteja'); await q.waitForTimeout(150);
+    if (!await q.locator('#treuGo').isDisabled() || Math.abs((await mira(vora)).m[0] - grisa[0]) > 4) problemes.push('«Neteja el vermell» no el treu');
+    await dit(ziga(290, 340, 250, 372, 12));
+    await q.click('#tool-move'); await q.click('#tool-treu'); await q.waitForTimeout(150);
+    if (!await q.locator('#treuGo').isDisabled()) problemes.push('canviant d\'eina, el vermell s\'hi queda');
+
+    // esborrar de debò
+    await dit(ziga(290, 340, 250, 372, 12));
+    await q.click('#treuGo');
+    await acabaT();
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Esborra amb IA')) problemes.push('esborrar amb IA no surt a l\'historial');
+    const forat = await mira([280, 250, 70, 120], original), paretBona = await mira([420, 250, 70, 120]);
+    if (forat.m[0] - forat.m[1] > 25) problemes.push(`l'objecte vermell no s'ha esborrat (color mitjà ${forat.m.map(Math.round)})`);
+    if (forat.m.some((v, i) => Math.abs(v - paretBona.m[i]) > 22)) problemes.push(`on hi havia l'objecte no hi ha paret (${forat.m.map(Math.round)} contra ${paretBona.m.map(Math.round)})`);
+    // que hi hagi maons i no una taca llisa del color del mig
+    if (forat.var < paretBona.var * 0.35) problemes.push(`on hi havia l'objecte la paret ha quedat llisa, sense maons (variació ${forat.var.toFixed(1)} contra ${paretBona.var.toFixed(1)})`);
+    // la resta de la foto, intacta (lluny del forat, ni un nivell de diferència)
+    for (const r of [[0, 0, 640, 200], [0, 200, 200, 280], [450, 200, 190, 280]]) {
+      const m = await mira(r, original);
+      if (m.max > 0) problemes.push(`esborrant, ha canviat la foto lluny del forat (${r}: diferència ${m.max})`);
+    }
+    if ((await mira(vora)).m[0] - (await mira(vora)).m[1] > 25) problemes.push('després d\'esborrar, el vermell de pintar s\'hi queda');
+    if (!(await q.locator('#treuInfo').innerText()).includes('amb el processador')) problemes.push('després d\'esborrar no diu amb què s\'ha fet: ' + await q.locator('#treuInfo').innerText());
+    // desfer torna l'objecte, i refer el torna a treure
+    await q.click('#btnUndo'); await q.waitForTimeout(400);
+    if ((await mira([290, 260, 50, 100])).m[0] < 180) problemes.push('desfer no torna l\'objecte esborrat');
+    await q.click('#btnRedo'); await q.waitForTimeout(400);
+    if ((await mira([290, 260, 50, 100])).m[0] > 170) problemes.push('refer no torna a esborrar l\'objecte');
+
+    // una foto més gran que el model (1600 × 1200): el tros es redueix a 512 i
+    // es torna a fer gran, i la resta de la foto continua intacta
+    const gran = await obreParet(2.5);
+    await q.click('#tool-treu');
+    await q.evaluate(() => { const r = document.querySelector('#opt-Mida'); r.value = 90; r.dispatchEvent(new Event('input')); });
+    await dit(ziga(725, 850, 625, 930, 30));
+    await q.click('#treuGo');
+    await acabaT();
+    const fg = await mira([700, 625, 175, 300]);
+    if (fg.m[0] - fg.m[1] > 25) problemes.push(`a la foto gran, l'objecte vermell no s'ha esborrat (${fg.m.map(Math.round)})`);
+    for (const r of [[0, 0, 1600, 450], [0, 500, 450, 700], [1150, 500, 450, 700]]) {
+      const m = await mira(r, gran);
+      if (m.max > 0) problemes.push(`a la foto gran, esborrant ha canviat la foto lluny del forat (${r}: ${m.max})`);
+    }
+    console.log(`${problemes.length > abansT ? '✗' : '✓'} esborrar coses amb el dit (pel processador): pintar amb el dit, el vermell no es desa, netejar, esborrar la paret de maons sense tocar la resta, desfer i refer, i una foto gran`);
+    await ctx.close();
+  }
   servidor.close();
 }
 
