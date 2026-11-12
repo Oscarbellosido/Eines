@@ -376,6 +376,20 @@ await p.close();
     const bytes = readFileSync(join(AQUI, 'ia/models', m + '.onnx'));
     if (bytes.includes('PRelu')) problemes.push(`el model ${m} fa servir PRelu, que la gràfica no sap fer`);
   }
+  // La línia de detalls diu el navegador. L'Edge també diu «Chrome/...» abans
+  // del seu nom, i sortia com a «Chrome 157». Es prova la funció tal com és a
+  // l'eina, amb el que envien els navegadors de debò.
+  {
+    const font = readFileSync(join(AQUI, 'cambra-fosca.html'), 'utf8').match(/function quinNavegador\([\s\S]*?\n\}/)[0];
+    const quin = new Function(font + '; return quinNavegador;')();
+    const casos = [
+      ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0', 'Edge 157'],
+      ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36', 'Chrome 157'],
+      ['Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/28.0 Chrome/130.0.0.0 Mobile Safari/537.36', 'Samsung Internet 28'],
+      ['Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0', 'Firefox 140'],
+    ];
+    for (const [ua, toca] of casos) if (quin(ua) !== toca) problemes.push(`la línia de detalls diu «${quin(ua)}» en lloc de «${toca}»`);
+  }
   const p = await navegador.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
   vigila(p, 'amplia');
   await p.goto(BASE);

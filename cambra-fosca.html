@@ -2228,11 +2228,16 @@ async function preparaSessio(progres){
   IA.sessioDe=IA.mode;
   return IA.sessio;
 }
-// el navegador i la versió, per a la línia de detalls (Edg/131 → Edge 131)
-function quinNavegador(){
-  const ua=navigator.userAgent, m=ua.match(/(Edg|OPR|SamsungBrowser|Firefox|Chrome|Version)\/(\d+)/);
-  if(!m) return 'navegador desconegut';
-  return ({Edg:'Edge',OPR:'Opera',SamsungBrowser:'Samsung Internet',Version:'Safari'}[m[1]]||m[1])+' '+m[2];
+// El navegador i la versió, per a la línia de detalls (Edg/131 → Edge 131).
+// L'Edge, l'Opera i el Samsung també diuen «Chrome/...», i abans d'això: es
+// busca primer el nom propi i, només si no hi és, Chrome. Abans s'agafava el
+// primer que sortia, i l'Edge de l'usuari sortia com a «Chrome 157».
+function quinNavegador(ua=navigator.userAgent){
+  for(const [clau,nom] of [['Edg','Edge'],['OPR','Opera'],['SamsungBrowser','Samsung Internet'],['Firefox','Firefox'],['Chrome','Chrome'],['Version','Safari']]){
+    const m=ua.match(new RegExp(clau+'/(\\d+)'));
+    if(m) return nom+' '+m[1];
+  }
+  return 'navegador desconegut';
 }
 
 /* La feina, per trossos. Cada tros es passa pel model amb un marge de context

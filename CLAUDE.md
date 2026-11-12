@@ -289,9 +289,22 @@ Coses que no s'han de desfer sense entendre-les:
   perdut del tot (unes lletres petitíssimes) no ho recupera: s'inventa una
   cosa que s'hi assembla.
 
-**El camí de la gràfica no s'ha pogut provar al contenidor**, que no en té
-(ni amb SwiftShader). Està fet perquè, si falla, vagi amb el processador. La
-prova de veritat l'ha de fer l'usuari a l'ordinador.
+**El camí de la gràfica no es pot provar al contenidor**, que no en té (ni
+amb SwiftShader). Està fet perquè, si falla, vagi amb el processador. **Al
+seu ordinador, amb l'Edge, la gràfica funciona**: una foto de 1057 × 949 per
+4 amb el model gran, 72 trossos, 13 minuts, **83 GFLOP/s**. És poc per a una
+gràfica (deu ser una d'integrada, i el motor diu que les convolucions encara
+no són ràpides a la gràfica), però no és cap error. L'hora d'aquell primer dia
+també va ser amb la gràfica, a aquesta velocitat: la foto era tres vegades més
+gran. Si mai es vol fer anar més de pressa, les vies són fer els models de
+mitja precisió (`shader-f16`, si la gràfica en sap) o trossos més grossos
+(menys marge per tros); totes dues s'han de mesurar a l'ordinador de
+l'usuari, que aquí no es pot.
+
+La línia de detalls deia «Chrome 157» a l'Edge: l'Edge també diu «Chrome/...»,
+abans del seu nom, i s'agafava el primer. Ara `quinNavegador` busca primer els
+noms propis (Edge, Opera, Samsung) i la prova ho mira amb el que envien els
+navegadors de debò.
 
 Com va de temps, sense gràfica i en un sol fil (el contenidor): una imatge de
 200 × 150 per 4 triga 11 segons amb el model lleuger, i per 2 triga dos minuts
