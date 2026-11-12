@@ -959,7 +959,12 @@ function drawOp(op){
   ensureScratch();
   scratchCtx.clearRect(0,0,scratch.width,scratch.height);
   if(op.type==='clone'){
-    const ox=op.src[0]-op.pts[0], oy=op.src[1]-op.pts[1];
+    // On es pinta va el que hi ha a l'origen, mogut el mateix que el dit des
+    // d'on ha començat: el punt p rep el que hi ha a p + (origen − inici). Per
+    // això la foto es dibuixa desplaçada al revés. Abans anava amb el signe
+    // girat i copiava de l'altra banda: l'usuari va fixar l'origen al sofà
+    // vermell, pintava a sobre i hi sortia el verd del fons.
+    const ox=op.pts[0]-op.src[0], oy=op.pts[1]-op.src[1];
     scratchCtx.save();
     scratchCtx.fillStyle='#000';
     for(let i=2;i<op.pts.length;i+=2)
@@ -1241,6 +1246,7 @@ function applyZoomCss(){
   $('#wrap').style.width=w+'px'; $('#wrap').style.height=h+'px';
   const pct=round(S.zoom*100);
   $('#zoomRead').textContent=pct+'%';
+  if(S.cloneSrc && $('#cloneSrc').style.display==='block') posaMarcaOrigen(S.cloneSrc[0],S.cloneSrc[1]);
   $('#stZoom').textContent=pct+'%';
   if(cropOn) syncCropBox();
 }
@@ -1351,7 +1357,7 @@ const TOOLS=[
   { sep:true },
   { id:'brush',  key:'B', name:'Pinzell', hint:'Pinta a sobre de la imatge. [ i ] canvien la mida.' },
   { id:'eraser', key:'E', name:'Goma', hint:'Esborra el que has pintat. Els píxels originals no es toquen.' },
-  { id:'clone',  key:'S', name:'Tampó de clonar', hint:'Alt+clic fixa l\'origen; després arrossega per copiar-hi píxels.' },
+  { id:'clone',  key:'S', name:'Tampó de clonar', hint:'Copia un tros de la foto a sobre d\'un altre: per tapar una taca amb la pell del costat, o un cable amb el cel.' },
   { id:'treu',   key:'X', name:'Esborra coses (IA)', hint:'Pinta de vermell el que vulguis treure (una persona, un cable, una taca) i prem «Esborra-ho»: la IA hi posa el que hi hauria al darrere. Pinta-ho tot, també la vora i l\'ombra; si se t\'escapa el dit, «Treu vermell». Amb dos dits t\'hi pots acostar. Treballa amb la foto: el que hi has pintat a sobre amb el pinzell o el text es queda com és.' },
   { sep:true },
   { id:'text',   key:'T', name:'Text', hint:'Fes clic on vulguis el text i escriu-lo.' },
@@ -1417,9 +1423,19 @@ function buildOpts(id,hint){
     slider('Opacitat',S.brush.opacity,5,100,'%',v=>S.brush.opacity=v);
     if(id==='brush') colorRow();
     if(id==='clone'){
+      // al mòbil no hi ha tecla Alt: l'origen es tria amb aquest botó, i el
+      // primer toc sense origen ja el fixa sol
+      const row=el('div','optrow');
+      const t=el('button','chip','Tria l\'origen'); t.type='button'; t.id='cloneTria';
+      t.setAttribute('aria-pressed',S.cloneTria?'true':'false');
+      t.onclick=()=>{ S.cloneTria=!S.cloneTria; t.setAttribute('aria-pressed',S.cloneTria?'true':'false');
+        if(S.cloneTria) say('Toca el lloc d\'on vols copiar.'); };
       const b=el('button','btn ghost','Esborra l\'origen'); b.type='button';
-      b.onclick=()=>{ S.cloneSrc=null; $('#cloneSrc').style.display='none'; say('Origen del tampó esborrat.'); };
-      box.appendChild(b);
+      b.onclick=()=>{ S.cloneSrc=null; S.cloneTria=false; $('#cloneSrc').style.display='none'; say('Origen del tampó esborrat.');
+        buildOpts('clone',TOOLS.find(x=>x.id==='clone').hint); };
+      row.append(t,b); box.appendChild(row);
+      box.appendChild(el('div','tiny',S.cloneSrc?'Origen fixat (la creueta). Pinta on vulguis tapar: s\'hi copia el que hi ha a la creueta, i la creueta et segueix.'
+        :'Primer toca el lloc d\'on vols copiar (o Alt+clic). Després pinta on vulguis tapar.'));
     }
     addHint();
   }
@@ -1983,14 +1999,13 @@ view.addEventListener('pointerdown',e=>{
     return;
   }
   if(t==='clone'){
-    if(e.altKey){
-      S.cloneSrc=[p.x,p.y];
-      const m=$('#cloneSrc');
-      m.style.display='block'; m.style.left=(p.x*S.zoom)+'px'; m.style.top=(p.y*S.zoom)+'px';
-      say('Origen del tampó fixat.');
+    if(e.altKey || S.cloneTria || !S.cloneSrc){
+      S.cloneSrc=[p.x,p.y]; S.cloneTria=false;
+      posaMarcaOrigen(p.x,p.y);
+      buildOpts('clone',TOOLS.find(x=>x.id==='clone').hint);
+      say('Origen fixat. Ara pinta on vulguis tapar.');
       return;
     }
-    if(!S.cloneSrc){ say('Fes Alt+clic per fixar l\'origen del tampó.'); return; }
   }
   if(t==='treu'){
     if(IA.treballant) return;
@@ -2038,7 +2053,13 @@ view.addEventListener('pointermove',e=>{
   if(Math.hypot(p.x-stroke.pts[n-2],p.y-stroke.pts[n-1])<Math.max(0.7,S.brush.size*0.07)) return;
   stroke.pts.push(p.x,p.y);
   restorePaintSnap(); drawOp(stroke); scheduleRender();
+  // la creueta segueix el dit: diu d'on s'està copiant ara mateix
+  if(stroke.type==='clone') posaMarcaOrigen(p.x+stroke.src[0]-stroke.pts[0], p.y+stroke.src[1]-stroke.pts[1]);
 });
+function posaMarcaOrigen(x,y){
+  const m=$('#cloneSrc');
+  m.style.display='block'; m.style.left=(x*S.zoom)+'px'; m.style.top=(y*S.zoom)+'px';
+}
 function endStroke(e){
   if(ratllaMasc){
     ratllaMasc=null;
@@ -2048,6 +2069,8 @@ function endStroke(e){
     return;
   }
   if(!stroke) return;
+  // cada pinzellada torna a començar a copiar des de l'origen
+  if(stroke.type==='clone' && S.cloneSrc) posaMarcaOrigen(S.cloneSrc[0],S.cloneSrc[1]);
   const label={brush:'Pinzellada',erase:'Esborrat',clone:'Clonació'}[stroke.type];
   stroke=null;
   try{ view.releasePointerCapture(e.pointerId); }catch(_){}

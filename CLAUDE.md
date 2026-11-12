@@ -96,6 +96,17 @@ Coses que no s'han de desfer sense entendre-les:
   amb cap imatge d'exemple: un quadradet del mig, passat per cada preajust.
   Un filtre només es pot triar si veus què farà a la teva foto.
 
+**El tampó de clonar** copia el que hi ha a l'origen (la creueta) allà on
+pintes: el punt p rep el que hi ha a p + (origen − on ha començat la
+pinzellada). **Va estar molt de temps amb el signe girat** i copiava de
+l'altra banda: l'usuari va fixar l'origen al sofà vermell, pintava al
+costat i hi sortia el verd del fons. La prova ho mira amb una foto meitat
+verda i meitat vermella. Al mòbil no hi ha tecla Alt: **el primer toc sense
+origen el fixa** (i no pinta res), i **«Tria l'origen»** fa que el toc
+següent el canviï. Mentre pintes, **la creueta segueix el dit** (diu d'on
+s'està copiant), i en acabar torna a l'origen: cada pinzellada torna a
+començar a copiar des d'allà.
+
 **La imatge d'exemple.** En obrir-se no hi ha cap foto, i una pàgina buida no
 ensenya res del que sap fer. Per això es pinta sola una escena (`makeSample`):
 cel de posta, serralades, aigua amb reflex, gra i cantonades fosques. No és cap
@@ -586,6 +597,10 @@ de debò i comprova:
   que arrossegant el marc es mogui el que toca, que la pàgina no es desplaci,
   i que els tiradors siguin prou grossos. Es va comprovar que la prova falla
   sense el `touch-action:none`;
+- **el tampó de clonar**, amb el dit: que el primer toc fixi l'origen sense
+  pintar, que pintant al verd amb l'origen al vermell hi surti vermell (i
+  res fora d'on ha passat el dit), que la creueta torni a l'origen i que
+  «Tria l'origen» el canviï. Amb el signe d'abans, la prova falla;
 - **desar a mida**: en mil·límetres, la foto fa els que toca a 300 ppp;
   posant 300 mm d'ample l'alt surt proporcional, i escrivint l'alt, l'ample;
   avisa que quedarà tova; el PNG fa els píxels que toca i porta 300 ppp

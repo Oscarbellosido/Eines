@@ -299,6 +299,59 @@ await p.close();
   await ctx.close();
 }
 
+// ------------------------------- la Cambra Fosca: el tampó de clonar
+// Ha de copiar el que hi ha a l'origen. Anava amb el signe girat i copiava de
+// l'altra banda: l'usuari fixava l'origen al sofà vermell i hi sortia el verd
+// del fons. Al mòbil, a més, no hi ha Alt: el primer toc fixa l'origen.
+{
+  const abansC = problemes.length;
+  const ctx = await navegador.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const q = await ctx.newPage();
+  vigila(q, 'tampó');
+  await q.goto(fitxer('cambra-fosca.html'));
+  await q.waitForTimeout(1200);
+  // a dalt verd, a baix vermell
+  const dades = await q.evaluate(() => { const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+    const x = c.getContext('2d'); x.fillStyle = '#2f8a3a'; x.fillRect(0, 0, 400, 150); x.fillStyle = '#c0242a'; x.fillRect(0, 150, 400, 150);
+    return c.toDataURL('image/png'); });
+  await q.setInputFiles('#file', { name: 'sofa.png', mimeType: 'image/png', buffer: Buffer.from(dades.split(',')[1], 'base64') });
+  await q.waitForTimeout(600);
+  await q.click('#tool-clone');
+  await q.evaluate(() => { for (const [id, v] of [['opt-Mida', 30], ['opt-Duresa', 100], ['opt-Opacitat', 100]]) {
+    const r = document.getElementById(id); r.value = v; r.dispatchEvent(new Event('input')); } });
+  const cdp = await ctx.newCDPSession(q);
+  const v = await q.locator('#view').boundingBox(), e = v.width / 400;
+  const a = (x, y) => ({ x: v.x + x * e, y: v.y + y * e });
+  const toc = async punts => {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [a(...punts[0])] });
+    for (const pt of punts.slice(1)) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [a(...pt)] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await q.waitForTimeout(250);
+  };
+  const color = (x, y) => q.evaluate(([x, y]) => [...document.querySelector('#view').getContext('2d').getImageData(x, y, 1, 1).data], [x, y]);
+  // primer toc, al vermell: fixa l'origen (sense Alt) i no pinta res
+  const passos = (await q.locator('.hitem span').allInnerTexts()).length;
+  await toc([[100, 225]]);
+  if (!await q.locator('#cloneSrc').isVisible() || (await q.locator('.hitem span').allInnerTexts()).length !== passos)
+    problemes.push('al mòbil, el primer toc del tampó no fixa l\'origen (o hi pinta)');
+  // pintant al verd, 200 a la dreta i 150 amunt de l'origen, hi ha de sortir el vermell
+  await toc([[300, 75], [315, 75], [330, 75], [345, 75]]);
+  const c = await color(320, 75);
+  if (!(c[0] > 150 && c[1] < 90)) problemes.push(`el tampó no copia el que hi ha a l'origen: on hi havia verd, amb l'origen al vermell, hi ha ${c.slice(0, 3)}`);
+  if ((await color(320, 120)).slice(0, 3).join() !== (await color(380, 120)).slice(0, 3).join()) problemes.push('el tampó ha pintat fora d\'on ha passat el dit');
+  // en acabar la pinzellada, la creueta torna a l'origen
+  const marca = await q.evaluate(() => { const m = document.querySelector('#cloneSrc'); return [parseFloat(m.style.left), parseFloat(m.style.top)]; });
+  const z = await q.evaluate(() => document.querySelector('#view').getBoundingClientRect().width / 400);
+  if (Math.abs(marca[0] - 100 * z) > 2 || Math.abs(marca[1] - 225 * z) > 2) problemes.push('en acabar de pintar, la creueta del tampó no torna a l\'origen');
+  // «Tria l'origen»: el toc següent el canvia
+  await q.click('#cloneTria');
+  await toc([[50, 50]]);
+  const m2 = await q.evaluate(() => parseFloat(document.querySelector('#cloneSrc').style.left));
+  if (Math.abs(m2 - 50 * z) > 2) problemes.push('amb «Tria l\'origen», el toc no canvia l\'origen del tampó');
+  console.log(`${problemes.length > abansC ? '✗' : '✓'} el tampó de clonar: copia de l'origen, el primer toc el fixa al mòbil, la creueta i «Tria l'origen»`);
+  await ctx.close();
+}
+
 // ------------------------------- la Cambra Fosca: Arregla-la sola i Endreça
 // Es fa una foto «bona» (cel, paret grisa, un full blanc i objectes de color),
 // s'espatlla de les maneres típiques i es mira si «Arregla-la sola» l'acosta a
