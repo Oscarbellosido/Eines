@@ -599,6 +599,54 @@ await p.close();
   await p.click('#tab-amp');
   if (!(await text('#iaLinies')).includes('no cal baixar res')) problemes.push('la segona vegada torna a dir que s\'ha de baixar el model');
 
+  // «A mida»: ampliar fins a uns mil·límetres. L'usuari, desant a 300 mm, rebia
+  // l'avís que l'ampliés primer, i a l'Amplia només hi havia ×2 i ×4.
+  {
+    await obre(64, 48);
+    await p.click('#tab-amp');
+    await p.click('#iaMode-mobil');
+    await p.click('#iaF-mida');
+    const posa = async (sel, v) => { await p.fill(sel, ''); await p.locator(sel).pressSequentially(String(v)); await p.waitForTimeout(80); };
+    if (await p.locator('#iaU-mm').getAttribute('aria-pressed') !== 'true') problemes.push('«A mida» no comença en mil·límetres');
+    // (la resolució no es toca: de partida ja és 300)
+    if (await p.locator('#iaPPP').inputValue() !== '300') problemes.push('«A mida» no comença a 300 ppp');
+    // 3 mm és més petit que la foto (64 px a 300 ppp són 5,4 mm): no cal ampliar
+    await posa('#iaMidaW', 3);
+    if (!await p.locator('#iaGo').isDisabled() || !(await text('#iaMidaAvis')).includes('no cal ampliar')) problemes.push('demanant una mida més petita que la foto, deixa ampliar o no diu que no cal');
+    // 30 mm són 354 px: més de 4 vegades, el model fa ×4 i la resta s'estira
+    await posa('#iaMidaW', 30);
+    if (!(await text('#iaMidaAvis')).includes('s\'estira')) problemes.push('demanant més de 4 vegades, no avisa que la resta s\'estira: ' + await text('#iaMidaAvis'));
+    // 10 mm són 118 px: el model amplia per 2 i es deixa a la mida justa
+    await posa('#iaMidaW', 10);
+    const w = Math.round(10 / 25.4 * 300), h = Math.round(w * 48 / 64);
+    const hmm = String(Math.round(h / 300 * 25.4 * 10) / 10).replace('.', ',');
+    if (await text('#iaGo') !== `Amplia a 10 × ${hmm} mm`) problemes.push('el botó d\'ampliar a mida no diu la mida: ' + await text('#iaGo'));
+    if (!(await text('#iaMidaAvis')).includes('per 2')) problemes.push('a mida, no diu per quant amplia el model: ' + await text('#iaMidaAvis'));
+    await p.click('#iaGo');
+    await acaba();
+    if (await mida() !== `${w} × ${h} px`) problemes.push(`ampliant a 10 mm a 300 ppp, la foto hauria de fer ${w} × ${h} px i fa ${await mida()}`);
+    if (!(await historial()).includes(`Amplia a 10 × ${hmm} mm · model lleuger`)) problemes.push('ampliar a mida no surt a l\'historial amb la mida');
+    await p.click('#tab-amp');
+    if (!(await text('#iaFet')).includes('Ampliada a 10')) problemes.push('en acabar d\'ampliar a mida, el «✓ Feta» no diu la mida');
+    // desant, ja surt en mil·límetres i fa 10 mm
+    await p.click('#btnSave'); await p.waitForTimeout(300);
+    if (await p.locator('#expU-mm').getAttribute('aria-pressed') !== 'true' || await p.locator('#expW').inputValue() !== '10')
+      problemes.push(`després d'ampliar a 10 mm, «Desa» no la posa a 10 mm (${await p.locator('#expW').inputValue()})`);
+    // i des de l'avís de «Desa», el botó porta a l'Amplia amb la mida posada
+    // (i quan no cal ampliar, no hi surt)
+    if (await p.locator('#expAmplia').isVisible()) problemes.push('a la mida de la foto, «Desa» ja ofereix ampliar-la');
+    await p.fill('#expW', ''); await p.locator('#expW').pressSequentially('25'); await p.waitForTimeout(100);
+    if (!await p.locator('#expAmplia').isVisible()) problemes.push('l\'avís de «Desa» quan la foto és petita no porta el botó per ampliar-la a aquella mida');
+    else {
+      await p.click('#expAmplia'); await p.waitForTimeout(300);
+      if (await p.locator('.dlg').count()) problemes.push('el botó d\'ampliar a mida no tanca el quadre de desar');
+      if (await p.locator('#iaF-mida').getAttribute('aria-pressed') !== 'true' || await p.locator('#iaMidaW').inputValue() !== '25')
+        problemes.push(`el botó de «Desa» no porta a l'Amplia amb 25 mm posats (${await p.locator('#iaMidaW').inputValue().catch(() => '?')})`);
+    }
+    if (await p.locator('.dlg').count()) await p.click('.dlg footer .btn:not(.primary)');
+    await p.click('#tab-amp'); await p.click('#iaF-4');
+  }
+
   // aturar a mig fer deixa la foto com era
   await obre(400, 300);
   await p.click('#tab-amp');
@@ -635,7 +683,7 @@ await p.close();
   await acaba(600000);
   if (await mida() !== '128 × 96 px') problemes.push('el model gran ×4 no dona la mida que toca: ' + await mida());
 
-  console.log(`${problemes.length > abansDe ? '✗' : '✓'} ampliar amb IA (pel processador): lleuger ×4, gran ×4, límits, aturar, desfer i refer, i la segona vegada sense baixar res`);
+  console.log(`${problemes.length > abansDe ? '✗' : '✓'} ampliar amb IA (pel processador): lleuger ×4, gran ×4, a mida en mil·límetres (també des de «Desa»), límits, aturar, desfer i refer, i la segona vegada sense baixar res`);
   await p.close();
 
   // ----------------------------- esborrar coses amb el dit (MI-GAN)

@@ -128,6 +128,12 @@ igual.
 - **La unitat i la resolució es recorden** en aquest aparell
   (`cambra-fosca-mida`); la mida no, que cada foto és diferent.
 - Els números s'escriuen amb coma (`127,5`) i s'accepten amb coma o punt.
+- **Des de l'avís, «Amplia-la a aquesta mida amb IA»** (`#expAmplia`) tanca
+  el quadre i obre l'Amplia «A mida» amb aquells mil·límetres ja posats. El
+  botó es fa **una sola vegada** i només s'amaga o s'ensenya: al principi es
+  refeia a cada canvi, i en tocar-lo la casella perdia el cursor, el quadre
+  es tornava a pintar i el botó de sota el dit ja era un altre (el toc es
+  perdia, i la prova ho va trobar).
 
 **Desar la imatge.** A la web funciona la baixada normal del navegador
 (`desaFitxer`). La pàgina també es pot publicar com a *artifact* de claude.ai,
@@ -314,6 +320,23 @@ Coses que no s'han de desfer sense entendre-les:
   o de WhatsApp li va molt bé, i a una amb gra a posta, el treu. El que s'ha
   perdut del tot (unes lletres petitíssimes) no ho recupera: s'inventa una
   cosa que s'hi assembla.
+
+**«A mida (mm)»**: a més de ×2 i ×4, es pot dir l'ample que es vol, en mm, cm
+o px, i la resolució. L'usuari ho va demanar perquè, desant a 300 mm, l'eina
+li deia que l'ampliés primer i a l'Amplia només hi havia ×2 i ×4.
+
+- **El model sempre fa ×2 o ×4** (`plaAmplia`): el primer que n'hi ha prou, i
+  després la foto es deixa a la mida justa (una reducció normal, de bona
+  qualitat). Si cal més de 4 vegades, o si en aquest mode ×4 no cap a la
+  memòria i es fa ×2, la resta s'estira a la manera normal, i el panell ho
+  diu (i, al mòbil, que amb el mode Ordinador ho faria tot el model).
+- Si la mida demanada ja és la de la foto o més petita, no deixa ampliar i
+  diu que n'hi ha prou de posar els mil·límetres en desar.
+- **La unitat i la resolució són les mateixes del quadre de Desa**
+  (`cambra-fosca-mida`), i en acabar s'hi desen: desant, la foto ja surt a
+  300 mm sense tocar res.
+- **Les caselles es tornen a calcular a cada tecla sense refer el panell**
+  (`pintaMidaAmp`), que si no perdrien el cursor mentre escrius.
 
 **El camí de la gràfica no es pot provar al contenidor**, que no en té (ni
 amb SwiftShader). Està fet perquè, si falla, vagi amb el processador. **Al
@@ -595,6 +618,13 @@ de debò i comprova:
   model porti peces que la gràfica no sap fer (PRelu). Es va comprovar que la
   prova falla si es canvien els colors, si el botó d'aturar no atura, si
   l'avís torna a començar una frase en minúscula o amb el model lleuger vell.
+  I «A mida»: que comenci en mm a 300 ppp, que no deixi ampliar a una mida
+  més petita que la foto, que avisi quan cal estirar, que a 10 mm amplii per
+  2 i deixi la foto als píxels justos (amb la mida a l'historial i al «✓
+  Feta»), que desant ja surti a 10 mm, i que el botó de l'avís de «Desa»
+  porti a l'Amplia amb la mida posada (i no surti quan no cal). Es va
+  comprovar que falla sense deixar-la a la mida justa, si el model sempre fa
+  ×4 o si no es desa la unitat en acabar.
 - **esborrar coses amb el dit**, amb un mòbil simulat i un dit de debò (també
   serveix el repositori ella mateixa): que la tira d'eines, amb l'eina nova,
   hi càpiga a 320 px; que «Esborra-ho» no es pugui prémer sense vermell; que
