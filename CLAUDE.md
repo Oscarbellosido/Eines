@@ -3,7 +3,7 @@
 Eines petites que funcionen dins del navegador, en català i pensades per al
 mòbil. **Cada eina és un sol fitxer** HTML autocontingut, sense cap llibreria,
 sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepció
-és la carpeta `ia/`, que fan servir l'ampliació i l'esborrat amb IA de La Cambra Fosca (més avall).
+és la carpeta `ia/`, que fan servir l'ampliació, l'esborrat i treure el fons amb IA de La Cambra Fosca (més avall).
 
 - Publicat a: https://oscarbellosido.github.io/Eines/
 - **El que hi posa qui la fa servir no surt mai del seu aparell.** No hi ha
@@ -16,7 +16,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepci
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla, esborra coses i amplia fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla, esborra coses, treu el fons i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -25,7 +25,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepci
 index.html            la portada, amb una fitxa per eina
 cambra-fosca.html     l'editor de fotografies
 revisio.html          la revisió de seguretat del mòbil
-ia/                   el motor i els models de la IA: ampliar i esborrar (vegeu ia/LLEGEIX.md)
+ia/                   el motor i els models de la IA: ampliar, esborrar i treure el fons (vegeu ia/LLEGEIX.md)
 cambra-fosca.webmanifest   la fitxa de la Cambra Fosca com a app (nom, icones, colors)
 cambra-fosca-sw.js         el que la fa anar sense connexió, un cop instal·lada
 icones/               les icones de l'app
@@ -451,6 +451,45 @@ pesos, i llegint-les d'allà sortia un número qualsevol i el model omplia
 sempre amb gris llis. Es va veure perquè, mirant capa per capa, tot quedava a
 zero després de la primera multiplicació.
 
+## La Cambra Fosca: treure el fons
+
+L'usuari ho va triar d'una llista de millores. És la pestanya **Fons**: deixa
+sol el que hi ha al davant (una persona, un objecte) i el fons el fa
+**transparent**, **blanc**, **d'un color** o **difuminat** (com el mode retrat
+del mòbil). Dos models, amb el mateix mode Mòbil / Ordinador de l'Amplia
+(`IA.mode`, compartit):
+
+| Mode | Model | Pes | Entrada |
+|---|---|---|---|
+| Mòbil | U²-Net petit (`u2netp`) | 4,4 MB | 320 × 320 |
+| Ordinador | IS-Net (`isnet-fp16`) | 86 MB | 1024 × 1024 |
+
+Coses que no s'han de desfer sense entendre-les:
+
+- **Els models ja eren ONNX** (els del projecte rembg) i `fes_fons.py` només
+  hi deixa la primera sortida (els originals en donaven fins a dotze, i
+  algunes eren imatges intermèdies de 64 MB) i, a l'IS-Net, desa els pesos
+  amb la meitat de precisió: **GitHub no accepta fitxers de més de 100 MB** i
+  l'original en fa 178. El resultat canvia menys d'una mil·lèsima, i sense
+  les sortides que sobraven va el doble de ràpid.
+- **El model diu què és del davant en petit** (`alfaDelDavant`), i el mapa es
+  fa gran fins a la mida de la foto amb les vores suaus. Els punts gairebé
+  segurs (per sota del 4% o per sobre del 96%) es fan segurs del tot: si no,
+  el fons quedava com una boira.
+- **El difuminat no deixa aura** (`fonsDifuminat`): es difumina el fons tot
+  sol (cada punt pesa el que té de fons) i es divideix pel pes. Difuminant la
+  foto sencera, al voltant de la persona quedava una aura del seu color (fins
+  a 25 nivells; la prova ho mira a 12 punts de la vora). Es fa a 900 punts
+  com a molt i es torna a fer gran, que difuminat no es nota.
+- **La foto sense fons passa a ser la foto**, com quan s'esborra o s'amplia,
+  i desfer torna a la d'abans.
+- **On la foto és transparent, es veu un escaquer** (el fons del `#view`).
+- **El JPG no guarda la transparència**: desant en JPG una foto transparent,
+  a sota s'hi posa blanc (abans hi sortia negre) i el quadre de Desa ho avisa
+  (`teTransparencia`). El ✓ Fet ja diu que per desar-la transparent cal PNG.
+- Sense gràfica, al contenidor el model petit triga uns 3 segons i el gran
+  uns 15.
+
 ## La Cambra Fosca: abans i després
 
 **Mantenint premut «Abans»** (a la barra de dalt, al costat de desfer; o la
@@ -658,6 +697,13 @@ de debò i comprova:
   apuntar res a l'historial. Es va comprovar que falla si la goma pinta, si
   el segon dit no llença la ratlla, si «Abans» no ensenya res o si el botó
   no sura;
+- **treure el fons** (també serveix el repositori ella mateixa): sobre un
+  gerro blau d'una foto feta a mida, que encerti el gerro (mirant un punt de
+  cada 6, fora de la vora) amb el model petit i amb el gran; transparent,
+  blanc i d'un color; que desant en JPG el fons surti blanc i ho avisi, i en
+  PNG transparent; desfer; i que el difuminat difumini el fons, no toqui el
+  gerro i no hi deixi aura. Es va comprovar que falla amb el mapa al revés,
+  difuminant amb el gerro inclòs, sense difuminar o amb el JPG sense blanc;
 - **com a app**: la fitxa (que s'obri sola, que comenci a la Cambra Fosca,
   que l'abast no agafi tota la carpeta, el nom i els colors, i que les icones
   hi siguin i facin la mida que diuen, amb una de «maskable»), que el programa

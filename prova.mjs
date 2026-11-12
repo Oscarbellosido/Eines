@@ -518,7 +518,7 @@ await p.close();
   // aquelles peces van al processador i tornen, i amb gràfica i tot va lent.
   // El model lleuger en tenia 33 de PRelu. (La llista de les que sí que sap fer
   // és a docs/webgpu-operators.md del paquet onnxruntime-web.)
-  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus', 'migan-512']) {
+  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus', 'migan-512', 'u2netp', 'isnet-fp16']) {
     const bytes = readFileSync(join(AQUI, 'ia/models', m + '.onnx'));
     if (bytes.includes('PRelu')) problemes.push(`el model ${m} fa servir PRelu, que la gràfica no sap fer`);
   }
@@ -945,6 +945,118 @@ await p.close();
     }
     console.log(`${problemes.length > abansT ? '✗' : '✓'} esborrar coses amb el dit (pel processador): pintar amb el dit, el vermell no es desa, netejar, la goma del vermell, zoom amb dos dits, el botó que sura, esborrar la paret de maons sense tocar la resta, abans i després, desfer i refer, i una foto gran`);
     await ctx.close();
+  }
+
+  // ------------------------------------------------- treure el fons
+  // Un gerro blau sobre una paret amb taques i una taula: se sap exactament
+  // quins punts són el gerro. Transparent, blanc, d'un color i difuminat (sense
+  // aura del color del gerro al voltant), desar en JPG i PNG, desfer, i el model
+  // gran una vegada.
+  {
+    const abansF = problemes.length;
+    const q = await navegador.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+    vigila(q, 'fons');
+    await q.goto(BASE);
+    await q.waitForTimeout(1500);
+    const dades = await q.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 600; c.height = 450; const x = c.getContext('2d');
+      const g = x.createLinearGradient(0, 0, 0, 450); g.addColorStop(0, '#d2c6b0'); g.addColorStop(1, '#8c8270'); x.fillStyle = g; x.fillRect(0, 0, 600, 450);
+      x.filter = 'blur(10px)';
+      [['#b48cd2', 120, 80, 50], ['#d28c78', 200, 160, 45], ['#8cc8b4', 450, 70, 40], ['#c8b48c', 500, 220, 55]].forEach(([col, cx, cy, r]) => { x.fillStyle = col; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill(); });
+      x.filter = 'none'; x.fillStyle = '#6e4f37'; x.fillRect(0, 340, 600, 110);
+      const gg = x.createRadialGradient(260, 190, 10, 300, 250, 170); gg.addColorStop(0, '#3a74d0'); gg.addColorStop(1, '#0e2448');
+      x.fillStyle = gg; x.beginPath(); x.ellipse(300, 250, 80, 110, 0, 0, 7); x.fill();
+      x.fillRect(270, 100, 60, 60); x.beginPath(); x.ellipse(300, 100, 42, 16, 0, 0, 7); x.fill();
+      return c.toDataURL('image/png');
+    });
+    const original = Buffer.from(dades.split(',')[1], 'base64');
+    const dins = (x, y) => ((x - 300) / 80) ** 2 + ((y - 250) / 110) ** 2 < 1 || (x >= 270 && x < 330 && y >= 100 && y < 160) || ((x - 300) / 42) ** 2 + ((y - 100) / 16) ** 2 < 1;
+    const obre = async () => { await q.setInputFiles('#file', { name: 'gerro.png', mimeType: 'image/png', buffer: original }); await q.waitForTimeout(600); };
+    const fesho = async (mode, darrere) => {
+      await q.click('#tab-fons'); await q.click('#fonsMode-' + mode); await q.click('#fonsD-' + darrere);
+      await q.click('#fonsGo');
+      await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 });
+      await q.waitForTimeout(300);
+    };
+    const punts = () => q.evaluate(() => { const v = document.querySelector('#view'); return [...v.getContext('2d').getImageData(0, 0, v.width, v.height).data]; });
+    const at = (d, x, y) => d.slice((y * 600 + x) * 4, (y * 600 + x) * 4 + 4);
+    // com d'encertat: mirant un punt de cada 6, quants coincideixen amb el gerro
+    const encert = d => { let si = 0, tot = 0;
+      for (let y = 3; y < 450; y += 6) for (let x = 3; x < 600; x += 6) {
+        const m = dins(x, y), r = (y - 250) ** 2 + (x - 300) ** 2; if (Math.abs(Math.sqrt(r) - 95) < 18) continue;   // la vora, no
+        tot++; if ((at(d, x, y)[3] > 127) === m) si++; }
+      return si / tot; };
+
+    await obre();
+    await fesho('mobil', 'transparent');
+    let d = await punts();
+    const e1 = encert(d);
+    if (e1 < 0.97) problemes.push(`treient el fons (mòbil), no encerta el gerro: ${(e1 * 100).toFixed(1)}% dels punts`);
+    if (at(d, 300, 260)[3] < 250 || at(d, 30, 30)[3] > 5) problemes.push(`treient el fons, el gerro no queda sencer o el fons no queda transparent (${at(d, 300, 260)[3]}, ${at(d, 30, 30)[3]})`);
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Treu el fons (transparent)')) problemes.push('treure el fons no surt a l\'historial');
+    if (!(await q.locator('#fonsFet').innerText()).includes('PNG')) problemes.push('després de treure el fons no diu que per desar-la transparent cal PNG');
+    // desant: en JPG el fons surt blanc (i ho avisa); en PNG, transparent
+    {
+      const desa = async fmt => {
+        await q.click('#btnSave'); await q.waitForTimeout(300);
+        await q.locator('.dlg .chip', { hasText: fmt }).click(); await q.waitForTimeout(100);
+        const avis = await q.locator('#expAvis').innerText();
+        const b = q.waitForEvent('download'); await q.click('.dlg .btn.primary');
+        const f = readFileSync(await (await b).path()).toString('base64');
+        const c = await q.evaluate(async ([f, mime]) => { const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = 'data:' + mime + ';base64,' + f; });
+          const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const x = c.getContext('2d'); x.drawImage(i, 0, 0);
+          return [...x.getImageData(30, 30, 1, 1).data]; }, [f, fmt === 'JPG' ? 'image/jpeg' : 'image/png']);
+        return { avis, c };
+      };
+      const j = await desa('JPG');
+      if (!j.avis.includes('JPG no guarda')) problemes.push('desant en JPG una foto sense fons, no avisa que el fons sortirà blanc');
+      if (Math.min(...j.c.slice(0, 3)) < 235) problemes.push(`desant en JPG una foto sense fons, el fons no surt blanc (${j.c.slice(0, 3)})`);
+      const pn = await desa('PNG');
+      if (pn.c[3] > 5) problemes.push('desant en PNG, el fons no queda transparent');
+    }
+    // desfer torna el fons
+    await q.click('#btnUndo'); await q.waitForTimeout(300);
+    if ((await punts())[(30 * 600 + 30) * 4 + 3] !== 255) problemes.push('desfer no torna el fons');
+
+    // blanc i d'un color
+    await fesho('mobil', 'blanc');
+    d = await punts();
+    if (Math.min(...at(d, 30, 30).slice(0, 3)) < 245 || at(d, 300, 260)[2] < 80) problemes.push(`amb fons blanc, el fons no és blanc o el gerro no hi és (${at(d, 30, 30)}, ${at(d, 300, 260)})`);
+    await q.click('#btnUndo'); await q.waitForTimeout(300);
+    await q.click('#fonsD-color');
+    await q.evaluate(() => { const i = document.querySelector('#fonsColor'); i.value = '#00c000'; i.dispatchEvent(new Event('input')); });
+    await fesho('mobil', 'color');
+    d = await punts();
+    { const c = at(d, 30, 30); if (!(c[1] > 170 && c[0] < 30 && c[2] < 30)) problemes.push(`amb fons de color verd, el fons és ${c.slice(0, 3)}`); }
+    await q.click('#btnUndo'); await q.waitForTimeout(300);
+
+    // difuminat: el fons es difumina, el gerro no, i al voltant del gerro no hi
+    // queda una aura blava (el fons es difumina sense el gerro)
+    const abans = await punts();
+    await fesho('mobil', 'difuminat');
+    d = await punts();
+    // la nitidesa: el salt més gran d'un punt al de sota, a la vora de la taula
+    // (que és ben nítida); difuminada, el salt es reparteix i es fa petit
+    const nitidesa = dd => { let s = 0, n = 0; const l = (x, y) => { const v = at(dd, x, y); return (v[0] + v[1] + v[2]) / 3; };
+      for (let x = 30; x < 150; x++) { let m = 0; for (let y = 320; y < 360; y++) m = Math.max(m, Math.abs(l(x, y + 1) - l(x, y))); s += m; n++; } return s / n; };
+    if (!(nitidesa(d) < nitidesa(abans) * 0.6)) problemes.push(`amb el fons difuminat, el fons no està més difuminat (nitidesa ${nitidesa(d).toFixed(2)} contra ${nitidesa(abans).toFixed(2)})`);
+    { const g = at(d, 300, 260), g0 = at(abans, 300, 260); if (Math.max(...g.map((v, i) => Math.abs(v - g0[i]))) > 6) problemes.push('amb el fons difuminat, el gerro també ha canviat'); }
+    // a 12 punts de la vora del gerro, la paret (que era llisa) ha de ser com era:
+    // amb aura, s'hi enfosqueix i s'hi torna blavosa fins a 25 nivells
+    for (const [x, y] of [[392, 250], [208, 250], [300, 372]]) {
+      const c = at(d, x, y), c0 = at(abans, x, y);
+      if (Math.max(...[0, 1, 2].map(i => Math.abs(c[i] - c0[i]))) > 8) problemes.push(`amb el fons difuminat, al voltant del gerro hi queda una aura blava (${x},${y}: ${c.slice(0, 3)} i abans ${c0.slice(0, 3)})`);
+    }
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Difumina el fons')) problemes.push('difuminar el fons no surt a l\'historial');
+    await q.click('#btnUndo'); await q.waitForTimeout(300);
+
+    // el model gran (el de l'ordinador), una vegada
+    await fesho('ordinador', 'transparent');
+    const e2 = encert(await punts());
+    if (e2 < 0.97) problemes.push(`treient el fons (ordinador), no encerta el gerro: ${(e2 * 100).toFixed(1)}% dels punts`);
+    if (!(await q.locator('#fonsFet').innerText()).includes('amb el processador')) problemes.push('després de treure el fons no diu amb què s\'ha fet');
+    console.log(`${problemes.length > abansF ? '✗' : '✓'} treure el fons (pel processador): transparent (encerta el ${(e1 * 100).toFixed(1)}% amb el model petit i el ${(e2 * 100).toFixed(1)}% amb el gran), blanc, d'un color, difuminat sense aura, desar en JPG i PNG, i desfer`);
+    await q.close();
   }
   servidor.close();
 }

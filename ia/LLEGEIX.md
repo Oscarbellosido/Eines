@@ -1,8 +1,8 @@
 # Els fitxers de la IA de La Cambra Fosca
 
 Aquesta carpeta és l'única excepció a la norma d'«un sol fitxer» de les Eines.
-La fan servir la pestanya **Amplia** i l'eina **Esborra coses (IA)** de La
-Cambra Fosca, i només es baixa el que cal quan algú les fa servir. Res d'aquí no envia cap foto enlloc: el model corre dins
+La fan servir les pestanyes **Amplia** i **Fons** i l'eina **Esborra coses
+(IA)** de La Cambra Fosca, i només es baixa el que cal quan algú les fa servir. Res d'aquí no envia cap foto enlloc: el model corre dins
 del navegador.
 
 ## D'on surt cada cosa
@@ -46,6 +46,34 @@ L'entrada són quatre canals de 512 × 512: la màscara menys 0,5 (1 = es queda,
 0 = s'esborra) i la foto de −1 a 1 amb el forat a zero. La sortida, la foto
 sencera de −1 a 1 (només se n'agafa el forat).
 
+### `models/u2netp.onnx` i `models/isnet-fp16.onnx` — treure el fons
+
+| Fitxer | Model | Projecte | Per a què |
+|---|---|---|---|
+| `u2netp.onnx` | U²-Net petit (4,4 MB) | https://github.com/xuebinqin/U-2-Net | el mode **Mòbil** |
+| `isnet-fp16.onnx` | IS-Net general (86 MB) | https://github.com/xuebinqin/DIS | el mode **Ordinador** |
+
+Tots dos són de Xuebin Qin i altres, amb llicència **Apache 2.0**: és a
+`models/LICENSE-U2NET` i `models/LICENSE-ISNET`, tal com la publiquen. Els
+originals en format ONNX són els que publica el projecte rembg (Daniel Gatis,
+llicència MIT) a https://github.com/danielgatis/rembg/releases/tag/v0.0.0, amb
+aquestes empremtes:
+
+```
+309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8  u2netp.onnx
+60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a  isnet-general-use.onnx
+```
+
+**Canvis respecte dels originals** (la llicència Apache demana dir-ho): a tots
+dos s'hi ha deixat només la primera sortida, que és la que es fa servir; i a
+l'IS-Net els pesos es desen amb la meitat de precisió (float16) i es tornen a
+fer normals en carregar-lo, perquè el fitxer passi de 178 MB a 86 MB. El
+resultat canvia menys d'una mil·lèsima.
+
+L'entrada és la foto reduïda a 320 × 320 (U²-Net) o 1024 × 1024 (IS-Net),
+dividida pel punt més clar i amb la mitjana i la desviació de cada model, com
+fa rembg. La sortida diu, per a cada punt, si és del davant (1) o del fons (0).
+
 ### `ort/` — el motor
 
 **ONNX Runtime Web** 1.31.1, de Microsoft (paquet `onnxruntime-web` de npm).
@@ -84,4 +112,11 @@ peces que la gràfica sap fer anar.
 
 ```
 python conversio/fes_migan.py migan_traced.pt models/migan-512.onnx
+```
+
+Els de treure el fons surten de `conversio/fes_fons.py`, a partir dels dos
+originals de rembg:
+
+```
+python conversio/fes_fons.py <carpeta amb u2netp.onnx i isnet-general-use.onnx> models
 ```

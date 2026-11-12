@@ -122,7 +122,9 @@ button{background:none;border:0;cursor:pointer}
 .stage[data-bg="light"]{background-color:#cfd2d5}
 .stage.panning{cursor:grabbing}
 .wrap{position:relative;flex:0 0 auto;box-shadow:0 10px 40px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}
-#view{display:block;touch-action:none;image-rendering:auto}
+#view{display:block;touch-action:none;image-rendering:auto;
+  /* on la foto és transparent (sense fons), es veu un escaquer, com a tots els editors */
+  background:repeating-conic-gradient(#3b3e42 0 25%,#2b2d30 0 50%) 0 0/16px 16px}
 .wrap[data-tool="brush"] #view,.wrap[data-tool="eraser"] #view,.wrap[data-tool="clone"] #view,.wrap[data-tool="treu"] #view{cursor:none}
 .wrap[data-tool="text"] #view{cursor:text}
 .wrap[data-tool="pick"] #view{cursor:crosshair}
@@ -578,6 +580,7 @@ input.mida-num{
         <button class="tab" role="tab" id="tab-fil" aria-selected="false" aria-controls="pane-fil">Filtres</button>
         <button class="tab" role="tab" id="tab-his" aria-selected="false" aria-controls="pane-his">Historial</button>
         <button class="tab" role="tab" id="tab-amp" aria-selected="false" aria-controls="pane-amp">Amplia</button>
+        <button class="tab" role="tab" id="tab-fons" aria-selected="false" aria-controls="pane-fons">Fons</button>
       </div>
       <div class="scroll">
         <div class="pane on" id="pane-adj" role="tabpanel" aria-labelledby="tab-adj"></div>
@@ -585,6 +588,7 @@ input.mida-num{
           <div class="fgrid" id="fgrid"></div>
         </div>
         <div class="pane" id="pane-amp" role="tabpanel" aria-labelledby="tab-amp"></div>
+        <div class="pane" id="pane-fons" role="tabpanel" aria-labelledby="tab-fons"></div>
         <div class="pane" id="pane-his" role="tabpanel" aria-labelledby="tab-his">
           <div class="hlist" id="hlist"></div>
         </div>
@@ -2220,6 +2224,7 @@ function adopt(canvas,name,isSample){
   fitToStage(); push('Obre '+S.name);
   if(S.tool==='crop') startCrop();
   if($('#pane-amp').classList.contains('on')) pintaAmplia();
+  if($('#pane-fons').classList.contains('on')) pintaFons();
   say(isSample
     ? 'Imatge d\'exemple generada per la pàgina. Obre\'n una teva per començar.'
     : S.src.width+' × '+S.src.height+' px carregats.');
@@ -2301,6 +2306,7 @@ function saveDialog(){
   if(!baseCanvas) return;
   let fmt='png', quality=92, nameInput, pintaMida=()=>{}, okDesa=null;
   const M=Object.assign({ pw:baseCanvas.width, massa:false }, midaRecordada());
+  const transparent=teTransparencia(baseCanvas);
   midaOberta=M;
   const d=dialog('Desa la imatge',body=>{
     const f1=el('div','field'); f1.appendChild(el('span',null,'Format'));
@@ -2386,6 +2392,7 @@ function saveDialog(){
         x+=' Si l\'has d\'imprimir, amplia-la abans amb IA (pestanya Amplia).';
         a.push(x);
       }
+      if(fmt==='jpeg' && transparent) a.push('El JPG no guarda la transparència: el fons sortirà blanc. Per tenir-lo transparent, desa en PNG.');
       if(M.unitat!=='px' && fmt==='webp') a.push('El WEBP no guarda la mida en mil·límetres: per imprimir, millor PNG o JPG.');
       avis.textContent=a.join(' ');
       avis.hidden=!a.length;
@@ -2408,6 +2415,8 @@ function saveDialog(){
     const w=Math.max(1,round(M.pw)), h=Math.max(1,round(M.pw*baseCanvas.height/baseCanvas.width));
     const out=mkCanvas(w,h);
     renderInto(out,w,h,S.adj);
+    // el JPG no sap què és transparent i hi posaria negre: a sota, blanc
+    if(fmt==='jpeg'){ const cx=out.getContext('2d'); cx.globalCompositeOperation='destination-over'; cx.fillStyle='#fff'; cx.fillRect(0,0,w,h); cx.globalCompositeOperation='source-over'; }
     const mime='image/'+fmt;
     out.toBlob(async blob=>{
       if(!blob){ say('No s\'ha pogut generar el fitxer.'); okBtn.disabled=false; okBtn.textContent='Desa'; return; }
@@ -2437,6 +2446,16 @@ function midaRecordada(){
     const m=JSON.parse(localStorage.getItem('cambra-fosca-mida')||'{}');
     return { unitat:['px','mm','cm'].includes(m.unitat)?m.unitat:'px', ppp:m.ppp>=30&&m.ppp<=1200?m.ppp:300 };
   }catch(e){ return { unitat:'px', ppp:300 }; }
+}
+// Si la foto té cap tros transparent (per exemple, sense fons): es mira en petit
+function teTransparencia(c){
+  try{
+    const m=mkCanvas(96,96), x=m.getContext('2d',{willReadFrequently:true});
+    x.drawImage(c,0,0,96,96);
+    const d=x.getImageData(0,0,96,96).data;
+    for(let k=3;k<d.length;k+=4) if(d[k]<250) return true;
+  }catch(e){}
+  return false;
 }
 let midaOberta=null;
 function desaPrefMida(m){ try{ localStorage.setItem('cambra-fosca-mida',JSON.stringify({unitat:m.unitat,ppp:m.ppp})); }catch(e){} }
@@ -2560,6 +2579,18 @@ const IA={
   error:null,
   // «Esborra coses»: MI-GAN, de Picsart. Sempre treballa a 512 × 512.
   treu:{ fitxer:'models/migan-512.onnx', mb:25.5, N:512, sessio:null, motorReal:null, errorGPU:null, ultim:null },
+  // «Treu el fons»: U²-Net petit al mòbil, IS-Net a l'ordinador (el mateix
+  // mode que a l'Amplia). Diuen, per a cada punt, si és del davant (1) o del fons (0).
+  fons:{
+    models:{
+      mobil:{ fitxer:'models/u2netp.onnx', mb:4.4, N:320, mitjana:[0.485,0.456,0.406], desv:[0.229,0.224,0.225],
+              desc:'Model petit. Va ràpid; les vores queden menys fines.' },
+      ordinador:{ fitxer:'models/isnet-fp16.onnx', mb:86.2, N:1024, mitjana:[0.5,0.5,0.5], desv:[1,1,1],
+              desc:'Model gran: vores més fines, també amb cabells. Més lent sense gràfica.' },
+    },
+    sessio:null, sessioDe:null, motorReal:null, errorGPU:null,
+    darrere:'transparent', color:'#ffffff', fet:null, error:null,
+  },
 };
 
 /* El que és un mòbil, de partida: pantalla de dit i petita. Es pot canviar. */
@@ -2577,7 +2608,7 @@ async function miraBaixats(){
   const c=await cauIA(); if(!c) return;
   // la primera versió del model lleuger, que la gràfica no sabia fer anar sencera
   try{ await c.delete(urlIA('models/realesr-general-x4v3.onnx')); }catch(e){}
-  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
+  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, IA.fons.models.mobil.fitxer, IA.fons.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
   for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
 }
 /* Baixa un fitxer gros una sola vegada: després el treu de la memòria del
@@ -3211,16 +3242,248 @@ async function fesTreu(){
 }
 
 /* ===================================================================
+   16c. treure el fons
+   Una xarxa neuronal diu, per a cada punt de la foto, si és del que hi ha al
+   davant (una persona, un objecte) o del fons. Amb això, el fons es fa
+   transparent, d'un color, o es difumina com a les fotos de retrat del mòbil.
+   Mateix motor que ampliar i esborrar; la foto no surt de l'aparell.
+=================================================================== */
+const DARRERE=[['transparent','Transparent'],['blanc','Blanc'],['color','Un color'],['difuminat','Difuminat']];
+function pintaFons(){
+  const pane=$('#pane-fons'); if(!pane || !baseCanvas) return;
+  const F=IA.fons, md=F.models[IA.mode];
+  pane.textContent='';
+  if(F.fet && F.fet.src===S.src){
+    const ok=el('div','ia-fet'); ok.id='fonsFet'; ok.innerHTML='<b>✓ Fet.</b> '+F.fet.text; pane.appendChild(ok);
+  }
+  const g1=el('div','grp'); g1.appendChild(el('h4',null,'Treu el fons'));
+  g1.appendChild(el('div','tiny','Deixa sol el que hi ha al davant (una persona, un animal, un objecte) i en treu el fons, o el difumina. Va millor quan el que hi ha al davant es distingeix bé. La foto no surt del teu aparell.'));
+  pane.appendChild(g1);
+
+  const g2=el('div','grp'); g2.appendChild(el('h4',null,'On ho fas'));
+  const modes=el('div','modes');
+  for(const k of ['mobil','ordinador']){
+    const m=F.models[k], b=el('button','mode');
+    b.type='button'; b.id='fonsMode-'+k; b.setAttribute('aria-pressed', k===IA.mode?'true':'false');
+    b.innerHTML='<b>'+IA.models[k].nom+'<em>'+mb(m.mb)+'</em></b><span>'+m.desc+'</span>';
+    b.onclick=()=>{ IA.mode=k; IA.factorTriat=false; pintaFons(); };
+    modes.appendChild(b);
+  }
+  g2.appendChild(modes); pane.appendChild(g2);
+
+  const g3=el('div','grp'); g3.appendChild(el('h4',null,'Què hi poso al darrere'));
+  const chips=el('div','chips');
+  for(const [v,lab] of DARRERE){
+    const c=el('button','chip',lab); c.type='button'; c.id='fonsD-'+v;
+    c.setAttribute('aria-pressed', v===F.darrere?'true':'false');
+    c.onclick=()=>{ F.darrere=v; pintaFons(); };
+    chips.appendChild(c);
+  }
+  g3.appendChild(chips);
+  if(F.darrere==='color'){
+    const row=el('div','optrow');
+    const sw=el('button','swatch'); sw.type='button'; sw.title='Color del fons';
+    const inp=document.createElement('input'); inp.type='color'; inp.value=F.color; inp.id='fonsColor';
+    inp.oninput=()=>{ F.color=inp.value; sw.style.background=inp.value; };
+    sw.style.background=F.color; sw.appendChild(inp);
+    sw.onclick=e=>{ if(e.target!==inp) inp.click(); };
+    row.append(sw, el('span','tiny','Toca el quadre per triar el color'));
+    g3.appendChild(row);
+  }
+  const expl={
+    transparent:'Es veu com un escaquer. Per desar-la transparent, desa en PNG: el JPG no guarda la transparència i hi posaria blanc.',
+    blanc:'Com les fotos de carnet o de les botigues per internet.',
+    color:'Un fons llis del color que triïs.',
+    difuminat:'Com el mode retrat del mòbil: el fons es queda, però borrós, i el que hi ha al davant destaca.',
+  }[F.darrere];
+  g3.appendChild(el('div','tiny',expl));
+  pane.appendChild(g3);
+
+  const linies=el('div','ia-linies'); linies.id='fonsLinies';
+  const linia=(t,c)=>linies.appendChild(el('div','tiny'+(c?' '+c:''),t));
+  if(IA.motor==null) linia('Mirant si aquest aparell pot fer servir la gràfica…');
+  else {
+    const falta=[], mot=IA.motors[IA.motor];
+    if(!IA.baixats[mot.wasm] && IA.carregat!==IA.motor) falta.push(mot.mb);
+    if(!IA.baixats[md.fitxer] && !(F.sessio && F.sessioDe===IA.mode)) falta.push(md.mb);
+    const suma=falta.reduce((a,b)=>a+b,0);
+    linia(suma ? 'La primera vegada es baixen '+mb(suma)+'. Després queden desats en aquest navegador, també sense connexió.'
+               : 'La IA ja és en aquest navegador: no cal baixar res.');
+    if(IA.motor==='cpu' && IA.mode==='ordinador') linia('Sense gràfica, el model gran pot trigar una estona.','ia-avis');
+  }
+  if(F.error) linia('L\'última vegada no ha funcionat: '+F.error+'.','ia-mal');
+  pane.appendChild(linies);
+
+  const go=el('button','btn primary',F.darrere==='difuminat'?'Difumina el fons':'Treu el fons'); go.type='button'; go.id='fonsGo';
+  go.style.cssText='width:100%;height:38px;justify-content:center;font-size:13px';
+  go.disabled=IA.motor==null || IA.treballant;
+  go.onclick=fesFons;
+  pane.appendChild(go);
+}
+
+async function preparaSessioFons(progres){
+  const F=IA.fons;
+  if(F.sessio && F.sessioDe===IA.mode) return F.sessio;
+  if(F.sessio){ try{ await F.sessio.release(); }catch(e){} F.sessio=null; F.sessioDe=null; }
+  const md=F.models[IA.mode];
+  const bytes=await baixaIA(md.fitxer, (a,t)=>progres('la IA',a,t||md.mb*1048576));
+  progres('preparant el model',0,0);
+  const r=await creaSessio(bytes);
+  F.sessio=r.sessio; F.motorReal=r.motorReal; F.errorGPU=r.errorGPU; F.sessioDe=IA.mode;
+  return F.sessio;
+}
+
+/* Què és del davant. El model mira la foto reduïda a 320 o 1024 punts de
+   costat i en treu un mapa (1 = davant, 0 = fons); el mapa es torna a fer de
+   la mida de la foto, amb les vores suaus. Es prepara com al projecte
+   d'on surten els models (rembg): dividida pel punt més clar, i amb la
+   mitjana i la desviació de cada model. */
+async function alfaDelDavant(src, sessio, md){
+  const N=md.N, W=src.width, H=src.height;
+  const c=mkCanvas(N,N), x=c.getContext('2d',{willReadFrequently:true});
+  x.imageSmoothingQuality='high';
+  x.drawImage(src,0,0,N,N);
+  const d=x.getImageData(0,0,N,N).data, P=N*N, e=new Float32Array(3*P);
+  let mx=1; for(let k=0;k<d.length;k+=4) mx=Math.max(mx,d[k],d[k+1],d[k+2]);
+  for(let i=0,k=0;i<P;i++,k+=4)
+    for(let ch=0;ch<3;ch++) e[ch*P+i]=(d[k+ch]/mx-md.mitjana[ch])/md.desv[ch];
+  const res=await sessio.run({[sessio.inputNames[0]]: new ort.Tensor('float32',e,[1,3,N,N])});
+  const sortida=res[sessio.outputNames[0]], y=sortida.data;
+  let lo=Infinity, hi=-Infinity; for(let i=0;i<P;i++){ if(y[i]<lo) lo=y[i]; if(y[i]>hi) hi=y[i]; }
+  const esc=hi-lo>1e-6 ? 1/(hi-lo) : 0;
+  // el mapa, petit: blanc amb la transparència que diu el model. Els punts
+  // gairebé segurs es fan segurs del tot: si no, el fons quedaria com una boira
+  const petita=mkCanvas(N,N), px=petita.getContext('2d',{willReadFrequently:true});
+  const pm=px.createImageData(N,N), q=pm.data;
+  for(let i=0,k=0;i<P;i++,k+=4){
+    const a=clamp(((y[i]-lo)*esc-0.04)/0.92,0,1);
+    q[k]=q[k+1]=q[k+2]=255; q[k+3]=a*255;
+  }
+  if(sortida.dispose) sortida.dispose();
+  px.putImageData(pm,0,0);
+  // de la mida de la foto
+  const gran=mkCanvas(W,H), gx=gran.getContext('2d',{willReadFrequently:true});
+  gx.imageSmoothingQuality='high';
+  gx.drawImage(petita,0,0,W,H);
+  const g=gx.getImageData(0,0,W,H).data, alfa=new Uint8ClampedArray(W*H);
+  for(let i=0,k=3;i<alfa.length;i++,k+=4) alfa[i]=g[k];
+  return { alfa, petita };
+}
+
+/* El fons difuminat, sense que el del davant s'hi escampi: es difumina el
+   fons tot sol (cada punt pesa el que té de fons) i es divideix pel pes. Si
+   es difuminés la foto sencera, al voltant de la persona quedaria una aura
+   del seu color. Es fa a 900 punts com a molt (difuminat, no es nota) i es
+   torna a fer gran. */
+function fonsDifuminat(src, petita){
+  const W=src.width, H=src.height, s=Math.min(1,900/Math.max(W,H));
+  const w=Math.max(1,round(W*s)), h=Math.max(1,round(H*s));
+  const c=mkCanvas(w,h), x=c.getContext('2d',{willReadFrequently:true});
+  x.imageSmoothingQuality='high';
+  x.drawImage(src,0,0,w,h); const im=x.getImageData(0,0,w,h), d=im.data;
+  x.clearRect(0,0,w,h); x.drawImage(petita,0,0,w,h); const a=x.getImageData(0,0,w,h).data;
+  const p=new Uint8ClampedArray(d.length), tot=new Uint8ClampedArray(d);
+  for(let k=0;k<d.length;k+=4){
+    const wg=1-a[k+3]/255;
+    p[k]=d[k]*wg; p[k+1]=d[k+1]*wg; p[k+2]=d[k+2]*wg; p[k+3]=wg*255;
+  }
+  const r=Math.max(2,Math.max(w,h)*0.022);
+  boxBlur(p,w,h,r,3); boxBlur(tot,w,h,r,3);
+  for(let k=0;k<d.length;k+=4){
+    const pes=p[k+3];
+    if(pes>24){ d[k]=p[k]*255/pes; d[k+1]=p[k+1]*255/pes; d[k+2]=p[k+2]*255/pes; }
+    else { d[k]=tot[k]; d[k+1]=tot[k+1]; d[k+2]=tot[k+2]; }   // al mig d'una persona gran no hi ha fons a prop
+    d[k+3]=255;
+  }
+  x.putImageData(im,0,0);
+  const gran=mkCanvas(W,H), gx=gran.getContext('2d',{willReadFrequently:true});
+  gx.imageSmoothingQuality='high'; gx.drawImage(c,0,0,W,H);
+  return gx.getImageData(0,0,W,H).data;
+}
+
+function componFons(src, {alfa, petita}, darrere, color){
+  const W=src.width, H=src.height;
+  const out=mkCanvas(W,H), ox=out.getContext('2d',{willReadFrequently:true});
+  ox.drawImage(src,0,0);
+  const im=ox.getImageData(0,0,W,H), d=im.data;
+  if(darrere==='transparent'){
+    for(let i=0,k=3;i<alfa.length;i++,k+=4) d[k]=d[k]*alfa[i]/255;
+  } else {
+    let bg=null, c=[255,255,255];
+    if(darrere==='color'){ const n=parseInt(color.slice(1),16); c=[n>>16&255,n>>8&255,n&255]; }
+    if(darrere==='difuminat') bg=fonsDifuminat(src, petita);
+    for(let i=0,k=0;i<alfa.length;i++,k+=4){
+      const a=alfa[i]/255*d[k+3]/255, b=1-a;
+      if(bg){ d[k]=d[k]*a+bg[k]*b; d[k+1]=d[k+1]*a+bg[k+1]*b; d[k+2]=d[k+2]*a+bg[k+2]*b; }
+      else  { d[k]=d[k]*a+c[0]*b;  d[k+1]=d[k+1]*a+c[1]*b;  d[k+2]=d[k+2]*a+c[2]*b; }
+      d[k+3]=255;
+    }
+  }
+  ox.putImageData(im,0,0);
+  return out;
+}
+
+async function fesFons(){
+  if(IA.treballant || !baseCanvas) return;
+  if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
+  cancelaEndreca();
+  if(cropOn){ endCrop(false); setTool('move'); }
+  hideTextEdit();
+  const F=IA.fons, md=F.models[IA.mode], src=baseCanvas, darrere=F.darrere, t0=performance.now();
+  IA.treballant=true; IA.atura=false; F.error=null;
+  mantenEncesa();
+  try{
+    const progres=(que,a,t)=>{
+      if(IA.atura) throw new Error('aturat');
+      vel(t ? 'Baixant '+que+'…' : 'Preparant la IA…', t ? a/t : 0, t ? mb(a/1048576)+' de '+mb(t/1048576)+' · només la primera vegada' : 'Només la primera vegada.');
+    };
+    vel('Preparant…',0,'');
+    await preparaMotor(progres);
+    const sessio=await preparaSessioFons(progres);
+    if(IA.atura) throw new Error('aturat');
+    vel('Buscant què hi ha al davant…',1,F.motorReal==='gpu'?'Amb la gràfica.':'Amb el processador: pot trigar uns segons.');
+    const mapa=await alfaDelDavant(src, sessio, md);
+    if(IA.atura) throw new Error('aturat');
+    vel(darrere==='difuminat'?'Difuminant el fons…':'Traient el fons…',1,'');
+    await new Promise(r=>setTimeout(r,30));     // que el vel es pinti abans de la feina
+    const nova=componFons(src, mapa, darrere, F.color);
+    // Com quan s'esborra o s'amplia, la foto nova passa a ser la foto: els
+    // girs i el retall ja hi són, les pinzellades no es mouen i desfer torna
+    // a la d'abans.
+    S.src=nova; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
+    buildBase(); scheduleRender();
+    const nom={transparent:'transparent',blanc:'blanc',color:'de color',difuminat:'difuminat'}[darrere];
+    push(darrere==='difuminat'?'Difumina el fons':'Treu el fons ('+nom+')');
+    const temps=minuts((performance.now()-t0)/1000);
+    F.fet={ src:S.src, text:(darrere==='difuminat'?'Fons difuminat':'Fons '+nom)+' en '+temps+', '+(F.motorReal==='gpu'?'amb la gràfica':'amb el processador')+
+      '. Si s\'hi ha menjat un tros o se n\'ha deixat, desfés-ho i prova el mode '+(IA.mode==='mobil'?'Ordinador, que és més fi':'Mòbil')+'.'+
+      (darrere==='transparent'?' Per desar-la transparent, en <b>PNG</b>.':'') };
+    say((darrere==='difuminat'?'Fons difuminat':'Fons tret')+' en '+temps+'. Si no t\'agrada, desfés-ho.');
+  }catch(e){
+    const msg=String(e&&e.message||e);
+    if(msg==='aturat') say('Aturat. La foto és com era.');
+    else { F.error=msg; say('No s\'ha pogut treure el fons: '+msg+'.'); console.warn('Fons:',e); }
+  }finally{
+    IA.treballant=false; IA.atura=false;
+    try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
+    bloqueigPantalla=null;
+    $('#vel').hidden=true;
+    pintaFons();
+  }
+}
+
+/* ===================================================================
    17. pestanyes, ratlla d'estat i teclat
 =================================================================== */
-['adj','fil','his','amp'].forEach(id=>{
+['adj','fil','his','amp','fons'].forEach(id=>{
   $('#tab-'+id).onclick=()=>{
-    ['adj','fil','his','amp'].forEach(o=>{
+    ['adj','fil','his','amp','fons'].forEach(o=>{
       $('#tab-'+o).setAttribute('aria-selected', o===id?'true':'false');
       $('#pane-'+o).classList.toggle('on', o===id);
     });
     if(id==='fil') drawThumbs();
     if(id==='amp') pintaAmplia();
+    if(id==='fons') pintaFons();
   };
 });
 let msgTimer=null;
@@ -3284,7 +3547,7 @@ buildFilters();
 setTool('move');
 adopt(makeSample(),'exemple.png',true);
 requestAnimationFrame(()=>{ fitToStage(); drawThumbs(); });
-miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats(); pintaAmplia(); estatTreu(); });
+miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats(); pintaAmplia(); pintaFons(); estatTreu(); });
 
 if(window.claude && typeof window.claude.use==='function'){
   window.claude.use('downloads').then(d=>{ downloads=d; }).catch(()=>{});
