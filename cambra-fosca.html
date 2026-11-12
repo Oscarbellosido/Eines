@@ -403,8 +403,13 @@ select{
 }
 .dlg{
   width:min(420px,100%);background:var(--bg-2);border:1px solid var(--line);border-radius:10px;
-  box-shadow:0 24px 60px rgba(0,0,0,.6);overflow:hidden;
+  box-shadow:0 24px 60px rgba(0,0,0,.6);overflow:auto;max-height:calc(100dvh - 32px);
 }
+/* la mida en desar: ample × alt, i la resolució si és per imprimir */
+.mida-fila{display:flex;align-items:center;gap:8px}
+.field input.mida-num{width:96px;min-width:0;text-align:right}
+.mida-fila .x{color:var(--fg-faint)}
+.mida-avis{color:#f4c789}
 .dlg header{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
 .dlg header h3{margin:0;font-size:13.5px;font-weight:600}
 .dlg .content{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
@@ -2268,15 +2273,17 @@ function baseName(){
 }
 function saveDialog(){
   if(!baseCanvas) return;
-  let fmt='png', quality=92, scale=1, nameInput;
-  dialog('Desa la imatge',body=>{
+  let fmt='png', quality=92, nameInput, pintaMida=()=>{}, okDesa=null;
+  const M=Object.assign({ pw:baseCanvas.width, massa:false }, midaRecordada());
+  midaOberta=M;
+  const d=dialog('Desa la imatge',body=>{
     const f1=el('div','field'); f1.appendChild(el('span',null,'Format'));
     const chips=el('div','chips');
     [['png','PNG'],['jpeg','JPG'],['webp','WEBP']].forEach(([v,lab])=>{
       const c=el('button','chip',lab); c.type='button';
       c.setAttribute('aria-pressed',v===fmt?'true':'false');
       c.onclick=()=>{ fmt=v; chips.querySelectorAll('.chip').forEach(n=>n.setAttribute('aria-pressed',n===c?'true':'false'));
-        qrow.hidden=(fmt==='png'); updName(); };
+        qrow.hidden=(fmt==='png'); updName(); pintaMida(); };
       chips.appendChild(c);
     });
     f1.appendChild(chips); body.appendChild(f1);
@@ -2288,31 +2295,86 @@ function saveDialog(){
     qr.oninput=()=>{ quality=+qr.value; qv.textContent=quality+'%'; };
     qrow.append(qr,qv); body.appendChild(qrow);
 
+    // La mida: en píxels, o en mil·límetres o centímetres per imprimir. Sempre
+    // proporcional: escrivint l'ample, l'alt es calcula sol (i al revés). Per
+    // una altra forma, primer es retalla.
     const f2=el('div','field'); f2.appendChild(el('span',null,'Mida'));
-    const schips=el('div','chips');
-    [[1,'100%'],[0.5,'50%'],[0.25,'25%']].forEach(([v,lab])=>{
-      const c=el('button','chip',lab); c.type='button';
-      c.setAttribute('aria-pressed',v===scale?'true':'false');
-      c.onclick=()=>{ scale=v; schips.querySelectorAll('.chip').forEach(n=>n.setAttribute('aria-pressed',n===c?'true':'false')); dims.textContent=dimText(); };
-      schips.appendChild(c);
+    const uchips=el('div','chips');
+    [['px','px'],['mm','mm'],['cm','cm']].forEach(([v,lab])=>{
+      const c=el('button','chip',lab); c.type='button'; c.id='expU-'+v;
+      c.setAttribute('aria-pressed',v===M.unitat?'true':'false');
+      c.onclick=()=>{ M.unitat=v; uchips.querySelectorAll('.chip').forEach(n=>n.setAttribute('aria-pressed',n===c?'true':'false')); recordaMida(); pintaMida(); };
+      uchips.appendChild(c);
     });
-    f2.appendChild(schips);
-    const dimText=()=>round(baseCanvas.width*scale)+' × '+round(baseCanvas.height*scale)+' px';
-    const dims=el('div','tiny',dimText()); f2.appendChild(dims);
+    const fila=el('div','mida-fila');
+    const camp=id=>{ const i=document.createElement('input'); i.type='text'; i.inputMode='decimal'; i.id=id; i.className='mida-num'; i.autocomplete='off'; return i; };
+    const inW=camp('expW'), inH=camp('expH'), ulab=el('span','tiny');
+    fila.append(inW, el('span','x','×'), inH, ulab);
+    inW.oninput=()=>{ const v=llegeixNum(inW.value); if(v>0){ M.pw=deUnitat(v); pintaMida('w'); } };
+    inH.oninput=()=>{ const v=llegeixNum(inH.value); if(v>0){ M.pw=deUnitat(v)*W0/H0; pintaMida('h'); } };
+    inW.onblur=inH.onblur=()=>pintaMida();
+    const rrow=el('div','mida-fila');
+    const inR=camp('expPPP'); inR.inputMode='numeric';
+    rrow.append(el('span','tiny','Resolució'), inR, el('span','tiny','ppp (punts per polzada)'));
+    inR.oninput=()=>{ const v=llegeixNum(inR.value); if(v>=30&&v<=1200){ const fisic=aUnitat(M.pw); M.ppp=round(v); M.pw=deUnitat(fisic); recordaMida(); pintaMida('r'); } };
+    inR.onblur=()=>pintaMida();
+    const pchips=el('div','chips');
+    [[1,'Com és'],[0.5,'50%'],[0.25,'25%']].forEach(([f,lab])=>{
+      const c=el('button','chip',lab); c.type='button'; c.onclick=()=>{ M.pw=W0*f; pintaMida(); };
+      pchips.appendChild(c);
+    });
+    const dims=el('div','tiny'); dims.id='expDims';
+    const avis=el('div','tiny mida-avis'); avis.id='expAvis';
+    f2.append(fila, uchips, rrow, pchips, dims, avis);
     body.appendChild(f2);
+    const W0=baseCanvas.width, H0=baseCanvas.height;
+    const MM={mm:1, cm:10};
+    function aUnitat(px){ return M.unitat==='px' ? px : px/M.ppp*25.4/MM[M.unitat]; }
+    function deUnitat(v){ return M.unitat==='px' ? v : v*MM[M.unitat]/25.4*M.ppp; }
+    const escriu=v=>M.unitat==='px' ? String(round(v)) : String(Math.round(v*10)/10).replace('.',',');
+    pintaMida=quin=>{
+      const w=Math.max(1,round(M.pw)), h=Math.max(1,round(M.pw*H0/W0));
+      if(quin!=='w') inW.value=escriu(aUnitat(M.pw));
+      if(quin!=='h') inH.value=escriu(aUnitat(M.pw*H0/W0));
+      if(quin!=='r') inR.value=String(M.ppp);
+      ulab.textContent=M.unitat;
+      rrow.hidden=M.unitat==='px';
+      let t='El fitxer farà '+w+' × '+h+' px.';
+      if(M.unitat!=='px') t+=' Imprès a '+M.ppp+' ppp: '+escriu(aUnitat(M.pw))+' × '+escriu(aUnitat(M.pw*H0/W0))+' '+M.unitat+'.';
+      dims.textContent=t;
+      const a=[];
+      const mp=w*h/1e6;
+      M.massa = w>16384 || h>16384 || mp>MAX_DESA_MP;
+      if(M.massa) a.push('És massa gran per a aquest aparell ('+mp.toFixed(0)+' megapíxels; com a molt '+MAX_DESA_MP+'). Fes-la més petita'+(M.unitat==='px'?'':' o baixa la resolució')+'.');
+      else if(w>W0*1.01){
+        let x='La foto només té '+W0+' × '+H0+' px: per fer-la tan gran s\'estirarà i quedarà tova.';
+        if(M.unitat!=='px') x+=' Amb els píxels que té, a aquesta mida sortiria a '+round(W0/(aUnitat(M.pw)*MM[M.unitat]/25.4))+' ppp.';
+        x+=' Si l\'has d\'imprimir, amplia-la abans amb IA (pestanya Amplia).';
+        a.push(x);
+      }
+      if(M.unitat!=='px' && fmt==='webp') a.push('El WEBP no guarda la mida en mil·límetres: per imprimir, millor PNG o JPG.');
+      avis.textContent=a.join(' ');
+      avis.hidden=!a.length;
+      if(okDesa) okDesa.disabled=M.massa;
+    };
+    M.pw=W0;
 
     const f3=el('div','field'); f3.appendChild(el('span',null,'Nom del fitxer'));
     nameInput=document.createElement('input'); nameInput.type='text'; nameInput.id='expName';
     const updName=()=>{ nameInput.value=baseName()+'.'+(fmt==='jpeg'?'jpg':fmt); };
     updName(); f3.appendChild(nameInput); body.appendChild(f3);
   }, (close,okBtn)=>{
+    if(M.massa) return;
     okBtn.disabled=true; okBtn.textContent='Preparant…';
-    const w=Math.max(1,round(baseCanvas.width*scale)), h=Math.max(1,round(baseCanvas.height*scale));
+    const w=Math.max(1,round(M.pw)), h=Math.max(1,round(M.pw*baseCanvas.height/baseCanvas.width));
     const out=mkCanvas(w,h);
     renderInto(out,w,h,S.adj);
     const mime='image/'+fmt;
-    out.toBlob(blob=>{
+    out.toBlob(async blob=>{
       if(!blob){ say('No s\'ha pogut generar el fitxer.'); okBtn.disabled=false; okBtn.textContent='Desa'; return; }
+      // per imprimir, el fitxer porta escrita la resolució: així el programa
+      // que l'imprimeix sap que fa 300 mm i no s'ho inventa
+      if(M.unitat!=='px') blob=await posaPPP(blob,M.ppp,fmt);
       desaFitxer(blob, nameInput.value.trim()||baseName()+'.'+fmt)
         .then(r=>{ say(r.status==='saved'?'Imatge desada ('+(blob.size/1048576).toFixed(2)+' MB).':'Imatge lliurada.'); close(); })
         .catch(err=>{
@@ -2324,6 +2386,79 @@ function saveDialog(){
         });
     }, mime, fmt==='png'?undefined:quality/100);
   },'Desa');
+  okDesa=d.scrim.querySelector('.dlg footer .btn.primary');
+  pintaMida();
+}
+
+/* La unitat i la resolució que es van fer servir l'última vegada, en aquest
+   aparell (si s'imprimeix sovint en mil·límetres, que no s'hagi de tornar a
+   triar). La mida no: cada foto és diferent. */
+function midaRecordada(){
+  try{
+    const m=JSON.parse(localStorage.getItem('cambra-fosca-mida')||'{}');
+    return { unitat:['px','mm','cm'].includes(m.unitat)?m.unitat:'px', ppp:m.ppp>=30&&m.ppp<=1200?m.ppp:300 };
+  }catch(e){ return { unitat:'px', ppp:300 }; }
+}
+let midaOberta=null;
+function recordaMida(){
+  if(midaOberta) try{ localStorage.setItem('cambra-fosca-mida',JSON.stringify({unitat:midaOberta.unitat,ppp:midaOberta.ppp})); }catch(e){}
+}
+const llegeixNum=t=>{ const v=parseFloat(String(t).replace(',','.').replace(/[^\d.]/g,'')); return isFinite(v)?v:NaN; };
+// El màxim que es pot desar, per la memòria: al mòbil, menys
+const MAX_DESA_MP=(matchMedia('(pointer:coarse)').matches && Math.min(screen.width,screen.height)<820) ? 40 : 150;
+
+/* Escriu la resolució dins del fitxer. El navegador no ho fa: un PNG o un
+   JPG desats des d'una pàgina no diuen a quants punts per polzada van, i el
+   programa que els imprimeix suposa el que vol (sovint 72 o 96, i la foto de
+   300 mm surt d'un metre). Al PNG és un tros que es diu pHYs (punts per
+   metre); al JPG, la capçalera JFIF (punts per polzada). Al WEBP no hi ha
+   manera senzilla, i l'eina ho diu. */
+async function posaPPP(blob,ppp,fmt){
+  try{
+    const b=new Uint8Array(await blob.arrayBuffer());
+    const nou = fmt==='png' ? pngPPP(b,ppp) : fmt==='jpeg' ? jpgPPP(b,ppp) : null;
+    return nou ? new Blob([nou],{type:blob.type}) : blob;
+  }catch(e){ console.warn('No s\'ha pogut escriure la resolució:',e); return blob; }
+}
+let taulaCRC=null;
+function crc32(b){
+  if(!taulaCRC){ taulaCRC=new Uint32Array(256);
+    for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; taulaCRC[n]=c>>>0; } }
+  let c=0xFFFFFFFF;
+  for(let i=0;i<b.length;i++) c=taulaCRC[(c^b[i])&255]^(c>>>8);
+  return (c^0xFFFFFFFF)>>>0;
+}
+function pngPPP(b,ppp){
+  const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+  if(dv.getUint32(0)!==0x89504E47) return null;
+  const ppm=Math.round(ppp/0.0254);
+  const tros=new Uint8Array(21), tv=new DataView(tros.buffer);
+  tv.setUint32(0,9); tros.set([0x70,0x48,0x59,0x73],4);          // «pHYs»
+  tv.setUint32(8,ppm); tv.setUint32(12,ppm); tros[16]=1;           // 1 = metres
+  tv.setUint32(17,crc32(tros.subarray(4,17)));
+  const parts=[b.subarray(0,8)];
+  for(let o=8;o+12<=b.length;){
+    const llarg=dv.getUint32(o), tipus=String.fromCharCode(b[o+4],b[o+5],b[o+6],b[o+7]), fi=o+12+llarg;
+    if(tipus!=='pHYs') parts.push(b.subarray(o,fi));
+    if(tipus==='IHDR') parts.push(tros);
+    o=fi;
+  }
+  const out=new Uint8Array(parts.reduce((t,p)=>t+p.length,0));
+  let o=0; for(const p of parts){ out.set(p,o); o+=p.length; }
+  return out;
+}
+function jpgPPP(b,ppp){
+  if(b[0]!==0xFF||b[1]!==0xD8) return null;
+  const jfif=b[2]===0xFF&&b[3]===0xE0&&b[6]===0x4A&&b[7]===0x46&&b[8]===0x49&&b[9]===0x46&&b[10]===0;
+  const out = jfif ? b.slice() : new Uint8Array(b.length+18);
+  if(!jfif){                                   // si no té capçalera JFIF, se n'hi posa una
+    out.set(b.subarray(0,2),0);
+    out.set([0xFF,0xE0,0,16,0x4A,0x46,0x49,0x46,0,1,1,0,0,0,0,0,0,0],2);
+    out.set(b.subarray(2),20);
+  }
+  out[13]=1;                                   // 1 = punts per polzada
+  out[14]=ppp>>8; out[15]=ppp&255; out[16]=ppp>>8; out[17]=ppp&255;
+  return out;
 }
 $('#btnSave').onclick=saveDialog;
 

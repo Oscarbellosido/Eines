@@ -103,6 +103,32 @@ fotografia baixada d'enlloc —seria pes i drets d'autor—, surt sempre igual (
 llavor és fixa) i té de tot perquè tots els ajustos s'hi notin: si el cel fos
 llis, la vinyeta i el gra no es veurien.
 
+**Desar a una mida en mil·límetres.** L'usuari va demanar poder dir «300 mm
+d'ample» i que l'alt es fes sol. És al quadre de **Desa**: ample × alt en
+**px, mm o cm**, sempre proporcional (escrivint un, l'altre es calcula; per
+una altra forma, primer es retalla), i en mm o cm, la **resolució** (300 ppp
+de partida, la normal per imprimir). Els botons Com és · 50% · 25% hi són
+igual.
+
+- **Els mil·límetres no existeixen sense resolució**: una foto només té
+  píxels. 300 mm a 300 ppp són 3.543 px. El quadre diu sempre de quants
+  píxels farà el fitxer i quant farà imprès.
+- **El fitxer porta escrita la resolució** (`posaPPP`): el navegador no ho
+  fa, i sense això el programa que imprimeix suposa 72 o 96 ppp i la foto de
+  300 mm surt d'un metre. Al PNG és un tros `pHYs` (punts per metre, amb la
+  seva suma de control, `crc32`); al JPG, la capçalera JFIF (punts per
+  polzada; si no n'hi ha, se n'hi posa una). Al WEBP no hi ha manera
+  senzilla i el quadre ho diu. En píxels no s'hi escriu res.
+- **Si la mida és més gran que la foto, avisa en taronja**: s'estirarà i
+  quedarà tova, a quants ppp sortiria amb els píxels que té, i que es pot
+  ampliar abans amb IA.
+- **Massa gran per a l'aparell, no es deixa desar** (`MAX_DESA_MP`: 40
+  megapíxels al mòbil, 150 a l'ordinador, i mai més de 16.384 px per costat,
+  que és el que deixen fer els navegadors), i diu per què.
+- **La unitat i la resolució es recorden** en aquest aparell
+  (`cambra-fosca-mida`); la mida no, que cada foto és diferent.
+- Els números s'escriuen amb coma (`127,5`) i s'accepten amb coma o punt.
+
 **Desar la imatge.** A la web funciona la baixada normal del navegador
 (`desaFitxer`). La pàgina també es pot publicar com a *artifact* de claude.ai,
 i allà el navegador no deixa que una pàgina es baixi res ella mateixa: s'ha de
@@ -537,6 +563,14 @@ de debò i comprova:
   que arrossegant el marc es mogui el que toca, que la pàgina no es desplaci,
   i que els tiradors siguin prou grossos. Es va comprovar que la prova falla
   sense el `touch-action:none`;
+- **desar a mida**: en mil·límetres, la foto fa els que toca a 300 ppp;
+  posant 300 mm d'ample l'alt surt proporcional, i escrivint l'alt, l'ample;
+  avisa que quedarà tova; el PNG fa els píxels que toca i porta 300 ppp
+  escrits (amb la suma de control bona i una sola vegada); en cm a 150 ppp,
+  el JPG també; es recorda la unitat; una mida massa gran no es deixa desar;
+  i a 320 px el quadre hi cap. Es va comprovar que falla sense escriure la
+  resolució, amb l'alt que no mana, amb la unitat del JPG malament o amb la
+  suma de control del PNG malament;
 - **arregla la foto**: es fa una foto «bona» (cel, paret grisa, un full
   blanc, objectes de color) i s'espatlla de cinc maneres (fosca, cremada,
   groga, blava, i fosca i groga). «Arregla-la sola» ha de deixar la bona com

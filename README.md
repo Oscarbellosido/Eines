@@ -10,7 +10,7 @@ estadístiques.
 
 | Eina | Què fa |
 |---|---|
-| [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text. Arregla soles les fotos fosques, cremades o de colors estranys, les endreça si són tortes, hi esborra coses pintant-les amb el dit i les amplia amb IA. Mantenint premut «Abans» es veu com era |
+| [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text. Arregla soles les fotos fosques, cremades o de colors estranys, les endreça si són tortes, hi esborra coses pintant-les amb el dit i les amplia amb IA. Mantenint premut «Abans» es veu com era, i es desa a la mida que vulguis, també en mil·límetres per imprimir |
 | [La Revisió](https://oscarbellosido.github.io/Eines/revisio.html) | Repassa la seguretat d'un mòbil Android en tretze comprovacions guiades |
 
 La Cambra Fosca **es pot instal·lar com una app**, amb la seva icona i sense

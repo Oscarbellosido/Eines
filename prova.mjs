@@ -160,6 +160,99 @@ await p.click('.dlg .btn.primary');
 const desat = await baixada;
 if (!desat) problemes.push('el botó de desar no ha generat cap fitxer');
 console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename() : 'no s\'ha baixat res'}`);
+
+// Desar a una mida en mil·límetres o centímetres, sempre proporcional, i que
+// el fitxer porti escrita la resolució (si no, el programa que l'imprimeix
+// suposa 72 o 96 ppp i la foto de 300 mm surt d'un metre)
+{
+  const abansM = problemes.length;
+  const { readFileSync } = await import('fs');
+  const { crc32 } = await import('zlib');
+  const val = sel => p.locator(sel).inputValue();
+  const escriu = async (sel, v) => { await p.fill(sel, ''); await p.locator(sel).pressSequentially(String(v)); await p.waitForTimeout(80); };
+  const desa = async () => {
+    const b = p.waitForEvent('download', { timeout: 15000 }).catch(() => null);
+    await p.click('.dlg .btn.primary');
+    const d = await b;
+    return d ? readFileSync(await d.path()) : null;
+  };
+  const mida = (await p.locator('#stDims').innerText()).match(/(\d+) × (\d+)/).slice(1).map(Number);
+  const [W0, H0] = mida;
+  await p.click('#btnSave'); await p.waitForTimeout(300);
+  if (await val('#expW') !== String(W0) || await val('#expH') !== String(H0)) problemes.push(`en obrir «Desa», la mida no és la de la foto (${await val('#expW')} × ${await val('#expH')})`);
+  if (await p.locator('#expPPP').isVisible()) problemes.push('en píxels també surt la resolució, que no hi fa res');
+  await p.click('#expU-mm');
+  const mmW = Math.round(W0 / 300 * 25.4 * 10) / 10;
+  if (await val('#expW') !== String(mmW).replace('.', ',')) problemes.push(`en mil·límetres, la foto de ${W0} px a 300 ppp hauria de fer ${mmW} mm i diu ${await val('#expW')}`);
+  await escriu('#expW', 300);
+  const pw = Math.round(300 / 25.4 * 300), ph = Math.round(300 / 25.4 * 300 * H0 / W0);
+  const mmH = String(Math.round(300 * H0 / W0 * 10) / 10).replace('.', ',');
+  if (await val('#expH') !== mmH) problemes.push(`posant 300 mm d'ample, l'alt hauria de ser ${mmH} mm i és ${await val('#expH')}`);
+  if (!(await p.locator('#expDims').innerText()).includes(`${pw} × ${ph} px`)) problemes.push('no diu de quants píxels farà el fitxer: ' + await p.locator('#expDims').innerText());
+  if (!(await p.locator('#expAvis').isVisible()) || !(await p.locator('#expAvis').innerText()).includes('ppp')) problemes.push('fent-la més gran que la foto, no avisa que quedarà tova ni a quants ppp sortiria');
+  // l'alt també mana: escrivint-lo, l'ample es calcula sol
+  await escriu('#expH', 150);
+  const wDeH = String(Math.round(150 * W0 / H0 * 10) / 10).replace('.', ',');
+  if (await val('#expW') !== wDeH) problemes.push(`escrivint 150 mm d'alt, l'ample hauria de ser ${wDeH} mm i és ${await val('#expW')}`);
+  await escriu('#expW', 300);
+  const png = await desa();
+  if (!png) problemes.push('desant en mil·límetres no s\'ha baixat res');
+  else {
+    const w = png.readUInt32BE(16), h = png.readUInt32BE(20), i = png.indexOf('pHYs');
+    if (w !== pw || h !== ph) problemes.push(`el PNG de 300 mm hauria de fer ${pw} × ${ph} px i en fa ${w} × ${h}`);
+    if (i < 0) problemes.push('el PNG no porta escrita la resolució (pHYs)');
+    else {
+      const ppm = png.readUInt32BE(i + 4), unitat = png[i + 12];
+      if (ppm !== Math.round(300 / 0.0254) || unitat !== 1) problemes.push(`el PNG diu ${ppm} punts per metre (unitat ${unitat}) en lloc de 300 ppp`);
+      if (crc32(png.subarray(i, i + 13)) !== png.readUInt32BE(i + 13)) problemes.push('el tros de la resolució del PNG té la suma de control malament');
+    }
+    if (png.indexOf('pHYs', i + 4) >= 0) problemes.push('el PNG porta la resolució escrita dues vegades');
+  }
+
+  // en centímetres, a 150 ppp i en JPG; la unitat es recorda d'una vegada a l'altra
+  await p.click('#btnSave'); await p.waitForTimeout(300);
+  if (await p.locator('#expU-mm').getAttribute('aria-pressed') !== 'true') problemes.push('«Desa» no recorda que l\'última vegada era en mil·límetres');
+  if (await val('#expW') !== String(mmW).replace('.', ',')) problemes.push('en tornar a obrir «Desa», no torna a ser la mida de la foto');
+  await p.locator('.dlg .chip', { hasText: 'JPG' }).click();
+  await p.click('#expU-cm');
+  await escriu('#expPPP', 150);
+  await escriu('#expW', 10);
+  const jw = Math.round(10 / 2.54 * 150), jh = Math.round(10 / 2.54 * 150 * H0 / W0);
+  const jpg = await desa();
+  if (!jpg) problemes.push('desant en centímetres no s\'ha baixat res');
+  else {
+    let w = 0, h = 0;
+    for (let o = 2; o < jpg.length - 9 && jpg[o] === 0xFF;) {
+      const m = jpg[o + 1], l = jpg.readUInt16BE(o + 2);
+      if (m >= 0xC0 && m <= 0xC3) { h = jpg.readUInt16BE(o + 5); w = jpg.readUInt16BE(o + 7); break; }
+      o += 2 + l;
+    }
+    if (w !== jw || h !== jh) problemes.push(`el JPG de 10 cm a 150 ppp hauria de fer ${jw} × ${jh} px i en fa ${w} × ${h}`);
+    const jfif = jpg.toString('latin1', 6, 11) === 'JFIF\0';
+    if (!jfif || jpg[13] !== 1 || jpg.readUInt16BE(14) !== 150 || jpg.readUInt16BE(16) !== 150)
+      problemes.push(`el JPG no porta escrits 150 ppp (unitat ${jpg[13]}, ${jpg.readUInt16BE(14)} × ${jpg.readUInt16BE(16)})`);
+  }
+
+  // massa gran: no es pot desar, i diu per què
+  await p.click('#btnSave'); await p.waitForTimeout(300);
+  await p.click('#expU-cm'); await escriu('#expPPP', 300); await escriu('#expW', 300);
+  if (!await p.locator('.dlg .btn.primary').isDisabled() || !(await p.locator('#expAvis').innerText()).includes('massa gran'))
+    problemes.push('una mida que l\'aparell no pot fer (300 cm a 300 ppp) es deixa desar, o no diu per què');
+  await p.click('.dlg footer .btn:not(.primary)');
+
+  // a 320 px, el quadre hi cap sencer, amb el botó de desar
+  await p.setViewportSize({ width: 320, height: 640 });
+  await p.click('#btnSave'); await p.waitForTimeout(300);
+  await p.click('#expU-mm');
+  const q = await p.evaluate(() => { const d = document.querySelector('.dlg'), r = d.getBoundingClientRect();
+    return { ample: d.scrollWidth - d.clientWidth, dins: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight }; });
+  if (q.ample > 1 || !q.dins) problemes.push('a 320 px, el quadre de desar amb la mida en mil·límetres no hi cap');
+  await p.locator('.dlg .btn.primary').scrollIntoViewIfNeeded();
+  if (!await p.locator('.dlg .btn.primary').isVisible()) problemes.push('a 320 px, no s\'arriba al botó de desar');
+  await p.click('#expU-px');
+  await p.click('.dlg footer .btn:not(.primary)');
+  console.log(`${problemes.length > abansM ? '✗' : '✓'} desar a mida: 300 mm d'ample amb l'alt proporcional (${pw} × ${ph} px, 300 ppp escrits al PNG), 10 cm a 150 ppp en JPG, massa gran, i a 320 px`);
+}
 await p.close();
 
 // ------------------------------- la Cambra Fosca: el retall amb el dit
