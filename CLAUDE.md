@@ -351,6 +351,26 @@ OpenCV (sense IA, només difumina). L'usuari va triar **MI-GAN**. És l'eina
   contenidor ho fa en uns 4 segons comptant la preparació.
 - **Mentre treballa, el mateix vel que ampliar**, que no deixa tocar res.
 
+Després de provar-la, l'usuari va demanar tres millores per al mòbil:
+
+- **La goma del vermell** («Pinta vermell» / «Treu vermell», `S.mascGoma`):
+  les ratlles de goma van a la mateixa llista amb `goma:true` i es dibuixen
+  amb `destination-out`, o sigui que treuen el que hi havia a sota, tant a la
+  pantalla com a la màscara que va al model. Només compten per al tros les
+  ratlles que pinten. Si la goma ho ha tret tot, no es fa res i es diu.
+- **Zoom amb dos dits, a totes les eines** (`pessiga`, al `#stage` i en la
+  fase de captura, abans que l'eina vegi el dit). El primer dit ja ha
+  començat a pintar quan arriba el segon: aquella ratlla es llença
+  (`cancelaTraca`, que també treu la pinzellada de `S.ops` sense apuntar res
+  a l'historial). Mentre quedi algun dit a sobre (`dosDits`) no es pinta ni
+  es desplaça res més. El punt de la foto que hi havia entre els dos dits s'hi
+  queda. El fons de la taula porta `touch-action:pan-x pan-y`: un dit hi fa
+  córrer la pàgina, però el navegador no fa zoom de tota la pàgina.
+- **«Esborra-ho» sura a sota de la pantalla** (`#treuFlota`), només al mòbil
+  (fins a 760 px) i només quan hi ha vermell: allà les opcions de l'eina
+  queden sota la foto i, després de pintar, les havies d'anar a buscar. La X
+  de netejar és petita i separada, que el gros és el que es prem sempre.
+
 **L'historial ja no guarda fotos sense límit** (`retallaHistorial`). Ampliar i
 esborrar fan una foto nova sencera, i per poder desfer l'historial guarda les
 d'abans: amb una foto de 12 megapíxels, cada una són 48 MB, i deu esborrades
@@ -370,6 +390,23 @@ de cada capa) són a la carpeta `constants/` del fitxer, no a `data/` amb els
 pesos, i llegint-les d'allà sortia un número qualsevol i el model omplia
 sempre amb gris llis. Es va veure perquè, mirant capa per capa, tot quedava a
 zero després de la primera multiplicació.
+
+## La Cambra Fosca: abans i després
+
+**Mantenint premut «Abans»** (a la barra de dalt, al costat de desfer; o la
+tecla `\`), es veu la foto **tal com es va obrir** (`S.original`): sense
+ajustos, ni pinzell, ni el que s'hi ha esborrat o ampliat. En deixar-lo
+anar, torna la retocada. A dalt a l'esquerra hi diu ABANS.
+
+- **Només canvia el que es veu** (`pintaAbans`, des de `pintaVista`): no toca
+  res de la foto ni apunta res a l'historial. Si la foto fa la mateixa forma
+  que l'original, queda exactament a sobre; si s'ha retallat o girat, surt
+  sencera i centrada.
+- **Es fa mantenint premut, no amb un toc**, perquè el que interessa és
+  comparar anant i tornant. El botó porta `touch-action:none` i no deixa
+  sortir el menú del dit llarg. Un toc curt diu a la ratlla de sota com va.
+- `S.original` guarda la foto oberta encara que l'historial l'hagi llençat
+  per memòria (és una foto més, no una per pas).
 
 ## La Cambra Fosca com a app
 
@@ -534,7 +571,14 @@ de debò i comprova:
   foto no canviï ni un nivell**; desfer i refer; i el mateix amb una foto de
   1.600 px, més gran que el model. Es va comprovar que la prova falla amb la
   màscara al revés, enganxant el tros sencer, sense el vermell a la pantalla i
-  si canviar d'eina no el treu;
+  si canviar d'eina no el treu. A més: la goma del vermell (treu on passa i
+  no enlloc més; si ho treu tot, no es fa res i es diu), el zoom amb dos dits
+  sense que en quedi cap ratlla (amb el vermell i amb el pinzell), que el
+  botó que sura surti sencer al mòbil i no a l'ordinador, i que mantenint
+  premut «Abans» es vegi l'objecte esborrat i deixant-lo anar ja no, sense
+  apuntar res a l'historial. Es va comprovar que falla si la goma pinta, si
+  el segon dit no llença la ratlla, si «Abans» no ensenya res o si el botó
+  no sura;
 - **com a app**: la fitxa (que s'obri sola, que comenci a la Cambra Fosca,
   que l'abast no agafi tota la carpeta, el nom i els colors, i que les icones
   hi siguin i facin la mida que diuen, amb una de «maskable»), que el programa

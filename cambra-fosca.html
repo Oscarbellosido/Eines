@@ -373,6 +373,29 @@ select{
 .statusbar .flex{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:right;font-family:var(--font-ui);font-size:11px}
 .busy{color:var(--accent)}
 
+/* abans i després: mentre es manté premut, la foto com era en obrir-la */
+#btnAbans{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#btnAbans[aria-pressed="true"]{background:var(--accent-wash);color:var(--accent);border-color:rgba(240,163,60,.5)}
+#etAbans{
+  position:absolute;left:8px;top:8px;z-index:5;padding:3px 8px;border-radius:5px;pointer-events:none;
+  background:rgba(0,0,0,.7);color:#fff;font:600 11px var(--font-mono);letter-spacing:.1em;
+}
+#etAbans[hidden]{display:none}
+
+/* «Esborra-ho», surant a sota de la pantalla del mòbil: allà les opcions de
+   l'eina queden sota la foto, i després de pintar havies d'anar-les a buscar */
+#treuFlota{
+  position:fixed;z-index:35;left:50%;transform:translateX(-50%);
+  bottom:calc(36px + env(safe-area-inset-bottom,0px));
+  display:flex;align-items:center;gap:18px;padding:6px;border-radius:12px;
+  background:rgba(23,24,26,.9);border:1px solid var(--line);box-shadow:0 8px 28px rgba(0,0,0,.55);
+}
+#treuFlota .btn{height:40px}
+#treuFlota .btn.primary{padding:0 22px;font-size:14px}
+#treuFlota .btn.icon{width:34px;height:34px}
+#treuFlota[hidden]{display:none}
+@media (min-width:761px){ #treuFlota{display:none!important} }
+
 /* ---------- quadres de dialeg ---------- */
 .scrim{
   position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:grid;place-items:center;
@@ -432,6 +455,10 @@ select{
   #btnHelp{display:none}
   .back span{display:none}
   #btnOpen .lbl{display:none}
+  #btnAbans .lbl{display:none}
+  #btnAbans{width:28px;padding:0;justify-content:center}
+  /* un dit fa córrer la pàgina; dos dits, el zoom de la foto (els porta l'eina) */
+  .stage{touch-action:pan-x pan-y}
   .statusbar{position:sticky;bottom:0;z-index:30}
 }
 @media (max-width:400px){
@@ -467,6 +494,10 @@ select{
       <button class="btn icon" id="btnRedo" title="Refés (Ctrl+Maj+Z)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 14 5-5-5-5"/><path d="M20 9h-9a6 6 0 0 0 0 12h5"/></svg>
       </button>
+      <button class="btn" id="btnAbans" type="button" aria-pressed="false" title="Mantén-lo premut per veure la foto com era (\)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor"/></svg>
+        <span class="lbl">Abans</span>
+      </button>
       <button class="btn" id="btnInstal" title="Instal·la-la com una app" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 7v7"/><path d="m9 11 3 3 3-3"/><path d="M10.5 18.5h3"/></svg>
         <span class="lbl">Instal·la</span>
@@ -501,6 +532,7 @@ select{
         <div id="reixa" hidden></div>
         <div id="cursor"></div>
         <div id="cloneSrc"></div>
+        <div id="etAbans" hidden>ABANS</div>
         <div id="crop"><div id="cropBox">
           <i class="g v1"></i><i class="g v2"></i><i class="g h1"></i><i class="g h2"></i>
           <i class="h nw" data-h="nw"></i><i class="h n" data-h="n"></i><i class="h ne" data-h="ne"></i>
@@ -550,6 +582,13 @@ select{
         </div>
       </div>
     </aside>
+  </div>
+
+  <div id="treuFlota" hidden>
+    <button class="btn icon" id="treuFlotaNeteja" type="button" title="Neteja el vermell" aria-label="Neteja el vermell">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <button class="btn primary" id="treuFlotaGo" type="button">Esborra-ho</button>
   </div>
 
   <footer class="statusbar">
@@ -641,6 +680,9 @@ const S = {
   brush:{ size:46, hardness:60, opacity:85, color:'#f0a33c' },
   text:{ size:64, font:'sans', bold:false },
   cloneSrc:null,
+  original:null,          // la foto tal com es va obrir, per al botó «Abans»
+  abans:false,            // si ara es veu la d'abans
+  mascGoma:false,         // «Esborra coses»: si el dit treu vermell en lloc de posar-ne
   mascara:[],             // «Esborra coses»: les ratlles vermelles, en coordenades de la base (no van a l'historial)
   history:[], hIndex:-1,
   stageBg:'dark',
@@ -1138,8 +1180,10 @@ function render(){
 let mascVista=null, vistaDemanada=false;
 function pintaVista(){
   if(!workCanvas) return;
+  estatFlota();
   const w=view.width, h=view.height;
   vctx.clearRect(0,0,w,h);
+  if(S.abans && S.original){ pintaAbans(w,h); return; }
   vctx.drawImage(workCanvas,0,0);
   if(!S.mascara.length) return;
   if(!mascVista||mascVista.width!==w||mascVista.height!==h) mascVista=mkCanvas(w,h);
@@ -1150,6 +1194,15 @@ function pintaVista(){
   // primer opac i després tot junt mig transparent: on dues ratlles es
   // creuen no es fa més fosc
   vctx.save(); vctx.globalAlpha=0.5; vctx.drawImage(mascVista,0,0); vctx.restore();
+}
+/* La foto tal com es va obrir, sense res: ni ajustos, ni pinzell, ni el que
+   s'hi ha esborrat o ampliat. Si fa la mateixa forma que l'actual, queda
+   exactament a sobre; si s'ha retallat o girat, sencera i centrada. */
+function pintaAbans(w,h){
+  const o=S.original, k=Math.min(w/o.width,h/o.height), dw=o.width*k, dh=o.height*k;
+  vctx.fillStyle='#0d0e0f'; vctx.fillRect(0,0,w,h);
+  vctx.imageSmoothingQuality='high';
+  vctx.drawImage(o,(w-dw)/2,(h-dh)/2,dw,dh);
 }
 function demanaVista(){
   if(vistaDemanada) return;
@@ -1163,6 +1216,8 @@ function tracaMascara(cx,color,extra){
   cx.strokeStyle=cx.fillStyle=color; cx.lineCap='round'; cx.lineJoin='round';
   for(const m of S.mascara){
     const p=m.pts, gruix=m.size+extra;
+    // la goma del vermell: el que hi passa per sobre, ho treu
+    cx.globalCompositeOperation=m.goma?'destination-out':'source-over';
     if(p.length===2){ cx.beginPath(); cx.arc(p[0],p[1],gruix/2,0,Math.PI*2); cx.fill(); continue; }
     cx.lineWidth=gruix;
     cx.beginPath(); cx.moveTo(p[0],p[1]);
@@ -1289,7 +1344,7 @@ const TOOLS=[
   { id:'brush',  key:'B', name:'Pinzell', hint:'Pinta a sobre de la imatge. [ i ] canvien la mida.' },
   { id:'eraser', key:'E', name:'Goma', hint:'Esborra el que has pintat. Els píxels originals no es toquen.' },
   { id:'clone',  key:'S', name:'Tampó de clonar', hint:'Alt+clic fixa l\'origen; després arrossega per copiar-hi píxels.' },
-  { id:'treu',   key:'X', name:'Esborra coses (IA)', hint:'Pinta de vermell el que vulguis treure (una persona, un cable, una taca) i prem «Esborra-ho»: la IA hi posa el que hi hauria al darrere. Pinta-ho tot, també la vora i l\'ombra. Treballa amb la foto: el que hi has pintat a sobre amb el pinzell o el text es queda com és.' },
+  { id:'treu',   key:'X', name:'Esborra coses (IA)', hint:'Pinta de vermell el que vulguis treure (una persona, un cable, una taca) i prem «Esborra-ho»: la IA hi posa el que hi hauria al darrere. Pinta-ho tot, també la vora i l\'ombra; si se t\'escapa el dit, «Treu vermell». Amb dos dits t\'hi pots acostar. Treballa amb la foto: el que hi has pintat a sobre amb el pinzell o el text es queda com és.' },
   { sep:true },
   { id:'text',   key:'T', name:'Text', hint:'Fes clic on vulguis el text i escriu-lo.' },
   { id:'pick',   key:'I', name:'Comptagotes', hint:'Fes clic per agafar un color de la imatge.' },
@@ -1309,6 +1364,7 @@ function buildRail(){
 function setTool(id){
   cancelaEndreca();
   if(id!=='treu' && S.mascara.length){ S.mascara=[]; pintaVista(); }
+  if(id!=='treu') S.mascGoma=false;
   if(id!=='crop' && cropOn) endCrop(false);
   S.tool=id;
   for(const t of TOOLS) if(!t.sep) $('#tool-'+t.id).setAttribute('aria-pressed', t.id===id?'true':'false');
@@ -1317,6 +1373,7 @@ function setTool(id){
   $('#optTitle').textContent=t.name;
   $('#optKey').textContent=t.key;
   buildOpts(id,t.hint);
+  estatFlota();
   if(id==='crop') startCrop();
   $('#cursor').style.display='none';
   hideTextEdit();
@@ -1360,10 +1417,19 @@ function buildOpts(id,hint){
   }
   else if(id==='treu'){
     slider('Mida',S.brush.size,4,400,' px',v=>{S.brush.size=v;updateCursorSize();});
+    // pintar o treure vermell: si se t'ha escapat el dit, no cal tornar a començar
+    const modes=el('div','chips');
+    [['pinta','Pinta vermell',false],['goma','Treu vermell',true]].forEach(([id2,lab,g])=>{
+      const c=el('button','chip',lab); c.type='button'; c.id='treuMode-'+id2;
+      c.setAttribute('aria-pressed',S.mascGoma===g?'true':'false');
+      c.onclick=()=>{ S.mascGoma=g; modes.querySelectorAll('.chip').forEach(n=>n.setAttribute('aria-pressed',n===c?'true':'false')); };
+      modes.appendChild(c);
+    });
+    box.appendChild(modes);
     const row=el('div','optrow');
     const go=el('button','btn primary','Esborra-ho'); go.type='button'; go.id='treuGo'; go.onclick=fesTreu;
     const net=el('button','btn ghost','Neteja el vermell'); net.type='button'; net.id='treuNeteja';
-    net.onclick=()=>{ S.mascara=[]; pintaVista(); estatTreu(); };
+    net.onclick=netejaVermell;
     row.append(go,net); box.appendChild(row);
     const info=el('div','tiny'); info.id='treuInfo'; box.appendChild(info);
     addHint();
@@ -1903,7 +1969,7 @@ view.addEventListener('pointerdown',e=>{
     const st=$('#stage'); st.classList.add('panning');
     const sx=st.scrollLeft, sy=st.scrollTop, cx=e.clientX, cy=e.clientY;
     view.setPointerCapture(e.pointerId);
-    const mv=ev=>{ st.scrollLeft=sx-(ev.clientX-cx); st.scrollTop=sy-(ev.clientY-cy); };
+    const mv=ev=>{ if(dosDits) return; st.scrollLeft=sx-(ev.clientX-cx); st.scrollTop=sy-(ev.clientY-cy); };
     const up=()=>{ st.classList.remove('panning'); view.removeEventListener('pointermove',mv); view.removeEventListener('pointerup',up); view.removeEventListener('pointercancel',up); };
     view.addEventListener('pointermove',mv); view.addEventListener('pointerup',up); view.addEventListener('pointercancel',up);
     return;
@@ -1922,7 +1988,7 @@ view.addEventListener('pointerdown',e=>{
     if(IA.treballant) return;
     e.preventDefault();
     view.setPointerCapture(e.pointerId);
-    ratllaMasc={pts:[p.x,p.y], size:S.brush.size};
+    ratllaMasc={pts:[p.x,p.y], size:S.brush.size, goma:S.mascGoma};
     S.mascara.push(ratllaMasc);
     demanaVista();
     return;
@@ -1983,6 +2049,86 @@ view.addEventListener('pointerup',endStroke);
 view.addEventListener('pointercancel',endStroke);
 view.addEventListener('pointerleave',()=>{ if(!stroke&&!ratllaMasc) $('#cursor').style.display='none'; });
 
+/* Dos dits damunt la foto: zoom (pessigant) i desplaçament, amb qualsevol
+   eina. Per pintar una cosa petita amb el dit (un cable, una taca) cal
+   acostar-s'hi, i els botons + i − no deien on. El primer dit ja ha començat
+   a pintar quan arriba el segon: aquella ratlla es llença, com si no s'hagués
+   fet. Mentre hi hagi algun dit a sobre, ja no es pinta res més. */
+let dosDits=false;
+function cancelaTraca(){
+  if(stroke){ restorePaintSnap(); S.ops.pop(); stroke=null; scheduleRender(); }
+  if(ratllaMasc){ S.mascara.pop(); ratllaMasc=null; demanaVista(); estatTreu(); }
+  $('#cursor').style.display='none';
+}
+(function pessiga(){
+  const st=$('#stage'), dits=new Map();
+  let g=null;
+  const mig=()=>{ const [a,b]=[...dits.values()];
+    return { x:(a.x+b.x)/2, y:(a.y+b.y)/2, d:Math.hypot(a.x-b.x,a.y-b.y) }; };
+  st.addEventListener('pointerdown',e=>{
+    if(e.pointerType!=='touch') return;
+    dits.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(dits.size===2 && baseCanvas && !cropOn && !IA.treballant){
+      e.stopPropagation(); e.preventDefault();
+      cancelaTraca();
+      const m=mig(), rc=view.getBoundingClientRect();
+      g={ d0:Math.max(12,m.d), z0:S.zoom, bx:(m.x-rc.left)/S.zoom, by:(m.y-rc.top)/S.zoom };
+      dosDits=true;
+    } else if(dosDits) e.stopPropagation();
+  },true);
+  st.addEventListener('pointermove',e=>{
+    if(!dits.has(e.pointerId)) return;
+    dits.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(!dosDits) return;
+    e.stopPropagation();
+    if(!g || dits.size<2) return;
+    const m=mig();
+    S.zoom=clamp(g.z0*m.d/g.d0,0.02,8);
+    applyZoomCss();
+    // el punt de la foto que hi havia entre els dos dits s'hi queda
+    const rc=view.getBoundingClientRect();
+    st.scrollLeft+=rc.left+g.bx*S.zoom-m.x;
+    st.scrollTop+=rc.top+g.by*S.zoom-m.y;
+  },true);
+  const fi=e=>{
+    if(!dits.delete(e.pointerId)) return;
+    if(g && dits.size<2){ g=null; scheduleRender(); }
+    if(!dits.size) dosDits=false;
+  };
+  st.addEventListener('pointerup',fi,true);
+  st.addEventListener('pointercancel',fi,true);
+})();
+
+/* Abans i després: mentre es manté premut el botó (o la tecla \), es veu la
+   foto com era en obrir-la. Un toc curt no fa res que es vegi, i per això es
+   diu com va. */
+let abansDes=0;
+function mostraAbans(si){
+  if(si && (!baseCanvas || !S.original || IA.treballant)) return;
+  if(si===S.abans) return;
+  S.abans=si;
+  $('#btnAbans').setAttribute('aria-pressed',si?'true':'false');
+  $('#etAbans').hidden=!si;
+  pintaVista();
+}
+{
+  const b=$('#btnAbans');
+  b.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    try{ b.setPointerCapture(e.pointerId); }catch(_){}
+    abansDes=performance.now(); mostraAbans(true);
+  });
+  const deixa=()=>{
+    if(!S.abans) return;
+    mostraAbans(false);
+    if(performance.now()-abansDes<300) say('Mantén premut «Abans» per veure la foto com era quan la vas obrir.');
+  };
+  ['pointerup','pointercancel','lostpointercapture'].forEach(t=>b.addEventListener(t,deixa));
+  b.addEventListener('contextmenu',e=>e.preventDefault());
+  addEventListener('blur',()=>mostraAbans(false));
+  addEventListener('keyup',e=>{ if(e.key==='\\') mostraAbans(false); });
+}
+
 /* posar el text */
 let textAt=null;
 function showTextEdit(p,e){
@@ -2032,7 +2178,7 @@ function adopt(canvas,name,isSample){
   S.endreca=0; if($('#sl-endreca')) pintaEndreca();
   if($('#arreglaRes')) $('#arreglaRes').hidden=true;
   IA.factorTriat=false;
-  S.src=canvas; S.name=name||'imatge.png'; S.sample=!!isSample;
+  S.src=canvas; S.original=canvas; S.name=name||'imatge.png'; S.sample=!!isSample;
   S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
   S.adj=Object.assign({},ADJ_DEF); S.preset='cap';
   S.ops=[]; S.cloneSrc=null; $('#cloneSrc').style.display='none';
@@ -2196,6 +2342,7 @@ $('#btnHelp').onclick=()=>dialog('Dreceres de teclat',body=>{
     ['0','Ajusta a la finestra'],
     ['1','Zoom al 100%'],
     ['Ctrl + roda','Zoom amb el punter'],
+    ['\\ (mantenint)','Veure la foto com era'],
     ['Retorn','Aplica el retall'],
     ['Esc','Cancel·la el retall o el text'],
     ['Ctrl + O','Obre una imatge'],
@@ -2204,6 +2351,7 @@ $('#btnHelp').onclick=()=>dialog('Dreceres de teclat',body=>{
   const g=el('div','kbdlist');
   for(const [k,v] of L){ g.appendChild(el('b',null,k)); g.appendChild(el('span',null,v)); }
   body.appendChild(g);
+  body.appendChild(el('div','tiny','Al mòbil, amb dos dits damunt la foto la pots acostar o allunyar i moure.'));
   body.appendChild(el('div','tiny','També pots arrossegar un fitxer sobre el llenç o enganxar una imatge del porta-retalls.'));
   body.appendChild(el('div','tiny','Per tenir-la com una app, amb la seva icona i sense connexió: el botó INSTAL·LA de dalt, o al menú del navegador, «Instal·la l\'aplicació» o «Afegeix a la pantalla d\'inici».'));
 });
@@ -2636,9 +2784,17 @@ async function fesAmplia(){
    (MI-GAN, de Picsart, 25 MB) omple el forat amb el que hi hauria al darrere.
    Fa servir el mateix motor que ampliar, i tampoc no envia res enlloc.
 =================================================================== */
+function hiHaVermell(){ return S.mascara.some(m=>!m.goma); }
+function netejaVermell(){ S.mascara=[]; pintaVista(); estatTreu(); }
+function estatFlota(){
+  const f=$('#treuFlota'); if(!f) return;
+  const si=S.tool==='treu' && hiHaVermell() && !IA.treballant;
+  if(f.hidden===si) f.hidden=!si;
+}
 function estatTreu(){
+  estatFlota();
   const go=$('#treuGo'); if(!go) return;
-  go.disabled=!S.mascara.length || IA.treballant;
+  go.disabled=!hiHaVermell() || IA.treballant;
   $('#treuNeteja').disabled=!S.mascara.length;
   const info=$('#treuInfo'); if(!info) return;
   const t=IA.treu;
@@ -2669,6 +2825,7 @@ async function treuAmbIA(src, sessio){
   const N=IA.treu.N, W=src.width, H=src.height;
   let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
   for(const m of S.mascara){
+    if(m.goma) continue;          // la goma només treu: no fa més gran el tros
     const r=m.size/2;
     for(let i=0;i<m.pts.length;i+=2){
       x0=Math.min(x0,m.pts[i]-r); x1=Math.max(x1,m.pts[i]+r);
@@ -2697,12 +2854,14 @@ async function treuAmbIA(src, sessio){
   // l'entrada: la màscara menys 0,5 (1 = es queda, 0 = s'esborra) i la foto
   // de -1 a 1, amb el forat a zero
   const P=N*N, e=new Float32Array(4*P), forat=new Uint8Array(P);
+  let quants=0;
   for(let i=0,k=0;i<P;i++,k+=4){
     const f=md[k+3]>127 ? 1 : 0, q=1-f;
-    forat[i]=f;
+    forat[i]=f; quants+=f;
     e[i]=q-0.5;
     e[P+i]=(d[k]/127.5-1)*q; e[2*P+i]=(d[k+1]/127.5-1)*q; e[3*P+i]=(d[k+2]/127.5-1)*q;
   }
+  if(!quants) return null;        // la goma ho ha tret tot
   const res=await sessio.run({[sessio.inputNames[0]]: new ort.Tensor('float32',e,[1,4,N,N])});
   const sortida=res[sessio.outputNames[0]], y=sortida.data;
   for(let i=0,k=0;i<P;i++,k+=4) if(forat[i]){
@@ -2727,8 +2886,10 @@ async function treuAmbIA(src, sessio){
   return nova;
 }
 
+$('#treuFlotaGo').onclick=()=>fesTreu();
+$('#treuFlotaNeteja').onclick=netejaVermell;
 async function fesTreu(){
-  if(IA.treballant || !baseCanvas || !S.mascara.length) return;
+  if(IA.treballant || !baseCanvas || !hiHaVermell()) return;
   if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
   hideTextEdit();
   IA.treballant=true; IA.atura=false; estatTreu();
@@ -2746,7 +2907,7 @@ async function fesTreu(){
     vel('Esborrant…',1,IA.treu.motorReal==='gpu'?'Amb la gràfica.':'Amb el processador: pot trigar uns segons.');
     const nova=await treuAmbIA(baseCanvas, sessio);
     if(IA.atura) throw new Error('aturat');
-    if(!nova){ say('El vermell queda fora de la foto.'); return; }
+    if(!nova){ say('No queda res de vermell per esborrar.'); return; }
     // La foto esborrada passa a ser la foto, com quan s'amplia: els girs i el
     // retall ja hi són aplicats. Les pinzellades no es mouen (la mida és la
     // mateixa) i desfer torna a la d'abans.
@@ -2811,8 +2972,9 @@ document.addEventListener('keydown',e=>{
   if(e.ctrlKey||e.metaKey||e.altKey) return;
   const map={v:'move',c:'crop',b:'brush',e:'eraser',s:'clone',x:'treu',t:'text',i:'pick'};
   if(map[k]){ e.preventDefault(); setTool(map[k]); return; }
+  if(k==='\\'){ e.preventDefault(); mostraAbans(true); return; }
   if(k==='enter'&&cropOn){ e.preventDefault(); endCrop(true); setTool('move'); return; }
-  if(k==='escape' && S.mascara.length){ S.mascara=[]; pintaVista(); estatTreu(); return; }
+  if(k==='escape' && S.mascara.length){ netejaVermell(); return; }
   if(k==='escape'){ if(cropOn){ endCrop(false); setTool('move'); } hideTextEdit(); return; }
   if(k==='0'){ e.preventDefault(); fitToStage(); return; }
   if(k==='1'){ e.preventDefault(); setZoom(1); return; }

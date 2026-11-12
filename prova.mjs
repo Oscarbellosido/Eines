@@ -647,9 +647,60 @@ await p.close();
     await q.click('#tool-move'); await q.click('#tool-treu'); await q.waitForTimeout(150);
     if (!await q.locator('#treuGo').isDisabled()) problemes.push('canviant d\'eina, el vermell s\'hi queda');
 
-    // esborrar de debò
+    // la goma del vermell: on hi passa, el vermell se'n va i la resta es queda
+    const dreta = [353, 300, 5, 5], grisaD = (await mira(dreta)).m;
     await dit(ziga(290, 340, 250, 372, 12));
-    await q.click('#treuGo');
+    // a l'ordinador el botó que sura no hi és (les opcions ja es veuen al costat)
+    await q.setViewportSize({ width: 1280, height: 800 }); await q.waitForTimeout(300);
+    if (await q.locator('#treuFlota').isVisible()) problemes.push('a l\'ordinador també surt el botó «Esborra-ho» que sura');
+    await q.setViewportSize({ width: 390, height: 844 }); await q.waitForTimeout(300);
+    await q.click('#treuMode-goma');
+    await dit(ziga(262, 290, 285, 320, 8));
+    if (Math.abs((await mira(vora)).m[0] - grisa[0]) > 4) problemes.push('la goma del vermell no el treu');
+    if ((await mira(dreta)).m[0] - grisaD[0] < 30) problemes.push('la goma del vermell n\'ha tret on no hi ha passat');
+    // si la goma el treu tot, no hi ha res per esborrar i la foto no es toca
+    await q.evaluate(() => { const r = document.querySelector('#opt-Mida'); r.value = 200; r.dispatchEvent(new Event('input')); });
+    await dit(ziga(200, 420, 180, 440, 40));
+    await q.click('#treuGo'); await acabaT();
+    if ((await q.locator('.hitem span').allInnerTexts()).includes('Esborra amb IA') || !(await q.locator('#stMsg').innerText()).includes('No queda'))
+      problemes.push('amb tot el vermell tret amb la goma, «Esborra-ho» ha fet alguna cosa o no ho diu');
+    if (await q.locator('#treuNeteja').isEnabled()) await q.click('#treuNeteja');
+    await q.click('#treuMode-pinta');
+    await q.evaluate(() => { const r = document.querySelector('#opt-Mida'); r.value = 40; r.dispatchEvent(new Event('input')); });
+
+    // dos dits: zoom pessigant. El primer dit ja havia començat a pintar: aquella
+    // ratlla s'ha de llençar. Amb el vermell i amb el pinzell.
+    const pessiga = async () => {
+      const v = await q.locator('#view').boundingBox(), cx = v.x + v.width / 2, cy = v.y + v.height / 2;
+      const z0 = parseInt(await q.locator('#zoomRead').innerText());
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx - 30, y: cy, id: 1 }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cx - 34, y: cy + 4, id: 1 }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx - 34, y: cy + 4, id: 1 }, { x: cx + 30, y: cy, id: 2 }] });
+      for (let i = 1; i <= 10; i++)
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cx - 34 - i * 9, y: cy + 4, id: 1 }, { x: cx + 30 + i * 9, y: cy, id: 2 }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await q.waitForTimeout(300);
+      const z1 = parseInt(await q.locator('#zoomRead').innerText());
+      await q.click('#zoomRead'); await q.waitForTimeout(300);     // torna a encabir-la
+      return z1 / z0;
+    };
+    const zv = await pessiga();
+    if (!(zv > 1.8)) problemes.push(`pessigant amb dos dits, el zoom no creix com hauria (×${zv.toFixed(2)})`);
+    if (!await q.locator('#treuGo').isDisabled()) problemes.push('fent zoom amb dos dits, s\'hi queda una ratlla de vermell');
+    const passos = (await q.locator('.hitem span').allInnerTexts()).length;
+    await q.click('#tool-brush');
+    const zp = await pessiga();
+    if (!(zp > 1.8) || (await q.locator('.hitem span').allInnerTexts()).length !== passos) problemes.push('fent zoom amb dos dits amb el pinzell, s\'hi queda una pinzellada');
+    await q.click('#tool-treu');
+
+    // esborrar de debò, amb el botó que sura a sota (al mòbil, les opcions
+    // queden sota la foto)
+    await dit(ziga(290, 340, 250, 372, 12));
+    {
+      const f = await q.locator('#treuFlota').boundingBox();
+      if (!f || f.y + f.height > 844 || f.x < 0 || f.x + f.width > 390) problemes.push('al mòbil, després de pintar no surt el botó «Esborra-ho» a sota, sencer');
+    }
+    await q.click(await q.locator('#treuFlotaGo').isVisible() ? '#treuFlotaGo' : '#treuGo');
     await acabaT();
     if (!(await q.locator('.hitem span').allInnerTexts()).includes('Esborra amb IA')) problemes.push('esborrar amb IA no surt a l\'historial');
     const forat = await mira([280, 250, 70, 120], original), paretBona = await mira([420, 250, 70, 120]);
@@ -664,6 +715,20 @@ await p.close();
     }
     if ((await mira(vora)).m[0] - (await mira(vora)).m[1] > 25) problemes.push('després d\'esborrar, el vermell de pintar s\'hi queda');
     if (!(await q.locator('#treuInfo').innerText()).includes('amb el processador')) problemes.push('després d\'esborrar no diu amb què s\'ha fet: ' + await q.locator('#treuInfo').innerText());
+    if (await q.locator('#treuFlota').isVisible()) problemes.push('després d\'esborrar, el botó que sura s\'hi queda');
+    // mantenint premut «Abans» es veu l'objecte (la foto com era); deixant-lo anar, ja no
+    {
+      const passosAbans = (await q.locator('.hitem span').allInnerTexts()).length;
+      const b = await q.locator('#btnAbans').boundingBox(), x = b.x + b.width / 2, y = b.y + b.height / 2;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      await q.waitForTimeout(250);
+      if ((await mira([290, 260, 50, 100])).m[0] < 180 || !await q.locator('#etAbans').isVisible()) problemes.push('mantenint premut «Abans» no es veu la foto com era');
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await q.waitForTimeout(250);
+      if ((await mira([290, 260, 50, 100])).m[0] > 170 || await q.locator('#etAbans').isVisible()) problemes.push('deixant anar «Abans» no torna la foto retocada');
+      if ((await q.locator('.hitem span').allInnerTexts()).length !== passosAbans)
+        problemes.push('«Abans» ha apuntat alguna cosa a l\'historial');
+    }
     // desfer torna l'objecte, i refer el torna a treure
     await q.click('#btnUndo'); await q.waitForTimeout(400);
     if ((await mira([290, 260, 50, 100])).m[0] < 180) problemes.push('desfer no torna l\'objecte esborrat');
@@ -684,7 +749,7 @@ await p.close();
       const m = await mira(r, gran);
       if (m.max > 0) problemes.push(`a la foto gran, esborrant ha canviat la foto lluny del forat (${r}: ${m.max})`);
     }
-    console.log(`${problemes.length > abansT ? '✗' : '✓'} esborrar coses amb el dit (pel processador): pintar amb el dit, el vermell no es desa, netejar, esborrar la paret de maons sense tocar la resta, desfer i refer, i una foto gran`);
+    console.log(`${problemes.length > abansT ? '✗' : '✓'} esborrar coses amb el dit (pel processador): pintar amb el dit, el vermell no es desa, netejar, la goma del vermell, zoom amb dos dits, el botó que sura, esborrar la paret de maons sense tocar la resta, abans i després, desfer i refer, i una foto gran`);
     await ctx.close();
   }
   servidor.close();
