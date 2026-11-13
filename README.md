@@ -10,7 +10,7 @@ estadístiques.
 
 | Eina | Què fa |
 |---|---|
-| [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text. Arregla soles les fotos fosques, cremades o de colors estranys, les endreça si són tortes, hi esborra coses pintant-les amb el dit, en treu el fons (o el difumina) i les amplia amb IA. Mantenint premut «Abans» es veu com era, i es desa a la mida que vulguis, també en mil·límetres per imprimir |
+| [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text. Arregla soles les fotos fosques, cremades o de colors estranys, les endreça si són tortes, hi esborra coses pintant-les amb el dit (i troba soles les ratllades de les fotos velles), en treu el fons (o el difumina) i les amplia amb IA. Mantenint premut «Abans» es veu com era, i es desa a la mida que vulguis, també en mil·límetres per imprimir |
 | [La Revisió](https://oscarbellosido.github.io/Eines/revisio.html) | Repassa la seguretat d'un mòbil Android en tretze comprovacions guiades |
 
 La Cambra Fosca **es pot instal·lar com una app**, amb la seva icona i sense
@@ -22,7 +22,9 @@ Els jocs són a [la seva col·lecció](https://oscarbellosido.github.io/Jocs/).
 L'ampliació amb IA fa servir els models de
 [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) (llicència BSD); esborrar
 coses, el model [MI-GAN](https://github.com/Picsart-AI-Research/MI-GAN) de
-Picsart AI Research (llicència MIT); treure el fons,
+Picsart AI Research (llicència MIT), i les ratllades les troba la xarxa de
+[Bringing Old Photos Back to Life](https://github.com/microsoft/Bringing-Old-Photos-Back-to-Life)
+de Microsoft (llicència MIT); treure el fons,
 [U²-Net](https://github.com/xuebinqin/U-2-Net) i [IS-Net](https://github.com/xuebinqin/DIS)
 (llicència Apache 2.0, en la versió del projecte [rembg](https://github.com/danielgatis/rembg));
 i tots, el motor

@@ -1232,6 +1232,16 @@ function tracaMascara(cx,color,extra){
   cx.save();
   cx.strokeStyle=cx.fillStyle=color; cx.lineCap='round'; cx.lineJoin='round';
   for(const m of S.mascara){
+    // les ratllades que ha trobat la IA: una imatge (vermella; qui fa servir
+    // la màscara només en mira la transparència). Per fer-la més gruixuda, es
+    // dibuixa vuit vegades desplaçada.
+    if(m.ras){
+      cx.globalCompositeOperation='source-over';
+      const d=extra/2, e=d*0.7;
+      if(d>0.5) for(const [ox,oy] of [[-d,0],[d,0],[0,-d],[0,d],[-e,-e],[e,-e],[-e,e],[e,e]]) cx.drawImage(m.ras,ox,oy,m.w,m.h);
+      cx.drawImage(m.ras,0,0,m.w,m.h);
+      continue;
+    }
     const p=m.pts, gruix=m.size+extra;
     // la goma del vermell: el que hi passa per sobre, ho treu
     cx.globalCompositeOperation=m.goma?'destination-out':'source-over';
@@ -1444,6 +1454,12 @@ function buildOpts(id,hint){
     addHint();
   }
   else if(id==='treu'){
+    // per a fotos velles: la IA marca sola les ratllades i els plecs
+    const rb=el('button','btn','✦ Troba les ratllades'); rb.type='button'; rb.id='treuRatllades';
+    rb.style.cssText='width:100%;justify-content:center;height:34px';
+    rb.onclick=trobaRatllades;
+    box.appendChild(rb);
+    const rinfo=el('div','tiny'); rinfo.id='treuRatlladesInfo'; box.appendChild(rinfo);
     slider('Mida',S.brush.size,4,400,' px',v=>{S.brush.size=v;updateCursorSize();});
     // pintar o treure vermell: si se t'ha escapat el dit, no cal tornar a començar
     const modes=el('div','chips');
@@ -2579,6 +2595,9 @@ const IA={
   error:null,
   // «Esborra coses»: MI-GAN, de Picsart. Sempre treballa a 512 × 512.
   treu:{ fitxer:'models/migan-512.onnx', mb:25.5, N:512, sessio:null, motorReal:null, errorGPU:null, ultim:null },
+  // «Troba les ratllades»: la xarxa de Microsoft («Bringing Old Photos Back to
+  // Life») que marca les ratllades, els plecs i les taques clares d'una foto vella
+  ratllades:{ fitxer:'models/ratllades.onnx', mb:71.8, sessio:null, motorReal:null, errorGPU:null },
   // «Treu el fons»: U²-Net petit al mòbil, IS-Net a l'ordinador (el mateix
   // mode que a l'Amplia). Diuen, per a cada punt, si és del davant (1) o del fons (0).
   fons:{
@@ -2608,7 +2627,7 @@ async function miraBaixats(){
   const c=await cauIA(); if(!c) return;
   // la primera versió del model lleuger, que la gràfica no sabia fer anar sencera
   try{ await c.delete(urlIA('models/realesr-general-x4v3.onnx')); }catch(e){}
-  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, IA.fons.models.mobil.fitxer, IA.fons.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
+  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, IA.ratllades.fitxer, IA.fons.models.mobil.fitxer, IA.fons.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
   for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
 }
 /* Baixa un fitxer gros una sola vegada: després el treu de la memòria del
@@ -3116,6 +3135,12 @@ function estatTreu(){
     h='La primera vegada es baixa la IA ('+mb(t.mb+motor)+'); després funciona sense connexió.';
   } else h='La IA ja és en aquest aparell.';
   info.textContent=h+' La foto no surt de l\'aparell.';
+  const ri=$('#treuRatlladesInfo');
+  if(ri){
+    $('#treuRatllades').disabled=IA.treballant || IA.motor==null;
+    ri.textContent='Per a fotos velles: marca de vermell les ratllades, els plecs i les taques clares. Repassa-ho i prem «Esborra-ho».'+
+      (IA.baixats[IA.ratllades.fitxer]||IA.ratllades.sessio ? '' : ' La primera vegada es baixen '+mb(IA.ratllades.mb)+'.');
+  }
 }
 async function preparaSessioTreu(progres){
   const t=IA.treu;
@@ -3136,7 +3161,7 @@ async function treuAmbIA(src, sessio){
   const N=IA.treu.N, W=src.width, H=src.height;
   let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
   for(const m of S.mascara){
-    if(m.goma) continue;          // la goma només treu: no fa més gran el tros
+    if(m.goma || m.ras) continue;          // la goma només treu: no fa més gran el tros
     const r=m.size/2;
     for(let i=0;i<m.pts.length;i+=2){
       x0=Math.min(x0,m.pts[i]-r); x1=Math.max(x1,m.pts[i]+r);
@@ -3197,6 +3222,141 @@ async function treuAmbIA(src, sessio){
   return nova;
 }
 
+/* Les ratllades travessen tota la foto: si es fes com amb un objecte (un sol
+   tros al voltant, reduït a 512), en una foto gran el que s'hi posa quedaria
+   tou. Per això es va per trossos de 512 a la mida de debò, saltant els que no
+   tenen vermell. Cada tros veu els que ja s'han arreglat, i només es queda el
+   seu mig (32 punts de marge), que el tros del costat fa la vora. */
+async function treuPerTrossos(src, sessio, cadaTros){
+  const N=IA.treu.N, MG=32, W=src.width, H=src.height;
+  const tw=Math.min(N,W), th=Math.min(N,H), sx=N/tw, sy=N/th;
+  // el forat a la mida de debò, una vegada (3 punts més gros a cada banda)
+  const mc=mkCanvas(W,H), mx=mc.getContext('2d',{willReadFrequently:true});
+  tracaMascara(mx,'#fff',6);
+  const md=mx.getImageData(0,0,W,H).data, forat=new Uint8Array(W*H);
+  for(let i=0,k=3;i<forat.length;i++,k+=4) forat[i]=md[k]>127?1:0;
+  const llocs=(L,t)=>{ if(L<=t) return [0]; const r=[]; for(let p=0;p+t<L;p+=t-2*MG) r.push(p); r.push(L-t); return r; };
+  const trossos=[];
+  for(const y0 of llocs(H,th)) for(const x0 of llocs(W,tw)){
+    const ix0=x0===0?0:x0+MG, ix1=x0+tw===W?W:x0+tw-MG, iy0=y0===0?0:y0+MG, iy1=y0+th===H?H:y0+th-MG;
+    let hi=false;
+    for(let y=iy0;y<iy1&&!hi;y++){ const f=y*W; for(let x=ix0;x<ix1;x++) if(forat[f+x]){ hi=true; break; } }
+    if(hi) trossos.push({x0,y0,ix0,ix1,iy0,iy1});
+  }
+  if(!trossos.length) return null;
+  const feina=mkCanvas(W,H), fx=feina.getContext('2d',{willReadFrequently:true});
+  fx.drawImage(src,0,0);
+  const ent=mkCanvas(N,N), ex=ent.getContext('2d',{willReadFrequently:true});
+  ex.imageSmoothingQuality='high';
+  const P=N*N;
+  let n=0;
+  for(const t of trossos){
+    ex.clearRect(0,0,N,N);
+    ex.drawImage(feina,t.x0,t.y0,tw,th,0,0,N,N);
+    const d=ex.getImageData(0,0,N,N).data, e=new Float32Array(4*P);
+    for(let v=0,i=0;v<N;v++){
+      const f=(t.y0+Math.min(th-1,Math.floor(v/sy)))*W+t.x0;
+      for(let u=0;u<N;u++,i++){
+        const q=1-forat[f+Math.min(tw-1,Math.floor(u/sx))], k=i*4;
+        e[i]=q-0.5;
+        e[P+i]=(d[k]/127.5-1)*q; e[2*P+i]=(d[k+1]/127.5-1)*q; e[3*P+i]=(d[k+2]/127.5-1)*q;
+      }
+    }
+    const res=await sessio.run({[sessio.inputNames[0]]: new ort.Tensor('float32',e,[1,4,N,N])});
+    const sortida=res[sessio.outputNames[0]], y=sortida.data;
+    // només els punts del forat del mig del tros, a la mida de debò
+    const iw=t.ix1-t.ix0, ih=t.iy1-t.iy0, reg=fx.getImageData(t.ix0,t.iy0,iw,ih), r=reg.data;
+    for(let yy=0;yy<ih;yy++){
+      const gy=t.iy0+yy, v=Math.min(N-1,Math.floor((gy-t.y0)*sy));
+      for(let xx=0;xx<iw;xx++){
+        const gx=t.ix0+xx;
+        if(!forat[gy*W+gx]) continue;
+        const u=Math.min(N-1,Math.floor((gx-t.x0)*sx)), j=v*N+u, k=(yy*iw+xx)*4;
+        r[k]=(y[j]+1)*127.5; r[k+1]=(y[P+j]+1)*127.5; r[k+2]=(y[2*P+j]+1)*127.5; r[k+3]=255;
+      }
+    }
+    if(sortida.dispose) sortida.dispose();
+    fx.putImageData(reg,t.ix0,t.iy0);
+    n++; cadaTros(n,trossos.length);
+    await new Promise(ok=>setTimeout(ok,0));      // que la barra es vegi avançar
+  }
+  return feina;
+}
+
+/* Troba les ratllades: la foto, en grisos i amb el costat curt de 256 (els
+   dos costats múltiples de 16), com fa el projecte original; el que passa de
+   0,4 és ratllada. El mapa es fa gran (com a molt 2.048 punts) i es posa com
+   a vermell, que es pot repassar abans d'esborrar. */
+async function preparaSessioRatllades(progres){
+  const R=IA.ratllades;
+  if(R.sessio) return R.sessio;
+  const bytes=await baixaIA(R.fitxer, (a,t)=>progres('la IA de les ratllades',a,t||R.mb*1048576));
+  progres('preparant el model',0,0);
+  const r=await creaSessio(bytes);
+  R.sessio=r.sessio; R.motorReal=r.motorReal; R.errorGPU=r.errorGPU;
+  return R.sessio;
+}
+async function mapaRatllades(src, sessio){
+  const W=src.width, H=src.height;
+  const curt=Math.min(W,H), sw=Math.max(16,Math.round(W/curt*256/16)*16), sh=Math.max(16,Math.round(H/curt*256/16)*16);
+  const c=mkCanvas(sw,sh), x=c.getContext('2d',{willReadFrequently:true});
+  x.imageSmoothingQuality='high';
+  x.drawImage(src,0,0,sw,sh);
+  const d=x.getImageData(0,0,sw,sh).data, e=new Float32Array(sw*sh);
+  for(let i=0,k=0;i<e.length;i++,k+=4) e[i]=(0.299*d[k]+0.587*d[k+1]+0.114*d[k+2])/127.5-1;
+  const res=await sessio.run({[sessio.inputNames[0]]: new ort.Tensor('float32',e,[1,1,sh,sw])});
+  const sortida=res[sessio.outputNames[0]], p=sortida.data;
+  const pc=mkCanvas(sw,sh), px=pc.getContext('2d'), pm=px.createImageData(sw,sh), q=pm.data;
+  for(let i=0,k=0;i<p.length;i++,k+=4){ q[k]=255; q[k+1]=42; q[k+2]=68; q[k+3]=p[i]*255; }
+  if(sortida.dispose) sortida.dispose();
+  px.putImageData(pm,0,0);
+  const k=Math.min(1,2048/Math.max(W,H)), rw=Math.max(1,round(W*k)), rh=Math.max(1,round(H*k));
+  const ras=mkCanvas(rw,rh), rx=ras.getContext('2d',{willReadFrequently:true});
+  rx.imageSmoothingQuality='high';
+  rx.drawImage(pc,0,0,rw,rh);
+  const im=rx.getImageData(0,0,rw,rh), a=im.data;
+  let quants=0;
+  for(let j=3;j<a.length;j+=4){ if(a[j]>=102){ a[j]=255; quants++; } else a[j]=0; }
+  if(!quants) return null;
+  rx.putImageData(im,0,0);
+  return { ras, w:W, h:H, part:quants/(rw*rh) };
+}
+async function trobaRatllades(){
+  if(IA.treballant || !baseCanvas) return;
+  if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
+  hideTextEdit();
+  IA.treballant=true; IA.atura=false; estatTreu();
+  mantenEncesa();
+  try{
+    const progres=(que,a,t)=>{
+      if(IA.atura) throw new Error('aturat');
+      vel(t ? 'Baixant '+que+'…' : 'Preparant la IA…', t ? a/t : 0, t ? mb(a/1048576)+' de '+mb(t/1048576)+' · només la primera vegada' : 'Només la primera vegada.');
+    };
+    vel('Preparant…',0,'');
+    await preparaMotor(progres);
+    const sessio=await preparaSessioRatllades(progres);
+    if(IA.atura) throw new Error('aturat');
+    vel('Buscant ratllades…',1,'');
+    const r=await mapaRatllades(baseCanvas, sessio);
+    if(IA.atura) throw new Error('aturat');
+    if(!r){ say('No he trobat ratllades clares. Si n\'hi ha, pinta-les tu de vermell.'); return; }
+    S.mascara.push(r); S.mascGoma=false;
+    buildOpts('treu',TOOLS.find(x=>x.id==='treu').hint);
+    pintaVista();
+    say('Ratllades marcades de vermell. Repassa-ho: amb «Treu vermell» treus el que no ho sigui i pintes el que falti. Després, «Esborra-ho».');
+  }catch(e){
+    const msg=String(e&&e.message||e);
+    if(msg==='aturat') say('Aturat.');
+    else { say('No s\'han pogut buscar les ratllades: '+msg+'.'); console.warn('Ratllades:',e); }
+  }finally{
+    IA.treballant=false; IA.atura=false;
+    try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
+    bloqueigPantalla=null;
+    $('#vel').hidden=true;
+    estatTreu();
+  }
+}
+
 $('#treuFlotaGo').onclick=()=>fesTreu();
 $('#treuFlotaNeteja').onclick=netejaVermell;
 async function fesTreu(){
@@ -3215,8 +3375,14 @@ async function fesTreu(){
     await preparaMotor(progres);
     const sessio=await preparaSessioTreu(progres);
     if(IA.atura) throw new Error('aturat');
+    const ambRatllades=S.mascara.some(m=>m.ras);
     vel('Esborrant…',1,IA.treu.motorReal==='gpu'?'Amb la gràfica.':'Amb el processador: pot trigar uns segons.');
-    const nova=await treuAmbIA(baseCanvas, sessio);
+    const nova=ambRatllades
+      ? await treuPerTrossos(baseCanvas, sessio, (n,t)=>{
+          if(IA.atura) throw new Error('aturat');
+          vel('Esborrant les ratllades…', n/t, 'Tros '+n+' de '+t);
+        })
+      : await treuAmbIA(baseCanvas, sessio);
     if(IA.atura) throw new Error('aturat');
     if(!nova){ say('No queda res de vermell per esborrar.'); return; }
     // La foto esborrada passa a ser la foto, com quan s'amplia: els girs i el
@@ -3224,7 +3390,7 @@ async function fesTreu(){
     // mateixa) i desfer torna a la d'abans.
     S.src=nova; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
     buildBase(); scheduleRender();
-    push('Esborra amb IA');
+    push(ambRatllades ? 'Esborra les ratllades (IA)' : 'Esborra amb IA');
     const temps=minuts((performance.now()-t0)/1000);
     IA.treu.ultim={ temps, motor:IA.treu.motorReal };
     say('Esborrat en '+temps+'. Si no t\'agrada, desfés-ho; si en queda un tros, torna-hi.');

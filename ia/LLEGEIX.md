@@ -46,6 +46,27 @@ L'entrada són quatre canals de 512 × 512: la màscara menys 0,5 (1 = es queda,
 0 = s'esborra) i la foto de −1 a 1 amb el forat a zero. La sortida, la foto
 sencera de −1 a 1 (només se n'agafa el forat).
 
+### `models/ratllades.onnx` — trobar les ratllades d'una foto vella
+
+És la xarxa que troba les ratllades, els plecs i les taques del projecte
+**Bringing Old Photos Back to Life**, de Microsoft
+(https://github.com/microsoft/Bringing-Old-Photos-Back-to-Life). Llicència
+**MIT**: és a `models/LICENSE-RATLLADES`, tal com la publiquen. L'original és
+`checkpoints/detection/FT_Epoch_latest.pt`, dins de `global_checkpoints.zip`
+de la seva versió v1.0, amb aquestes empremtes:
+
+```
+3ff4c52a3a65d71e458ff24b1d7339b326d216ef793c2027761e11efb30f7882  global_checkpoints.zip
+b2d7ab04e9b3885c6b1991bb7a0b823129dd6e3ac078a9fd059ebd2a7ba59a95  FT_Epoch_latest.pt
+```
+
+Aquell fitxer fa 451 MB perquè porta també el que es fa servir per entrenar;
+la xarxa en si són 37,6 milions de números, i aquí es desen amb la meitat de
+precisió (75 MB). Entrada: la foto en grisos, de −1 a 1, amb el costat curt de
+256; sortida: la probabilitat de ratllada de cada punt (es talla a 0,4, com al
+projecte). Troba sobretot les ratllades clares, que són les típiques; les
+fosques, gairebé no.
+
 ### `models/u2netp.onnx` i `models/isnet-fp16.onnx` — treure el fons
 
 | Fitxer | Model | Projecte | Per a què |
@@ -112,6 +133,14 @@ peces que la gràfica sap fer anar.
 
 ```
 python conversio/fes_migan.py migan_traced.pt models/migan-512.onnx
+```
+
+El de les ratllades surt de `conversio/fes_ratllades.py`, que llegeix el
+fitxer original (del format antic de PyTorch, sense executar res) i munta la
+xarxa peça a peça:
+
+```
+python conversio/fes_ratllades.py FT_Epoch_latest.pt models/ratllades.onnx
 ```
 
 Els de treure el fons surten de `conversio/fes_fons.py`, a partir dels dos

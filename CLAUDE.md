@@ -431,6 +431,38 @@ Després de provar-la, l'usuari va demanar tres millores per al mòbil:
   queden sota la foto i, després de pintar, les havies d'anar a buscar. La X
   de netejar és petita i separada, que el gros és el que es prem sempre.
 
+**«✦ Troba les ratllades»**, a dalt de les opcions de l'eina. L'usuari arregla
+fotos deteriorades i va triar això d'una llista: que la IA marqui sola les
+ratllades, els plecs i les taques clares d'una foto vella, i l'esborrador les
+tregui. Fa servir la xarxa de detecció de **Bringing Old Photos Back to
+Life** (Microsoft, MIT), convertida per `ia/conversio/fes_ratllades.py`.
+
+- **Marca, no esborra**: el que troba es posa com a vermell
+  (`mapaRatllades` → una entrada `ras` a `S.mascara`, una imatge en lloc de
+  ratlles), i la persona ho repassa amb «Pinta vermell» i «Treu vermell»
+  abans de prémer «Esborra-ho». La goma funciona igual perquè el vermell es
+  dibuixa per ordre (`tracaMascara`).
+- **Treballa com el projecte original**: la foto en grisos, de −1 a 1, amb el
+  costat curt de 256 (els dos costats múltiples de 16), i el que passa de 0,4
+  és ratllada. Es va provar a 384 i 512 i no en trobava més. El mapa es fa
+  gran fins a 2.048 punts com a molt (amb les vores suaus i tallat al 0,4).
+- **Troba sobretot les ratllades clares**, que són les típiques de les fotos
+  velles; les fosques gairebé no, i els plecs rectes de vegades només a
+  trossos. Les que falten es pinten a mà.
+- **Amb ratllades, l'esborrador va per trossos** (`treuPerTrossos`): una
+  ratllada travessa tota la foto, i fent-ho com amb un objecte (un tros al
+  voltant reduït a 512) el que s'hi posava quedava tou. Ara es fan trossos de
+  512 a la mida de debò, només els que tenen vermell; cada tros veu el que ja
+  han arreglat els d'abans i només es queda el seu mig (32 punts de marge),
+  que la vora la fa el tros del costat. El forat es fa 3 punts més gros a
+  cada banda. A la prova, a les ratllades marcades la diferència amb la foto
+  neta baixa de 107 a 22, i la resta de la foto no canvia.
+- **La xarxa fa 37,6 milions de números** (75 MB amb mitja precisió; el fitxer
+  original de Microsoft en fa 451 perquè porta el que es fa servir per
+  entrenar, i està en el format antic de PyTorch, que `fes_ratllades.py`
+  llegeix sense executar res). Al contenidor, buscar triga uns segons i
+  esborrar una foto de 900 punts, uns 10.
+
 **L'historial ja no guarda fotos sense límit** (`retallaHistorial`). Ampliar i
 esborrar fan una foto nova sencera, i per poder desfer l'historial guarda les
 d'abans: amb una foto de 12 megapíxels, cada una són 48 MB, i deu esborrades
@@ -697,6 +729,14 @@ de debò i comprova:
   apuntar res a l'historial. Es va comprovar que falla si la goma pinta, si
   el segon dit no llença la ratlla, si «Abans» no ensenya res o si el botó
   no sura;
+- **trobar i esborrar ratllades** (també serveix el repositori ella mateixa):
+  sobre una foto vella feta a mida (sepia, muntanyes, una casa, gra) amb tres
+  ratllades clares i un plec, que la IA en marqui almenys el 70% i no marqui
+  res on no n'hi ha (menys del 0,05%); que la goma en protegeixi un tros (que
+  no s'esborra); que a les marcades la foto s'acosti a la neta (a menys d'un
+  quart de la diferència d'abans) sense tocar la resta; i desfer. Es va
+  comprovar que falla amb la foto mal preparada per a la IA, sense dibuixar el
+  vermell de la IA a la màscara o enganxant el tros sencer;
 - **treure el fons** (també serveix el repositori ella mateixa): sobre un
   gerro blau d'una foto feta a mida, que encerti el gerro (mirant un punt de
   cada 6, fora de la vora) amb el model petit i amb el gran; transparent,

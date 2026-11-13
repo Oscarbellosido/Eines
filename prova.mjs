@@ -518,7 +518,7 @@ await p.close();
   // aquelles peces van al processador i tornen, i amb gràfica i tot va lent.
   // El model lleuger en tenia 33 de PRelu. (La llista de les que sí que sap fer
   // és a docs/webgpu-operators.md del paquet onnxruntime-web.)
-  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus', 'migan-512', 'u2netp', 'isnet-fp16']) {
+  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus', 'migan-512', 'u2netp', 'isnet-fp16', 'ratllades']) {
     const bytes = readFileSync(join(AQUI, 'ia/models', m + '.onnx'));
     if (bytes.includes('PRelu')) problemes.push(`el model ${m} fa servir PRelu, que la gràfica no sap fer`);
   }
@@ -945,6 +945,96 @@ await p.close();
     }
     console.log(`${problemes.length > abansT ? '✗' : '✓'} esborrar coses amb el dit (pel processador): pintar amb el dit, el vermell no es desa, netejar, la goma del vermell, zoom amb dos dits, el botó que sura, esborrar la paret de maons sense tocar la resta, abans i després, desfer i refer, i una foto gran`);
     await ctx.close();
+  }
+
+  // ------------------------------------- trobar i esborrar ratllades
+  // Una foto vella feta aquí mateix (cel, muntanyes, una casa, arbustos, tons
+  // sepia i gra) amb ratllades clares i un plec, que se sap on són: la IA les
+  // ha de marcar, deixar el que hi ha la goma, i l'esborrador les ha de treure
+  // sense tocar la resta.
+  {
+    const abansR = problemes.length;
+    const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+    vigila(q, 'ratllades');
+    await q.goto(BASE);
+    await q.waitForTimeout(1500);
+    const fotos = await q.evaluate(() => {
+      const W = 900, H = 640, fa = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return [c, c.getContext('2d')]; };
+      const [nc, n] = fa();
+      const g = n.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#c8b9a0'); g.addColorStop(1, '#8c7d5a'); n.fillStyle = g; n.fillRect(0, 0, W, H);
+      n.fillStyle = '#6e5f4b'; n.beginPath(); [[0, 420], [200, 260], [380, 400], [560, 230], [900, 430], [900, 640], [0, 640]].forEach(([x, y], i) => i ? n.lineTo(x, y) : n.moveTo(x, y)); n.fill();
+      n.fillStyle = '#aa9678'; n.fillRect(520, 380, 180, 140); n.fillStyle = '#5a4637'; n.beginPath(); n.moveTo(500, 380); n.lineTo(610, 300); n.lineTo(720, 380); n.fill();
+      n.fillStyle = '#3c3228'; n.fillRect(590, 440, 40, 80);
+      n.fillStyle = '#504b37'; for (let x = 60; x < 880; x += 70) { n.beginPath(); n.ellipse(x + 20, 530, 20, 30, 0, 0, 7); n.fill(); }
+      const im = n.getImageData(0, 0, W, H), d = im.data; let s = 9;
+      for (let k = 0; k < d.length; k += 4) { s = (s * 1103515245 + 12345) >>> 0; const r = ((s >>> 8) / 16777216 - 0.5) * 22; d[k] += r; d[k + 1] += r; d[k + 2] += r; }
+      n.putImageData(im, 0, 0);
+      const [vc, v] = fa(), [mc, m] = fa();
+      v.drawImage(nc, 0, 0); m.fillStyle = '#000'; m.fillRect(0, 0, W, H);
+      const ratlla = (pts, gruix, color) => { for (const [x, col] of [[v, color], [m, '#fff']]) { x.strokeStyle = col; x.lineWidth = gruix; x.lineCap = 'round';
+        x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke(); } };
+      const corba = (p0, p1, amp) => Array.from({ length: 60 }, (_, i) => [p0[0] + (p1[0] - p0[0]) * i / 59, p0[1] + (p1[1] - p0[1]) * i / 59 + amp * Math.sin(i / 59 * 3)]);
+      ratlla(corba([80, 40], [300, 600], 18), 3, '#f5f0e6');
+      ratlla(corba([420, 20], [860, 300], 10), 2, '#faf8f0');
+      ratlla(corba([150, 350], [700, 620], 25), 4, '#f0ebe1');
+      ratlla([[0, 300], [900, 330]], 5, '#ebe6d7');          // un plec
+      return [vc.toDataURL('image/png'), nc.toDataURL('image/png'), mc.toDataURL('image/png')];
+    });
+    const [vella, neta, mascara] = fotos.map(u => Buffer.from(u.split(',')[1], 'base64'));
+    await q.setInputFiles('#file', { name: 'vella.png', mimeType: 'image/png', buffer: vella });
+    await q.waitForTimeout(700);
+    await q.click('#tool-treu');
+    if (!(await q.locator('#treuRatlladesInfo').innerText()).includes('MB')) problemes.push('el botó de les ratllades no diu quant es baixa la primera vegada');
+    await q.click('#treuRatllades');
+    await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 });
+    await q.waitForTimeout(200);
+    // compara el que es veu amb la foto neta, la vella i on són les ratllades
+    const compara = () => q.evaluate(async ([neta, vella, mascara]) => {
+      const carrega = src => new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.src = 'data:image/png;base64,' + src; });
+      const dades = i => { const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const x = c.getContext('2d'); x.drawImage(i, 0, 0); return x.getImageData(0, 0, c.width, c.height).data; };
+      const [dn, dv, dm] = (await Promise.all([neta, vella, mascara].map(carrega))).map(dades);
+      const v = document.querySelector('#view'), dr = v.getContext('2d').getImageData(0, 0, v.width, v.height).data;
+      const W = 900, H = 640, prop = new Uint8Array(W * H);     // a menys de 10 punts d'una ratllada
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (dm[(y * W + x) * 4] > 127)
+        for (let yy = Math.max(0, y - 10); yy < Math.min(H, y + 11); yy++) for (let xx = Math.max(0, x - 10); xx < Math.min(W, x + 11); xx++) prop[yy * W + xx] = 1;
+      let vermell = 0, rat = 0, vermellFora = 0, fora = 0, errA = 0, errV = 0, canviFora = 0, zona = [0, 0, 0];
+      const vermellA = k => dr[k] - dr[k + 1] > 60;
+      // la primera vegada es recorda què s'ha marcat de vermell: l'esborrat es
+      // jutja allà (el que la IA no ha trobat, no l'ha d'esborrar)
+      const marcat = window.__marcat || (window.__marcat = Uint8Array.from({ length: W * H }, (_, i) => vermellA(i * 4) ? 1 : 0));
+      for (let i = 0, k = 0; i < W * H; i++, k += 4) {
+        const e = (a, b) => (Math.abs(a[k] - b[k]) + Math.abs(a[k + 1] - b[k + 1]) + Math.abs(a[k + 2] - b[k + 2])) / 3;
+        const x = i % W, y = (i / W) | 0, aZona = x >= 70 && x < 115 && y >= 60 && y < 160;   // el tros de la goma
+        if (dm[k] > 127 && aZona) { zona[0] += e(dr, dn); zona[1] += e(dv, dn); zona[2]++; }
+        else if (dm[k] > 127) { rat++; if (vermellA(k)) vermell++; if (marcat[i]) { errA += e(dr, dn); errV += e(dv, dn); zona[3] = (zona[3] || 0) + 1; } }
+        else if (!prop[i]) { fora++; if (vermellA(k)) vermellFora++; canviFora += e(dr, dv); }
+      }
+      return { trobat: vermell / rat, demes: vermellFora / fora, err: errA / zona[3], errVella: errV / zona[3], canviFora: canviFora / fora,
+               zona: zona[0] / zona[2], zonaVella: zona[1] / zona[2] };
+    }, [neta, vella, mascara].map(b => b.toString('base64')));
+    const c1 = await compara();
+    if (c1.trobat < 0.7) problemes.push(`la IA de les ratllades només n'ha marcat el ${(c1.trobat * 100).toFixed(0)}%`);
+    if (c1.demes > 0.0005) problemes.push(`la IA de les ratllades ha marcat de vermell el ${(c1.demes * 100).toFixed(1)}% de la foto on no n'hi ha`);
+    if (await q.locator('#treuGo').isDisabled()) problemes.push('després de trobar les ratllades, «Esborra-ho» no es pot prémer');
+    // amb la goma es treu el vermell d'un tros de la primera ratllada: allà no s'ha d'esborrar
+    await q.click('#treuMode-goma');
+    await q.evaluate(() => { const r = document.querySelector('#opt-Mida'); r.value = 60; r.dispatchEvent(new Event('input')); });
+    { const v = await q.locator('#view').boundingBox(), e = v.width / 900;
+      await q.mouse.move(v.x + 92 * e, v.y + 70 * e); await q.mouse.down();
+      for (let i = 1; i <= 10; i++) await q.mouse.move(v.x + (92 + i * 1.5) * e, v.y + (70 + i * 8) * e);
+      await q.mouse.up(); await q.waitForTimeout(200); }
+    await q.click('#treuGo');
+    await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 600000 });
+    await q.waitForTimeout(300);
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Esborra les ratllades (IA)')) problemes.push('esborrar les ratllades no surt a l\'historial');
+    const c2 = await compara();
+    if (!(c2.err < c1.errVella * 0.25)) problemes.push(`a les ratllades marcades, la foto no s'acosta prou a la neta (diferència ${c2.err.toFixed(1)}; abans ${c1.errVella.toFixed(1)})`);
+    if (c2.canviFora > 0.5) problemes.push(`esborrant les ratllades, ha canviat la resta de la foto (${c2.canviFora.toFixed(2)} de mitjana)`);
+    if (c2.zona < c2.zonaVella * 0.8) problemes.push(`on s'havia tret el vermell amb la goma, la ratllada s'ha esborrat igualment (diferència ${c2.zona.toFixed(1)} de ${c2.zonaVella.toFixed(1)})`);
+    await q.click('#btnUndo'); await q.waitForTimeout(400);
+    if ((await compara()).err < c1.errVella * 0.9) problemes.push('desfer no torna les ratllades');
+    console.log(`${problemes.length > abansR ? '✗' : '✓'} trobar i esborrar ratllades (pel processador): en marca el ${(c1.trobat * 100).toFixed(0)}% (i de més, el ${(c1.demes * 100).toFixed(2)}%), la goma les respecta, les marcades, de ${c1.errVella.toFixed(0)} a ${c2.err.toFixed(0)} de diferència amb la foto neta, i desfer`);
+    await q.close();
   }
 
   // ------------------------------------------------- treure el fons
