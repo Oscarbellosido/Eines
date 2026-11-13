@@ -2,7 +2,7 @@
 
 Aquesta carpeta és l'única excepció a la norma d'«un sol fitxer» de les Eines.
 La fa servir la pestanya **✦ IA** de La Cambra Fosca (les ratllades,
-esborrar coses, les cares, el fons i ampliar), i només es baixa el que cal
+esborrar coses, les cares, el color, el fons i ampliar), i només es baixa el que cal
 quan algú les fa servir. Res d'aquí no envia cap foto enlloc: el model corre dins
 del navegador.
 
@@ -80,6 +80,38 @@ pesos desats amb la meitat de precisió. El fitxer es parteix en dos trossos
 Entrades: RetinaFace, la foto en BGR menys (104, 117, 123), amb els costats
 múltiples de 32; GFPGAN, la cara alineada amb els cinc punts a la plantilla de
 512 de facexlib, en RGB de −1 a 1.
+
+### `models/color.onnx.1`, `.2` i `.3` — posar color a les fotos en blanc i negre
+
+És **DDColor**, de DAMO Academy (Alibaba), https://github.com/piddnad/DDColor,
+amb llicència **Apache 2.0** (`models/LICENSE-DDCOLOR`). És la versió grossa
+(DDColor-L: un ConvNeXt gran que mira la foto i un descodificador amb cent
+«consultes de color» que decideixen els colors), 245 milions de números.
+
+**D'on s'ha tret.** Els pesos del projecte només són a Hugging Face i a
+ModelScope, que des d'on es treballa no s'hi arriba. El projecte FaceFusion
+(https://github.com/facefusion/facefusion-assets, versió `models-3.0.0`) en
+publica una conversió a ONNX, `ddcolor.onnx`, que és la que es fa servir. Té
+els noms de les peces del codi original (`encoder.arch.stages...`,
+`decoder.color_decoder...`) i, provada amb fotos de mostra, acoloreix com
+diu el projecte. FaceFusion no diu de quina de les versions grosses és (la
+«modelscope», que és la que el projecte recomana, o la del paper). El
+fitxer, amb aquesta empremta (i el CRC32 `cab3b659` que publica FaceFusion):
+
+```
+dd6156f056d0690891ef35f9ee87176d4d976ab19bbd36e57d18e841e064d797  ddcolor.onnx
+```
+
+**Canvis respecte de l'original** (la llicència Apache demana dir-ho): els
+pesos es desen amb 8 bits i una escala per canal (DequantizeLinear), de 980 MB
+a 237, i el fitxer es parteix en tres trossos (GitHub no n'accepta de més de
+100 MB), que l'app ajunta. El resultat canvia menys d'un nivell sobre 255 de
+mitjana.
+
+Entrada: la foto en grisos (la mateixa grisor als tres canals), de 0 a 1, de
+N × N; l'app fa servir 256 (mode Mòbil) o 384 (mode Ordinador). Sortida: els
+canals a i b de l'espai Lab a la mateixa mida, que l'app fa grans i ajunta amb
+la claredat (L) de la foto.
 
 ### `models/ratllades.onnx` — trobar les ratllades d'una foto vella
 
@@ -168,6 +200,14 @@ peces que la gràfica sap fer anar.
 
 ```
 python conversio/fes_migan.py migan_traced.pt models/migan-512.onnx
+```
+
+El del color surt de `conversio/fes_color.py`, que parteix del
+`ddcolor.onnx` de FaceFusion (en comprova el CRC32), en desa els pesos amb 8
+bits i el parteix en trossos:
+
+```
+python conversio/fes_color.py ddcolor.onnx models
 ```
 
 Els de les cares surten de `conversio/fes_cares.py`, que llegeix els dos

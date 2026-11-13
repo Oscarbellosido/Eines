@@ -2704,6 +2704,11 @@ const IA={
   // «Troba les ratllades»: la xarxa de Microsoft («Bringing Old Photos Back to
   // Life») que marca les ratllades, els plecs i les taques clares d'una foto vella
   ratllades:{ fitxer:'models/ratllades.onnx', mb:71.8, sessio:null, motorReal:null, errorGPU:null },
+  // «Posa color»: DDColor, que posa color a les fotos en blanc i negre. Fa
+  // 237 MB i va en tres trossos. El mateix model als dos modes: al mòbil
+  // treballa a 256 punts (més ràpid) i a l'ordinador a 384, on encerta més.
+  color:{ parts:['models/color.onnx.1','models/color.onnx.2','models/color.onnx.3'], mb:236.7,
+          N:{mobil:256, ordinador:384}, sessio:null, motorReal:null, forca:1, fet:null, teColor:null },
   // «Treu el fons»: U²-Net petit al mòbil, IS-Net a l'ordinador (el mateix
   // mode que a l'Amplia). Diuen, per a cada punt, si és del davant (1) o del fons (0).
   fons:{
@@ -2733,7 +2738,7 @@ async function miraBaixats(){
   const c=await cauIA(); if(!c) return;
   // la primera versió del model lleuger, que la gràfica no sabia fer anar sencera
   try{ await c.delete(urlIA('models/realesr-general-x4v3.onnx')); }catch(e){}
-  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, IA.ratllades.fitxer, IA.cares.troba, ...IA.cares.arregla, IA.fons.models.mobil.fitxer, IA.fons.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
+  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, IA.ratllades.fitxer, IA.cares.troba, ...IA.cares.arregla, ...IA.color.parts, IA.fons.models.mobil.fitxer, IA.fons.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
   for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
 }
 /* Baixa un fitxer gros una sola vegada: després el treu de la memòria del
@@ -3462,6 +3467,7 @@ const TARGETES=[
   ['ratllades','Ratllades i taques','Per a fotos velles: les troba soles i les esborra.'],
   ['esborra','Esborra coses','Pinta el que vulguis treure i la IA hi posa el que hi hauria al darrere.'],
   ['cares','Cares','Torna nítides les cares borroses o malmeses.'],
+  ['color','Color','Posa color a les fotos en blanc i negre.'],
   ['fons','Fons','El treu, o el fa blanc, d\'un color o difuminat.'],
   ['amp','Amplia','La fa 2 o 4 vegades més gran, guanyant detall.'],
 ];
@@ -3518,6 +3524,22 @@ function construeixIA(){
   const ci=el('div','tiny'); ci.id='caresInfo';
   const crr=el('div','tiny'); crr.id='caresRes'; crr.hidden=true;
   cc.append(fc,cb,ci,crr);
+  // el color
+  const co=$('#iaCos-color');
+  co.appendChild(el('div','tiny','La IA mira la foto i hi posa els colors que solen tenir les coses: el cel, la pell, les plantes, la fusta. Només hi posa el color: el detall és el de la teva foto.'));
+  co.appendChild(el('div','tiny mida-avis','Els colors són inventats, no els de debò: si un vestit era vermell, la IA no ho pot saber. La pell, el cel i les plantes els encerta sovint; la roba i els objectes, no sempre.'));
+  const fco=el('div','chips'); fco.id='colorForca'; fco.style.marginTop='8px';
+  [['1','Fort'],['0.75','Mitjà'],['0.5','Suau']].forEach(([v,lab])=>{
+    const c=el('button','chip',lab); c.type='button'; c.id='colorF-'+lab.toLowerCase().replace('à','a');
+    c.setAttribute('aria-pressed',+v===IA.color.forca?'true':'false');
+    c.onclick=()=>{ IA.color.forca=+v; fco.querySelectorAll('.chip').forEach(n=>n.setAttribute('aria-pressed',n===c?'true':'false')); };
+    fco.appendChild(c);
+  });
+  const cob=el('button','btn primary','✦ Posa-hi color'); cob.type='button'; cob.id='colorGo';
+  cob.style.cssText='width:100%;height:36px;justify-content:center;margin-top:8px'; cob.onclick=posaColor;
+  const coi=el('div','tiny'); coi.id='colorInfo';
+  const cor=el('div','tiny'); cor.id='colorRes'; cor.hidden=true;
+  co.append(fco,cob,coi,cor);
   // el fons i l'amplia es pinten soles dins de la seva targeta
   const pf=el('div'); pf.id='pane-fons'; $('#iaCos-fons').appendChild(pf);
   const pa=el('div'); pa.id='pane-amp'; $('#iaCos-amp').appendChild(pa);
@@ -3531,7 +3553,7 @@ function pintaIA(){
     $('#iaTarg-'+k).classList.toggle('obert',obert);
     $('#iaCap-'+k).setAttribute('aria-expanded',obert?'true':'false');
   }
-  pintaAmplia(); pintaFons(); estatCares(); estatRatllades();
+  pintaAmplia(); pintaFons(); estatCares(); estatRatllades(); estatColor();
 }
 // al mòbil, les opcions queden sota la foto: per pintar-hi, s'hi torna
 function veuFoto(){ if(innerWidth<=760) $('#stage').scrollIntoView({block:'start',behavior:'smooth'}); }
@@ -3717,6 +3739,150 @@ async function arreglaCares(){
     bloqueigPantalla=null;
     $('#vel').hidden=true;
     estatCares();
+  }
+}
+
+/* ===================================================================
+   16f. posar color a les fotos en blanc i negre
+   DDColor mira la foto en grisos, feta quadrada i petita (256 o 384 punts), i
+   en treu els dos canals de color de l'espai Lab (a i b). Aquests es fan grans
+   fins a la mida de la foto i s'hi ajunten amb la claredat (L) de la foto
+   original: per això el detall no es perd, encara que la IA treballi en petit.
+   La força multiplica el color (Suau = colors més apagats).
+=================================================================== */
+const LAB={ Xn:0.950456, Zn:1.088754 };
+LAB.lin=new Float32Array(256).map((_,i)=>{ const v=i/255; return v<=0.04045 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); });
+LAB.srgb=new Uint8ClampedArray(4097).map((_,i)=>{ const v=i/4096; return Math.round(255*(v<=0.0031308 ? 12.92*v : 1.055*Math.pow(v,1/2.4)-0.055)); });
+function labL(r,g,b){             // la claredat (L, de 0 a 100) d'un color sRGB
+  const Y=0.212671*LAB.lin[r]+0.715160*LAB.lin[g]+0.072169*LAB.lin[b];
+  return Y>0.008856 ? 116*Math.cbrt(Y)-16 : 903.3*Y;
+}
+function labARgb(L,a,b,o,j){      // Lab → sRGB (0-255), escrit a o[j..j+2]
+  const fy=(L+16)/116, fx=fy+a/500, fz=fy-b/200;
+  const inv=t=>t>0.206893 ? t*t*t : (t-16/116)/7.787;
+  const X=LAB.Xn*inv(fx), Y=L>8 ? fy*fy*fy : L/903.3, Z=LAB.Zn*inv(fz);
+  const R=3.240479*X-1.53715*Y-0.498535*Z, G=-0.969256*X+1.875991*Y+0.041556*Z, B=0.055648*X-0.204043*Y+1.057311*Z;
+  const q=v=>LAB.srgb[v<=0?0:v>=1?4096:(v*4096+0.5)|0];
+  o[j]=q(R); o[j+1]=q(G); o[j+2]=q(B);
+}
+/* Si la foto ja té colors (no és ni grisa ni sèpia), es diu: la IA els
+   canviarà. La sèpia també té color, però sempre del mateix to: el que compta
+   és com varia el to (en graus) entre els punts que tenen prou color. Amb les
+   fotos de prova, la sèpia varia menys d'1° i les de color, més de 10°. */
+function fotoTeColor(){
+  const C=IA.color;
+  if(C.teColor && C.teColor.de===baseCanvas) return C.teColor.si;
+  const n=64, c=mkCanvas(n,n), x=c.getContext('2d',{willReadFrequently:true});
+  x.imageSmoothingQuality='high'; x.drawImage(baseCanvas,0,0,n,n);
+  const d=x.getImageData(0,0,n,n).data, f=t=>t>0.008856 ? Math.cbrt(t) : 7.787*t+16/116;
+  let sx=0, sy=0, k=0;
+  for(let i=0;i<d.length;i+=4){
+    const r=LAB.lin[d[i]], g=LAB.lin[d[i+1]], b=LAB.lin[d[i+2]];
+    const fx=f((0.412453*r+0.357580*g+0.180423*b)/LAB.Xn), fy=f(0.212671*r+0.715160*g+0.072169*b), fz=f((0.019334*r+0.119193*g+0.950227*b)/LAB.Zn);
+    const A=500*(fx-fy), B=200*(fy-fz), cr=Math.hypot(A,B);
+    if(cr>5){ sx+=A/cr; sy+=B/cr; k++; }
+  }
+  // desviació circular del to: 0° si tots els punts són del mateix to
+  const R=k ? Math.hypot(sx,sy)/k : 1, graus=Math.sqrt(-2*Math.log(Math.max(R,1e-9)))*180/Math.PI;
+  const si=k>n*n*0.1 && graus>6;
+  C.teColor={de:baseCanvas, si};
+  return si;
+}
+function estatColor(){
+  const b=$('#colorGo'), info=$('#colorInfo'); if(!b||!info) return;
+  b.disabled=IA.treballant || IA.motor==null || !baseCanvas;
+  const C=IA.color, falta=[];
+  if(IA.motor && !IA.baixats[IA.motors[IA.motor].wasm] && IA.carregat!==IA.motor) falta.push(IA.motors[IA.motor].mb);
+  if(!C.parts.every(f=>IA.baixats[f]) && !C.sessio) falta.push(C.mb);
+  const suma=falta.reduce((a,b)=>a+b,0);
+  let t=suma ? 'La primera vegada es baixen '+mb(suma)+(IA.mode==='mobil'?' (millor amb wifi).':'.') : 'La IA ja és en aquest aparell.';
+  t+=IA.mode==='mobil' ? ' Amb el mode Mòbil treballa més petita i va més de pressa.' : ' Amb el mode Ordinador treballa més gran: encerta una mica més els colors.';
+  if(baseCanvas && fotoTeColor()) t+=' Aquesta foto ja té colors: la IA els canviarà pels seus.';
+  info.textContent=t;
+  const r=$('#colorRes');
+  if(r){ const f=C.fet; r.hidden=!(f && f.src===S.src); if(f && f.src===S.src) r.textContent=f.text; }
+}
+async function preparaSessioColor(progres){
+  const C=IA.color;
+  if(C.sessio) return;
+  const parts=[]; let fet=0;
+  for(const f of C.parts){
+    parts.push(await baixaIA(f,(a,t)=>progres('la IA del color',fet+a,C.mb*1048576)));
+    fet+=parts[parts.length-1].length;
+  }
+  const tot=new Uint8Array(fet); let o=0; for(const p of parts){ tot.set(p,o); o+=p.length; }
+  parts.length=0;
+  progres('preparant el model',0,0);
+  const r=await creaSessio(tot);
+  C.sessio=r.sessio; C.motorReal=r.motorReal;
+}
+/* El color de tota la foto: la foto en grisos a N × N, pel model, i el que en
+   surt (a i b) es fa gran fins a la mida de la foto i s'hi ajunta la seva L. */
+async function acoloreix(src, N, forca){
+  const W=src.width, H=src.height;
+  const c=mkCanvas(N,N), x=c.getContext('2d',{willReadFrequently:true});
+  x.imageSmoothingQuality='high'; x.drawImage(src,0,0,N,N);
+  const d=x.getImageData(0,0,N,N).data, P=N*N, e=new Float32Array(3*P);
+  for(let i=0,j=0;i<P;i++,j+=4){ const g=(0.299*d[j]+0.587*d[j+1]+0.114*d[j+2])/255; e[i]=e[P+i]=e[2*P+i]=g; }
+  const s=IA.color.sessio;
+  const res=await s.run({[s.inputNames[0]]: new ort.Tensor('float32',e,[1,3,N,N])});
+  const ab=res[s.outputNames[0]].data;
+  // a i b, fets grans amb interpolació lineal (com cv2.resize)
+  const sx=new Float32Array(W), ix=new Int32Array(W);
+  for(let X=0;X<W;X++){ let u=(X+0.5)*N/W-0.5; u=Math.max(0,Math.min(N-1,u)); ix[X]=Math.min(N-2,u|0); sx[X]=u-ix[X]; }
+  const sc=src.getContext('2d',{willReadFrequently:true}), img=sc.getImageData(0,0,W,H), p=img.data;
+  for(let Y=0;Y<H;Y++){
+    let v=(Y+0.5)*N/H-0.5; v=Math.max(0,Math.min(N-1,v)); const iy=Math.min(N-2,v|0), fy=v-iy;
+    const f0=iy*N, f1=f0+N;
+    for(let X=0;X<W;X++){
+      const a0=ix[X], fx=sx[X], k=(Y*W+X)*4;
+      const i00=f0+a0, i10=f1+a0;
+      const A=((ab[i00]*(1-fx)+ab[i00+1]*fx)*(1-fy)+(ab[i10]*(1-fx)+ab[i10+1]*fx)*fy)*forca;
+      const B=((ab[P+i00]*(1-fx)+ab[P+i00+1]*fx)*(1-fy)+(ab[P+i10]*(1-fx)+ab[P+i10+1]*fx)*fy)*forca;
+      labARgb(labL(p[k],p[k+1],p[k+2]),A,B,p,k);
+    }
+  }
+  const out=mkCanvas(W,H); out.getContext('2d').putImageData(img,0,0);
+  return out;
+}
+async function posaColor(){
+  if(IA.treballant || !baseCanvas) return;
+  if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
+  cancelaEndreca(); if(cropOn){ endCrop(false); setTool('move'); } hideTextEdit();
+  IA.treballant=true; IA.atura=false; estatColor();
+  const t0=performance.now(); mantenEncesa();
+  try{
+    const progres=(que,a,t)=>{
+      if(IA.atura) throw new Error('aturat');
+      vel(t ? 'Baixant '+que+'…' : 'Preparant la IA…', t ? a/t : 0, t ? mb(a/1048576)+' de '+mb(t/1048576)+' · només la primera vegada' : 'Només la primera vegada.');
+    };
+    vel('Preparant…',0,'');
+    await preparaMotor(progres);
+    await preparaSessioColor(progres);
+    if(IA.atura) throw new Error('aturat');
+    const N=IA.color.N[IA.mode];
+    vel('Posant color…',0,IA.color.motorReal==='gpu' ? 'Amb la gràfica.' : 'Amb el processador: pot trigar una mica.');
+    await new Promise(r=>setTimeout(r,30));
+    const feina=await acoloreix(baseCanvas, N, IA.color.forca);
+    if(IA.atura) throw new Error('aturat');
+    // com quan s'esborra o s'amplia, la foto nova passa a ser la foto
+    S.src=feina; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
+    buildBase(); scheduleRender();
+    push('Posa color');
+    const temps=minuts((performance.now()-t0)/1000);
+    IA.color.fet={ src:S.src, text:'✓ Color posat en '+temps+', '+(IA.color.motorReal==='gpu'?'amb la gràfica':'amb el processador')+
+      '. Es pot retocar amb la temperatura i la saturació, a Ajustos. Si és massa viu, desfés-ho i prova «Suau».' };
+    say('Color posat en '+temps+'.');
+  }catch(e){
+    const msg=String(e&&e.message||e);
+    if(msg==='aturat') say('Aturat. La foto és com era.');
+    else { say('No s\'ha pogut posar color: '+msg+'.'); console.warn('Color:',e); }
+  }finally{
+    IA.treballant=false; IA.atura=false;
+    try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
+    bloqueigPantalla=null;
+    $('#vel').hidden=true;
+    estatColor();
   }
 }
 

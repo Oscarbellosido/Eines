@@ -4,7 +4,7 @@
 //
 // Cada canvi en un fitxer d'aquesta llista: pujar la versió, que si no l'app
 // instal·lada sense connexió seguiria servint la vella.
-const VERSIO='cambra-fosca-v13';
+const VERSIO='cambra-fosca-v14';
 const FITXERS = [
   'cambra-fosca.html',
   'cambra-fosca.webmanifest',
@@ -35,7 +35,8 @@ self.addEventListener('fetch', e => {
   const url = new URL(r.url);
   // Els models i el motor (desenes de MB) els desa l'app mateixa a la seva
   // memòria: si també els desés aquí, ocuparien el doble.
-  if (/\.(onnx|wasm)$/.test(url.pathname)) return;
+  // (també els trossos dels que van partits: cares-arregla.onnx.1, color.onnx.2...)
+  if (/\.(onnx(\.\d+)?|wasm)$/.test(url.pathname)) return;
   // Les lletres de Google: la primera vegada de la xarxa, després de la memòria.
   if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
     e.respondWith(caches.open(VERSIO).then(c => c.match(r).then(m => m || fetch(r).then(res => { c.put(r, res.clone()); return res; }))));

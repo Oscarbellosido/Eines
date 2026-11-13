@@ -290,7 +290,7 @@ console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename()
     modes: document.querySelectorAll('[id^="iaMode-"]').length,
     altres: document.querySelectorAll('[id^="fonsMode-"]').length }));
   let e = await est();
-  if (e.targetes.join() !== 'ratllades,esborra,cares,fons,amp') problemes.push('les targetes de la IA no són les cinc, per ordre: ' + e.targetes);
+  if (e.targetes.join() !== 'ratllades,esborra,cares,color,fons,amp') problemes.push('les targetes de la IA no són les sis, per ordre: ' + e.targetes);
   if (e.modes !== 2 || e.altres) problemes.push(`no hi ha un sol «On ho fas» per a totes les IA (${e.modes} botons de mode, ${e.altres} del fons)`);
   await p.click('#iaCap-cares'); e = await est();
   if (e.oberts.join() !== 'cares') problemes.push('obrint «Cares» no queda oberta només aquesta: ' + e.oberts);
@@ -322,7 +322,7 @@ console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename()
   await p.click('#iaCap-cares');
   await p.setViewportSize({ width: 1280, height: 800 }); await p.waitForTimeout(200);
   await p.click('#tab-adj');
-  console.log(`${problemes.length > abansIA ? '✗' : '✓'} els menús: les cinc IA a la pestanya ✦ IA (una targeta oberta, un sol «On ho fas»), Endreça al Retalla, i a 320 px`);
+  console.log(`${problemes.length > abansIA ? '✗' : '✓'} els menús: les sis IA a la pestanya ✦ IA (una targeta oberta, un sol «On ho fas»), Endreça al Retalla, i a 320 px`);
 }
 }
 await p.close();
@@ -1289,6 +1289,90 @@ await p.close();
     console.log(`${problemes.length > abansF ? '✗' : '✓'} treure el fons (pel processador): transparent (encerta el ${(e1 * 100).toFixed(1)}% amb el model petit i el ${(e2 * 100).toFixed(1)}% amb el gran), blanc, d'un color, difuminat sense aura, desar en JPG i PNG, i desfer`);
     await q.close();
   }
+  // ------------------------------------------------- posar color
+  // Un paisatge en grisos dibuixat aquí (cel, muntanyes, mar, sorra): que hi
+  // posi color, que la claredat de cada punt sigui la mateixa d'abans (el
+  // detall és el de la foto), que «Suau» faci els colors més apagats, que la
+  // segona vegada no torni a baixar res, desfer, i que avisi si la foto ja té
+  // colors (però no si és sèpia).
+  {
+    const abansCo = problemes.length;
+    const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+    vigila(q, 'color');
+    let baixades = 0;
+    q.on('request', r => { if (/color\.onnx\.\d/.test(r.url())) baixades++; });
+    await q.goto(BASE);
+    await q.waitForTimeout(1500);
+    const fes = to => q.evaluate(to => {
+      const c = document.createElement('canvas'); c.width = 600; c.height = 400; const x = c.getContext('2d');
+      let g = x.createLinearGradient(0, 0, 0, 220); g.addColorStop(0, '#5a8ac8'); g.addColorStop(1, '#d8e6f0'); x.fillStyle = g; x.fillRect(0, 0, 600, 220);
+      x.fillStyle = '#4f6a3a'; x.beginPath(); x.moveTo(0, 220); [[80, 120], [170, 175], [260, 95], [380, 180], [470, 130], [600, 200], [600, 230], [0, 230]].forEach(([a, b]) => x.lineTo(a, b)); x.fill();
+      g = x.createLinearGradient(0, 230, 0, 320); g.addColorStop(0, '#2e6f9a'); g.addColorStop(1, '#1d4f73'); x.fillStyle = g; x.fillRect(0, 225, 600, 95);
+      x.fillStyle = '#d9c39a'; x.fillRect(0, 320, 600, 80);
+      let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+      for (let i = 0; i < 3000; i++) { x.fillStyle = `rgba(0,0,0,${rnd() * 0.08})`; x.fillRect(rnd() * 600, 320 + rnd() * 80, 2, 2); }
+      if (to !== 'color') {
+        const d = x.getImageData(0, 0, 600, 400), p = d.data;
+        for (let i = 0; i < p.length; i += 4) { const v = 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
+          if (to === 'sepia') { p[i] = Math.min(255, v * 1.07); p[i + 1] = v * 0.88; p[i + 2] = v * 0.68; } else p[i] = p[i + 1] = p[i + 2] = v; }
+        x.putImageData(d, 0, 0);
+      }
+      return c.toDataURL('image/png');
+    }, to);
+    const obre = async (to) => { await q.setInputFiles('#file', { name: to + '.png', mimeType: 'image/png', buffer: Buffer.from((await fes(to)).split(',')[1], 'base64') }); await q.waitForTimeout(700); };
+    // la claredat (L) i el color (a, b) de cada punt del que es veu
+    const lab = () => q.evaluate(() => {
+      const v = document.querySelector('#view'), d = v.getContext('2d').getImageData(0, 0, v.width, v.height).data;
+      const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }, f = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+      const L = [], A = [], B = [];
+      for (let i = 0; i < d.length; i += 4) { const r = lin(d[i]), g = lin(d[i + 1]), b = lin(d[i + 2]);
+        const fx = f((0.412453 * r + 0.357580 * g + 0.180423 * b) / 0.950456), fy = f(0.212671 * r + 0.715160 * g + 0.072169 * b), fz = f((0.019334 * r + 0.119193 * g + 0.950227 * b) / 1.088754);
+        L.push(116 * fy - 16); A.push(500 * (fx - fy)); B.push(200 * (fy - fz)); }
+      return { L, A, B, w: v.width };
+    });
+    const croma = m => m.A.reduce((s, a, i) => s + Math.hypot(a, m.B[i]), 0) / m.A.length;
+    const fesho = async (forca) => {
+      await obreTargeta(q, 'color'); await q.click('#iaMode-mobil'); await q.click('#colorF-' + forca);
+      await q.click('#colorGo');
+      await q.waitForTimeout(300);
+      await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 600000 });
+      await q.waitForTimeout(300);
+    };
+    await obre('gris');
+    const m0 = await lab();
+    await obreTargeta(q, 'color');
+    const info0 = await q.locator('#colorInfo').innerText();
+    if (!info0.includes('MB')) problemes.push('el color no diu quant es baixa la primera vegada: ' + info0);
+    if (info0.includes('ja té colors')) problemes.push('una foto en grisos diu que ja té colors');
+    await fesho('fort');
+    const m1 = await lab(), c1 = croma(m1);
+    const dL = m1.L.reduce((s, l, i) => s + Math.abs(l - m0.L[i]), 0) / m1.L.length;
+    // el cel (la franja de dalt) i el mar: de quin color han quedat
+    const franja = (m, y0, y1) => { let a = 0, b = 0, n = 0; for (let y = y0; y < y1; y++) for (let x = 0; x < m.w; x++) { a += m.A[y * m.w + x]; b += m.B[y * m.w + x]; n++; } return [a / n, b / n]; };
+    const cel = franja(m1, 5, 60);
+    if (c1 < 6) problemes.push(`posar color no hi posa prou color (croma mitjana ${c1.toFixed(1)})`);
+    if (dL > 1.5) problemes.push(`posar color canvia la claredat de la foto (${dL.toFixed(2)} de mitjana): el detall ha de ser el de la foto`);
+    if (!(cel[1] < -3)) problemes.push(`el cel no ha quedat blau (a ${cel[0].toFixed(1)}, b ${cel[1].toFixed(1)}): potser a i b van girats`);
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Posa color')) problemes.push('posar color no surt a l\'historial');
+    const res = await q.locator('#colorRes');
+    if (await res.isHidden() || !(await res.innerText()).startsWith('✓')) problemes.push('després de posar color no diu «✓ Color posat»');
+    const baixadesAbans = baixades;
+    // desfer torna la foto en grisos
+    await q.keyboard.press('Control+z'); await q.waitForTimeout(400);
+    if (croma(await lab()) > 0.5) problemes.push('desfer no torna la foto en grisos');
+    // «Suau», la segona vegada: colors més apagats i sense baixar res
+    await fesho('suau');
+    const c2 = croma(await lab());
+    if (!(c2 > c1 * 0.4 && c2 < c1 * 0.6)) problemes.push(`«Suau» no apaga els colors a la meitat (fort ${c1.toFixed(1)}, suau ${c2.toFixed(1)})`);
+    if (baixades !== baixadesAbans) problemes.push('la segona vegada, el color torna a baixar la IA');
+    // una foto que ja té colors ho diu; una de sèpia, no
+    await obre('color'); await obreTargeta(q, 'color');
+    if (!(await q.locator('#colorInfo').innerText()).includes('ja té colors')) problemes.push('amb una foto en color no avisa que la IA li canviarà els colors');
+    await obre('sepia'); await obreTargeta(q, 'color');
+    if ((await q.locator('#colorInfo').innerText()).includes('ja té colors')) problemes.push('una foto en sèpia diu que ja té colors');
+    console.log(`${problemes.length > abansCo ? '✗' : '✓'} posar color (pel processador): croma ${c1.toFixed(1)}, el cel blau (b ${cel[1].toFixed(1)}), la claredat igual (${dL.toFixed(2)}), «Suau» ${c2.toFixed(1)}, la segona vegada sense baixar res, desfer, i l'avís de les fotos que ja tenen colors (no amb la sèpia)`);
+    await q.close();
+  }
   servidor.close();
 }
 
@@ -1347,6 +1431,15 @@ await p.close();
   const sw = await p.evaluate(async () => ({ ctrl: !!navigator.serviceWorker.controller, abast: (await navigator.serviceWorker.getRegistration())?.scope || '' }));
   if (!sw.ctrl) problemes.push('el programa de sense connexió no s\'ocupa de la Cambra Fosca');
   if (!sw.abast.endsWith('/Eines/cambra-fosca')) problemes.push('el programa de sense connexió no té l\'abast que toca: ' + sw.abast);
+  // els models no els desa el programa de sense connexió (ja els desa l'app):
+  // tampoc els trossos dels que van partits (abans sí, i ocupaven el doble)
+  const desat = await p.evaluate(async () => {
+    await (await fetch('ia/models/color.onnx.3')).arrayBuffer();
+    await new Promise(r => setTimeout(r, 500));
+    for (const k of await caches.keys()) if (k.startsWith('cambra-fosca-v') && await (await caches.open(k)).match('ia/models/color.onnx.3')) return k;
+    return null;
+  });
+  if (desat) problemes.push('el programa de sense connexió desa també els trossos dels models (a ' + desat + '), i ocupen el doble');
   const p2 = await ctx.newPage(); await p2.goto(BASE + 'revisio.html'); await p2.waitForTimeout(400);
   if (await p2.evaluate(() => !!navigator.serviceWorker.controller)) problemes.push('el programa de sense connexió de la Cambra Fosca també s\'ocupa de la Revisió');
   await p2.close();

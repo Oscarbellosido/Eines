@@ -3,7 +3,7 @@
 Eines petites que funcionen dins del navegador, en català i pensades per al
 mòbil. **Cada eina és un sol fitxer** HTML autocontingut, sense cap llibreria,
 sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepció
-és la carpeta `ia/`, que fan servir l'ampliació, l'esborrat i treure el fons amb IA de La Cambra Fosca (més avall).
+és la carpeta `ia/`, que fan servir les IA de La Cambra Fosca (més avall).
 
 - Publicat a: https://oscarbellosido.github.io/Eines/
 - **El que hi posa qui la fa servir no surt mai del seu aparell.** No hi ha
@@ -16,7 +16,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepci
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares), esborra coses, treu el fons i amplia fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares), posa color, esborra coses, treu el fons i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -25,7 +25,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepci
 index.html            la portada, amb una fitxa per eina
 cambra-fosca.html     l'editor de fotografies
 revisio.html          la revisió de seguretat del mòbil
-ia/                   el motor i els models de la IA: ampliar, esborrar i treure el fons (vegeu ia/LLEGEIX.md)
+ia/                   el motor i els models de la IA (vegeu ia/LLEGEIX.md)
 cambra-fosca.webmanifest   la fitxa de la Cambra Fosca com a app (nom, icones, colors)
 cambra-fosca-sw.js         el que la fa anar sense connexió, un cop instal·lada
 icones/               les icones de l'app
@@ -182,7 +182,7 @@ Mida · Historial**:
 - **✦ IA** (`construeixIA`, `pintaIA`): a dalt, **un sol «On ho fas»** per a
   totes (`IA.mode`), i una **targeta** per a cada IA, per l'ordre en què
   s'arregla una foto vella (`TARGETES`): Ratllades i taques, Esborra coses,
-  Cares, Fons i Amplia. **Només una d'oberta** (`IA.targeta`), que al mòbil
+  Cares, Color, Fons i Amplia. **Només una d'oberta** (`IA.targeta`), que al mòbil
   no s'hagi de baixar tant; tocant-la oberta, es tanca. El Fons i l'Amplia
   es pinten dins de la seva targeta (`#pane-fons`, `#pane-amp`, que ara són
   dins), i diuen amb quin mode van.
@@ -293,6 +293,47 @@ malmeses quedin nítides. Dues xarxes, convertides per
 - Sense gràfica, al contenidor tres cares triguen uns 45 segons comptant la
   preparació. Es va comprovar amb fotos de prova del projecte GFPGAN (no són
   al repositori): les cares surten nítides i al seu lloc.
+
+## La Cambra Fosca: posar color
+
+L'usuari arregla fotos velles i ho va triar d'una llista: que les fotos en
+blanc i negre (o en sèpia) quedin en color. És la targeta **Color** de la
+pestanya ✦ IA (`posaColor`). Fa servir **DDColor** (Apache 2.0), la versió
+grossa, amb els pesos en 8 bits (237 MB, en tres trossos).
+
+- **El model només dona el color** (els canals a i b de l'espai Lab) d'una
+  versió quadrada i petita de la foto en grisos (`acoloreix`); es fa gran fins
+  a la mida de la foto i s'ajunta amb la claredat (L) de cada punt de la foto
+  original. Per això **el detall no es perd** i la claredat queda igual (la
+  prova ho mira). Si la foto és en sèpia, el seu to desapareix: la L és la
+  mateixa i el color és el de la IA.
+- **El mateix model als dos modes**, a una mida diferent (`IA.color.N`): al
+  Mòbil, 256 punts (és a la mida que es va entrenar i va més de pressa); a
+  l'Ordinador, 384. Es van provar 256, 384 i 512 contra els colors de debò de
+  quatre fotos de mostra: a 384 és on s'equivoca menys de mitjana, i a 512 de
+  vegades fa taques (un vestit meitat verd i meitat blau).
+- **Força**: Fort, Mitjà i Suau multipliquen el color per 1, 0,75 i 0,5. No
+  es barreja amb l'original, que en una foto en sèpia tornaria a portar la
+  sèpia.
+- **Els colors són inventats**, i la targeta ho diu: la pell, el cel i les
+  plantes els encerta sovint; la roba i els objectes, no sempre.
+- **Si la foto ja té colors, ho diu** (`fotoTeColor`): la IA els canviaria
+  pels seus. La sèpia té color però sempre del mateix to, així que el que es
+  mira és **com varia el to** entre els punts amb prou color (desviació
+  circular): la sèpia de prova varia menys d'1°, les fotos de color més de 10°,
+  i el límit és 6°.
+- **Els pesos en 8 bits no s'ajunten amb el model en carregar-lo** (el motor
+  deixa les peces DequantizeLinear per a cada passada): així a la memòria
+  també ocupen 237 MB i no 980. Amb els pesos a mitja precisió, com els
+  altres, haurien fet 490 MB i la web hauria passat d'1 GB, que és el màxim de
+  GitHub Pages.
+- **D'on surt**: els pesos del projecte només són a Hugging Face i a
+  ModelScope, que des del contenidor no s'hi arriba; es parteix de la
+  conversió a ONNX que publica FaceFusion a GitHub (`ia/LLEGEIX.md`).
+- Sense gràfica, al contenidor una foto de 600 × 400 triga uns 18 segons al
+  mode Ordinador comptant la preparació. El que fa el navegador es va comparar
+  amb el mateix càlcul fet a part, en Python: 1,6 nivells de diferència sobre
+  255 de mitjana.
 
 ## La Cambra Fosca: ampliar amb IA
 
@@ -631,8 +672,10 @@ la barra del navegador, sense la portada i també sense connexió.
 - **`cambra-fosca-sw.js`** és el que la fa anar sense connexió. Es registra
   amb el mateix abast (la Revisió no hi passa), demana sempre primer a la
   xarxa (així sempre és la versió nova) i, si no n'hi ha, treu la còpia
-  desada. **No toca els models ni el motor** (`.onnx`, `.wasm`): ja els desa
-  l'app mateixa, i desats dues vegades ocuparien el doble. **Cada canvi en un
+  desada. **No toca els models ni el motor** (`.onnx`, `.wasm`, i els
+  trossos dels models partits, `.onnx.1`...): ja els desa l'app mateixa, i
+  desats dues vegades ocuparien el doble. Els trossos s'hi colaven fins que
+  es va afegir el color: les cares ja ocupaven 167 MB de més. **Cada canvi en un
   dels fitxers de la seva llista, pujar `VERSIO`**, que si no l'app sense
   connexió serviria la vella.
 - **El botó INSTAL·LA** (`#btnInstal`) només surt quan el navegador diu que
@@ -767,11 +810,19 @@ de debò i comprova:
   la resolució triada, i va trobar que després de desfer una resolució les
   caselles en deien una altra;
 - **els menús**: que les pestanyes siguin Ajustos · Filtres · ✦ IA · Mida ·
-  Historial; que a ✦ IA hi hagi les cinc targetes per ordre, només una
+  Historial; que a ✦ IA hi hagi les targetes per ordre, només una
   d'oberta (i que tornant-la a tocar es tanqui), un sol «On ho fas» que
   segueixen el fons i l'amplia; que «Pinta el que vols treure» posi la
   vareta; que Endreça i les cares ja no siguin a Ajustos i Endreça sigui al
   Retalla; i que a 320 px les targetes hi càpiguen;
+- **posar color** (també serveix el repositori ella mateixa): sobre un
+  paisatge dibuixat i passat a grisos, que hi posi color, que el cel quedi
+  blau, que la claredat de cada punt sigui la d'abans, que surti a
+  l'historial i digui «✓ Color posat», que desfer torni els grisos, que
+  «Suau» deixi la meitat de color, que la segona vegada no torni a baixar
+  res, i que avisi si la foto ja té colors però no si és sèpia. Es va
+  comprovar que falla amb a i b girats, sense la força, amb la claredat mal
+  calculada o si la sèpia compta com a color;
 - **arregla la foto**: es fa una foto «bona» (cel, paret grisa, un full
   blanc, objectes de color) i s'espatlla de cinc maneres (fosca, cremada,
   groga, blava, i fosca i groga). «Arregla-la sola» ha de deixar la bona com
@@ -839,7 +890,8 @@ de debò i comprova:
   que l'abast no agafi tota la carpeta, el nom i els colors, i que les icones
   hi siguin i facin la mida que diuen, amb una de «maskable»), que el programa
   de sense connexió s'ocupi de la Cambra Fosca i no de la Revisió, que sense
-  xarxa l'editor s'obri igual, i que el botó INSTAL·LA hi càpiga a 320 px. Es
+  xarxa l'editor s'obri igual, que no desi els trossos dels models, i que el
+  botó INSTAL·LA hi càpiga a 320 px. Es
   va comprovar que la prova falla amb una fitxa que l'obre com una pàgina
   normal, o sense la icona «maskable»;
 - **la Revisió**: que no vessi, i feta sencera amb el dit a 320 px: que el
