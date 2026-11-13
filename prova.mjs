@@ -161,42 +161,65 @@ const desat = await baixada;
 if (!desat) problemes.push('el botó de desar no ha generat cap fitxer');
 console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename() : 'no s\'ha baixat res'}`);
 
-// Desar a una mida en mil·límetres o centímetres, sempre proporcional, i que
-// el fitxer porti escrita la resolució (si no, el programa que l'imprimeix
-// suposa 72 o 96 ppp i la foto de 300 mm surt d'un metre)
+// La pestanya Mida: la mida en px, mm o cm (sempre proporcional) i la
+// resolució. Aplicar-la canvia la foto (i desfer la torna), i desant, el
+// fitxer porta escrita la resolució (si no, el programa que l'imprimeix suposa
+// 72 o 96 ppp i la foto de 300 mm surt d'un metre). A Desa només hi ha el
+// format: l'usuari va trobar confús tenir la mida allà i a l'Amplia.
 {
   const abansM = problemes.length;
   const { readFileSync } = await import('fs');
   const { crc32 } = await import('zlib');
   const val = sel => p.locator(sel).inputValue();
   const escriu = async (sel, v) => { await p.fill(sel, ''); await p.locator(sel).pressSequentially(String(v)); await p.waitForTimeout(80); };
-  const desa = async () => {
+  const mida = async () => (await p.locator('#stDims').innerText()).match(/(\d+) × (\d+)/).slice(1).map(Number);
+  const historial = () => p.locator('.hitem span').allInnerTexts();
+  const desa = async fmt => {
+    await p.click('#btnSave'); await p.waitForTimeout(300);
+    if (fmt) await p.locator('.dlg .chip', { hasText: fmt }).click();
     const b = p.waitForEvent('download', { timeout: 15000 }).catch(() => null);
     await p.click('.dlg .btn.primary');
     const d = await b;
     return d ? readFileSync(await d.path()) : null;
   };
-  const mida = (await p.locator('#stDims').innerText()).match(/(\d+) × (\d+)/).slice(1).map(Number);
-  const [W0, H0] = mida;
+  const [W0, H0] = await mida();
+  // a Desa ja no hi ha la mida, només diu on es canvia
   await p.click('#btnSave'); await p.waitForTimeout(300);
-  if (await val('#expW') !== String(W0) || await val('#expH') !== String(H0)) problemes.push(`en obrir «Desa», la mida no és la de la foto (${await val('#expW')} × ${await val('#expH')})`);
-  if (await p.locator('#expPPP').isVisible()) problemes.push('en píxels també surt la resolució, que no hi fa res');
-  await p.click('#expU-mm');
+  if (await p.locator('#expW').count()) problemes.push('al quadre de Desa encara hi ha la mida');
+  if (!(await p.locator('#expDims').innerText()).includes('pestanya Mida')) problemes.push('el quadre de Desa no diu que la mida es canvia a la pestanya Mida');
+  await p.click('.dlg footer .btn:not(.primary)');
+
+  await p.click('#tab-mida'); await p.waitForTimeout(200);
+  if (await val('#midaW') !== String(W0) || await val('#midaH') !== String(H0)) problemes.push(`a la pestanya Mida, la mida no és la de la foto (${await val('#midaW')} × ${await val('#midaH')})`);
+  // en punts, la resolució només canvia quant fa imprès
+  await escriu('#midaPPP', 150);
+  if (await p.locator('#midaAplica').innerText() !== 'Aplica la resolució') problemes.push('canviant només la resolució, el botó no diu «Aplica la resolució»');
+  await p.click('#midaAplica'); await p.waitForTimeout(300);
+  if ((await mida()).join() !== [W0, H0].join() || !(await historial()).includes('Resolució: 150 ppp') || !(await p.locator('#midaAra').innerText()).includes('150 ppp'))
+    problemes.push('canviant la resolució en punts, la foto ha canviat de mida o no s\'apunta');
+  await p.click('#btnUndo'); await p.waitForTimeout(300);
+  if (!(await p.locator('#midaAra').innerText()).includes('300 ppp')) problemes.push('desfer no torna la resolució d\'abans');
+
+  await p.click('#midaU-mm');
   const mmW = Math.round(W0 / 300 * 25.4 * 10) / 10;
-  if (await val('#expW') !== String(mmW).replace('.', ',')) problemes.push(`en mil·límetres, la foto de ${W0} px a 300 ppp hauria de fer ${mmW} mm i diu ${await val('#expW')}`);
-  await escriu('#expW', 300);
+  if (await val('#midaW') !== String(mmW).replace('.', ',')) problemes.push(`en mil·límetres, la foto de ${W0} px a 300 ppp hauria de fer ${mmW} mm i diu ${await val('#midaW')}`);
+  await escriu('#midaW', 300);
   const pw = Math.round(300 / 25.4 * 300), ph = Math.round(300 / 25.4 * 300 * H0 / W0);
   const mmH = String(Math.round(300 * H0 / W0 * 10) / 10).replace('.', ',');
-  if (await val('#expH') !== mmH) problemes.push(`posant 300 mm d'ample, l'alt hauria de ser ${mmH} mm i és ${await val('#expH')}`);
-  if (!(await p.locator('#expDims').innerText()).includes(`${pw} × ${ph} px`)) problemes.push('no diu de quants píxels farà el fitxer: ' + await p.locator('#expDims').innerText());
-  if (!(await p.locator('#expAvis').isVisible()) || !(await p.locator('#expAvis').innerText()).includes('ppp')) problemes.push('fent-la més gran que la foto, no avisa que quedarà tova ni a quants ppp sortiria');
-  // l'alt també mana: escrivint-lo, l'ample es calcula sol
-  await escriu('#expH', 150);
+  if (await val('#midaH') !== mmH) problemes.push(`posant 300 mm d'ample, l'alt hauria de ser ${mmH} mm i és ${await val('#midaH')}`);
+  if (!(await p.locator('#midaRes').innerText()).includes(`${pw} × ${ph} px`)) problemes.push('no diu de quants punts farà la foto: ' + await p.locator('#midaRes').innerText());
+  if (!(await p.locator('#midaAvis').isVisible()) || !(await p.locator('#midaAvis').innerText()).includes('ppp')) problemes.push('fent-la més gran que la foto, no avisa que quedarà tova ni a quants ppp sortiria');
+  if (!await p.locator('#midaIA').isVisible()) problemes.push('fent-la més gran que la foto, no ofereix fer-la més gran amb IA');
+  // l'alt també mana
+  await escriu('#midaH', 150);
   const wDeH = String(Math.round(150 * W0 / H0 * 10) / 10).replace('.', ',');
-  if (await val('#expW') !== wDeH) problemes.push(`escrivint 150 mm d'alt, l'ample hauria de ser ${wDeH} mm i és ${await val('#expW')}`);
-  await escriu('#expW', 300);
+  if (await val('#midaW') !== wDeH) problemes.push(`escrivint 150 mm d'alt, l'ample hauria de ser ${wDeH} mm i és ${await val('#midaW')}`);
+  await escriu('#midaW', 300);
+  await p.click('#midaAplica'); await p.waitForTimeout(500);
+  if ((await mida()).join() !== [pw, ph].join()) problemes.push(`aplicant 300 mm a 300 ppp, la foto hauria de fer ${pw} × ${ph} px i en fa ${await mida()}`);
+  if (!(await historial()).includes(`Mida: ${pw} × ${ph} px`)) problemes.push('canviar la mida no surt a l\'historial');
   const png = await desa();
-  if (!png) problemes.push('desant en mil·límetres no s\'ha baixat res');
+  if (!png) problemes.push('desant després de canviar la mida no s\'ha baixat res');
   else {
     const w = png.readUInt32BE(16), h = png.readUInt32BE(20), i = png.indexOf('pHYs');
     if (w !== pw || h !== ph) problemes.push(`el PNG de 300 mm hauria de fer ${pw} × ${ph} px i en fa ${w} × ${h}`);
@@ -208,18 +231,17 @@ console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename()
     }
     if (png.indexOf('pHYs', i + 4) >= 0) problemes.push('el PNG porta la resolució escrita dues vegades');
   }
+  await p.click('#btnUndo'); await p.waitForTimeout(500);
+  if ((await mida()).join() !== [W0, H0].join()) problemes.push('desfer no torna la foto a la mida d\'abans');
 
-  // en centímetres, a 150 ppp i en JPG; la unitat es recorda d'una vegada a l'altra
-  await p.click('#btnSave'); await p.waitForTimeout(300);
-  if (await p.locator('#expU-mm').getAttribute('aria-pressed') !== 'true') problemes.push('«Desa» no recorda que l\'última vegada era en mil·límetres');
-  if (await val('#expW') !== String(mmW).replace('.', ',')) problemes.push('en tornar a obrir «Desa», no torna a ser la mida de la foto');
-  await p.locator('.dlg .chip', { hasText: 'JPG' }).click();
-  await p.click('#expU-cm');
-  await escriu('#expPPP', 150);
-  await escriu('#expW', 10);
+  // en centímetres, a 150 ppp, i desada en JPG
+  await p.click('#tab-mida'); await p.click('#midaU-cm');
+  await escriu('#midaPPP', 150);
+  await escriu('#midaW', 10);
   const jw = Math.round(10 / 2.54 * 150), jh = Math.round(10 / 2.54 * 150 * H0 / W0);
-  const jpg = await desa();
-  if (!jpg) problemes.push('desant en centímetres no s\'ha baixat res');
+  await p.click('#midaAplica'); await p.waitForTimeout(400);
+  const jpg = await desa('JPG');
+  if (!jpg) problemes.push('desant en JPG no s\'ha baixat res');
   else {
     let w = 0, h = 0;
     for (let o = 2; o < jpg.length - 9 && jpg[o] === 0xFF;) {
@@ -232,26 +254,22 @@ console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename()
     if (!jfif || jpg[13] !== 1 || jpg.readUInt16BE(14) !== 150 || jpg.readUInt16BE(16) !== 150)
       problemes.push(`el JPG no porta escrits 150 ppp (unitat ${jpg[13]}, ${jpg.readUInt16BE(14)} × ${jpg.readUInt16BE(16)})`);
   }
+  // massa gran: no es pot aplicar, i diu per què
+  await p.click('#tab-mida');
+  await escriu('#midaPPP', 300); await escriu('#midaW', 300);
+  if (!await p.locator('#midaAplica').isDisabled() || !(await p.locator('#midaAvis').innerText()).includes('massa gran'))
+    problemes.push('una mida que l\'aparell no pot fer (300 cm a 300 ppp) es deixa aplicar, o no diu per què');
 
-  // massa gran: no es pot desar, i diu per què
-  await p.click('#btnSave'); await p.waitForTimeout(300);
-  await p.click('#expU-cm'); await escriu('#expPPP', 300); await escriu('#expW', 300);
-  if (!await p.locator('.dlg .btn.primary').isDisabled() || !(await p.locator('#expAvis').innerText()).includes('massa gran'))
-    problemes.push('una mida que l\'aparell no pot fer (300 cm a 300 ppp) es deixa desar, o no diu per què');
-  await p.click('.dlg footer .btn:not(.primary)');
-
-  // a 320 px, el quadre hi cap sencer, amb el botó de desar
+  // a 320 px, les sis pestanyes i la pestanya Mida hi caben
   await p.setViewportSize({ width: 320, height: 640 });
-  await p.click('#btnSave'); await p.waitForTimeout(300);
-  await p.click('#expU-mm');
-  const q = await p.evaluate(() => { const d = document.querySelector('.dlg'), r = d.getBoundingClientRect();
-    return { ample: d.scrollWidth - d.clientWidth, dins: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight }; });
-  if (q.ample > 1 || !q.dins) problemes.push('a 320 px, el quadre de desar amb la mida en mil·límetres no hi cap');
-  await p.locator('.dlg .btn.primary').scrollIntoViewIfNeeded();
-  if (!await p.locator('.dlg .btn.primary').isVisible()) problemes.push('a 320 px, no s\'arriba al botó de desar');
-  await p.click('#expU-px');
-  await p.click('.dlg footer .btn:not(.primary)');
-  console.log(`${problemes.length > abansM ? '✗' : '✓'} desar a mida: 300 mm d'ample amb l'alt proporcional (${pw} × ${ph} px, 300 ppp escrits al PNG), 10 cm a 150 ppp en JPG, massa gran, i a 320 px`);
+  await p.waitForTimeout(300);
+  const q = await p.evaluate(() => { const t = document.querySelector('.tabs');
+    return { tabs: t.scrollWidth - t.clientWidth, tallades: [...t.children].filter(b => b.scrollWidth > b.clientWidth + 1).length,
+             pagina: document.documentElement.scrollWidth - innerWidth }; });
+  if (q.tabs > 1 || q.tallades || q.pagina > 1) problemes.push(`a 320 px, les pestanyes o la pestanya Mida no hi caben (${JSON.stringify(q)})`);
+  await p.click('#midaU-px');
+  await p.setViewportSize({ width: 1280, height: 800 });
+  console.log(`${problemes.length > abansM ? '✗' : '✓'} la pestanya Mida: la resolució sola, 300 mm d'ample amb l'alt proporcional (${pw} × ${ph} px, 300 ppp escrits al PNG), desfer, 10 cm a 150 ppp en JPG, massa gran, a 320 px, i Desa sense mida`);
 }
 await p.close();
 
@@ -652,52 +670,37 @@ await p.close();
   await p.click('#tab-amp');
   if (!(await text('#iaLinies')).includes('no cal baixar res')) problemes.push('la segona vegada torna a dir que s\'ha de baixar el model');
 
-  // «A mida»: ampliar fins a uns mil·límetres. L'usuari, desant a 300 mm, rebia
-  // l'avís que l'ampliés primer, i a l'Amplia només hi havia ×2 i ×4.
+  // Més gran amb IA fins a uns mil·límetres, des de la pestanya Mida (abans
+  // era «A mida» a l'Amplia, i l'usuari ho trobava confús). A l'Amplia
+  // només hi ha ×2 i ×4.
   {
+    if (await p.locator('#iaF-mida').count()) problemes.push('a l\'Amplia encara hi ha «A mida»');
     await obre(64, 48);
-    await p.click('#tab-amp');
-    await p.click('#iaMode-mobil');
-    await p.click('#iaF-mida');
+    await p.click('#tab-amp'); await p.click('#iaMode-mobil');
+    await p.click('#tab-mida'); await p.click('#midaU-mm');
     const posa = async (sel, v) => { await p.fill(sel, ''); await p.locator(sel).pressSequentially(String(v)); await p.waitForTimeout(80); };
-    if (await p.locator('#iaU-mm').getAttribute('aria-pressed') !== 'true') problemes.push('«A mida» no comença en mil·límetres');
-    // (la resolució no es toca: de partida ja és 300)
-    if (await p.locator('#iaPPP').inputValue() !== '300') problemes.push('«A mida» no comença a 300 ppp');
-    // 3 mm és més petit que la foto (64 px a 300 ppp són 5,4 mm): no cal ampliar
-    await posa('#iaMidaW', 3);
-    if (!await p.locator('#iaGo').isDisabled() || !(await text('#iaMidaAvis')).includes('no cal ampliar')) problemes.push('demanant una mida més petita que la foto, deixa ampliar o no diu que no cal');
+    if (await p.locator('#midaPPP').inputValue() !== '300') problemes.push('la pestanya Mida no comença a 300 ppp');
+    // 3 mm és més petit que la foto (64 px a 300 ppp són 5,4 mm): no cal IA
+    await posa('#midaW', 3);
+    if (await p.locator('#midaIA').isVisible()) problemes.push('fent-la més petita, ofereix fer-la més gran amb IA');
     // 30 mm són 354 px: més de 4 vegades, el model fa ×4 i la resta s'estira
-    await posa('#iaMidaW', 30);
-    if (!(await text('#iaMidaAvis')).includes('s\'estira')) problemes.push('demanant més de 4 vegades, no avisa que la resta s\'estira: ' + await text('#iaMidaAvis'));
+    await posa('#midaW', 30);
+    if (!(await text('#midaPlaIA')).includes('s\'estira')) problemes.push('demanant més de 4 vegades, no avisa que la resta s\'estira: ' + await text('#midaPlaIA'));
     // 10 mm són 118 px: el model amplia per 2 i es deixa a la mida justa
-    await posa('#iaMidaW', 10);
+    await posa('#midaW', 10);
     const w = Math.round(10 / 25.4 * 300), h = Math.round(w * 48 / 64);
     const hmm = String(Math.round(h / 300 * 25.4 * 10) / 10).replace('.', ',');
-    if (await text('#iaGo') !== `Amplia a 10 × ${hmm} mm`) problemes.push('el botó d\'ampliar a mida no diu la mida: ' + await text('#iaGo'));
-    if (!(await text('#iaMidaAvis')).includes('per 2')) problemes.push('a mida, no diu per quant amplia el model: ' + await text('#iaMidaAvis'));
-    await p.click('#iaGo');
+    if (!(await text('#midaPlaIA')).includes('per 2')) problemes.push('no diu per quant amplia el model: ' + await text('#midaPlaIA'));
+    await p.click('#midaIA');
     await acaba();
     if (await mida() !== `${w} × ${h} px`) problemes.push(`ampliant a 10 mm a 300 ppp, la foto hauria de fer ${w} × ${h} px i fa ${await mida()}`);
     if (!(await historial()).includes(`Amplia a 10 × ${hmm} mm · model lleuger`)) problemes.push('ampliar a mida no surt a l\'historial amb la mida');
+    await p.click('#tab-mida');
+    if (!(await text('#midaAra')).includes('300 ppp') || await p.locator('#midaW').inputValue() !== '10')
+      problemes.push(`després d'ampliar a 10 mm, la pestanya Mida no diu 10 mm (${await p.locator('#midaW').inputValue()})`);
     await p.click('#tab-amp');
     if (!(await text('#iaFet')).includes('Ampliada a 10')) problemes.push('en acabar d\'ampliar a mida, el «✓ Feta» no diu la mida');
-    // desant, ja surt en mil·límetres i fa 10 mm
-    await p.click('#btnSave'); await p.waitForTimeout(300);
-    if (await p.locator('#expU-mm').getAttribute('aria-pressed') !== 'true' || await p.locator('#expW').inputValue() !== '10')
-      problemes.push(`després d'ampliar a 10 mm, «Desa» no la posa a 10 mm (${await p.locator('#expW').inputValue()})`);
-    // i des de l'avís de «Desa», el botó porta a l'Amplia amb la mida posada
-    // (i quan no cal ampliar, no hi surt)
-    if (await p.locator('#expAmplia').isVisible()) problemes.push('a la mida de la foto, «Desa» ja ofereix ampliar-la');
-    await p.fill('#expW', ''); await p.locator('#expW').pressSequentially('25'); await p.waitForTimeout(100);
-    if (!await p.locator('#expAmplia').isVisible()) problemes.push('l\'avís de «Desa» quan la foto és petita no porta el botó per ampliar-la a aquella mida');
-    else {
-      await p.click('#expAmplia'); await p.waitForTimeout(300);
-      if (await p.locator('.dlg').count()) problemes.push('el botó d\'ampliar a mida no tanca el quadre de desar');
-      if (await p.locator('#iaF-mida').getAttribute('aria-pressed') !== 'true' || await p.locator('#iaMidaW').inputValue() !== '25')
-        problemes.push(`el botó de «Desa» no porta a l'Amplia amb 25 mm posats (${await p.locator('#iaMidaW').inputValue().catch(() => '?')})`);
-    }
-    if (await p.locator('.dlg').count()) await p.click('.dlg footer .btn:not(.primary)');
-    await p.click('#tab-amp'); await p.click('#iaF-4');
+    if (await p.locator('#iaGo').innerText() === 'Amplia ×mida') problemes.push('després d\'ampliar a mida, l\'Amplia es queda «a mida»');
   }
 
   // aturar a mig fer deixa la foto com era
@@ -736,7 +739,7 @@ await p.close();
   await acaba(600000);
   if (await mida() !== '128 × 96 px') problemes.push('el model gran ×4 no dona la mida que toca: ' + await mida());
 
-  console.log(`${problemes.length > abansDe ? '✗' : '✓'} ampliar amb IA (pel processador): lleuger ×4, gran ×4, a mida en mil·límetres (també des de «Desa»), límits, aturar, desfer i refer, i la segona vegada sense baixar res`);
+  console.log(`${problemes.length > abansDe ? '✗' : '✓'} ampliar amb IA (pel processador): lleuger ×4, gran ×4, a mida en mil·límetres (des de la pestanya Mida), límits, aturar, desfer i refer, i la segona vegada sense baixar res`);
   await p.close();
 
   // ----------------------------- esborrar coses amb el dit (MI-GAN)

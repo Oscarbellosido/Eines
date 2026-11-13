@@ -114,37 +114,53 @@ fotografia baixada d'enlloc —seria pes i drets d'autor—, surt sempre igual (
 llavor és fixa) i té de tot perquè tots els ajustos s'hi notin: si el cel fos
 llis, la vinyeta i el gra no es veurien.
 
-**Desar a una mida en mil·límetres.** L'usuari va demanar poder dir «300 mm
-d'ample» i que l'alt es fes sol. És al quadre de **Desa**: ample × alt en
-**px, mm o cm**, sempre proporcional (escrivint un, l'altre es calcula; per
-una altra forma, primer es retalla), i en mm o cm, la **resolució** (300 ppp
-de partida, la normal per imprimir). Els botons Com és · 50% · 25% hi són
-igual.
+**La pestanya Mida.** L'usuari va demanar primer poder dir «300 mm d'ample» i
+que l'alt es fes sol (es va posar al quadre de Desa, i a l'Amplia un «A
+mida»), i després va trobar confús tenir la mida en dos llocs: va demanar un
+apartat per a la mida i la resolució, que **Desa** només triés el format i
+que l'**Amplia** fos només per guanyar qualitat. Ara és així:
 
-- **Els mil·límetres no existeixen sense resolució**: una foto només té
-  píxels. 300 mm a 300 ppp són 3.543 px. El quadre diu sempre de quants
-  píxels farà el fitxer i quant farà imprès.
-- **El fitxer porta escrita la resolució** (`posaPPP`): el navegador no ho
-  fa, i sense això el programa que imprimeix suposa 72 o 96 ppp i la foto de
-  300 mm surt d'un metre. Al PNG és un tros `pHYs` (punts per metre, amb la
-  seva suma de control, `crc32`); al JPG, la capçalera JFIF (punts per
-  polzada; si no n'hi ha, se n'hi posa una). Al WEBP no hi ha manera
-  senzilla i el quadre ho diu. En píxels no s'hi escriu res.
-- **Si la mida és més gran que la foto, avisa en taronja**: s'estirarà i
-  quedarà tova, a quants ppp sortiria amb els píxels que té, i que es pot
-  ampliar abans amb IA.
-- **Massa gran per a l'aparell, no es deixa desar** (`MAX_DESA_MP`: 40
+- **Mida** (`pintaMidaFoto`): diu quant fa la foto (en punts i, a la seva
+  resolució, en mm) i la deixa canviar en **px, mm o cm**, sempre
+  proporcional (escrivint un, l'altre es calcula; per una altra forma, primer
+  es retalla), amb la **resolució** (`S.ppp`, 300 de partida, la normal per
+  imprimir). Els botons Com és · 50% · 25% hi són igual. **Aplica**
+  (`aplicaMida`): si només canvia la resolució, la foto no es toca; si
+  canvien els punts, es fa de la mida nova (reduint molt, a passos de la
+  meitat, que d'un sol cop surten dents). Com quan s'amplia, la foto nova
+  passa a ser la foto i desfer la torna com era, resolució inclosa (`ppp` a
+  `snap`).
+- **En punts, la resolució només canvia quant fa imprès; en mm o cm, canviar
+  la resolució manté la mida impresa** i canvien els punts. És el que la
+  persona espera segons la unitat en què pensa.
+- **Si la mida és més gran que la foto**, avisa en taronja (s'estirarà, a
+  quants ppp sortiria amb els punts que té) i ofereix **✦ Fes-la més gran
+  amb IA** (`midaAmbIA`), que fa servir el càlcul de l'antic «A mida» de
+  l'Amplia (`plaAmplia`, més avall) amb el mode Mòbil / Ordinador de
+  l'Amplia. Aleshores el botó destacat és el de la IA, no Aplica.
+- **Les caselles es tornen a calcular a cada tecla sense refer el panell**,
+  que si no perdrien el cursor. **I tornen a partir de la foto quan aquesta o
+  la seva resolució canvien** (també desfent): si no, després de desfer una
+  resolució, les caselles seguien dient l'antiga i els mil·límetres sortien
+  malament (la prova ho va trobar).
+- **El fitxer porta escrita la resolució** (`posaPPP`), sempre (en PNG i
+  JPG): el navegador no ho fa, i sense això el programa que imprimeix suposa
+  72 o 96 ppp i la foto de 300 mm surt d'un metre. Al PNG és un tros `pHYs`
+  (punts per metre, amb la seva suma de control, `crc32`); al JPG, la
+  capçalera JFIF (punts per polzada; si no n'hi ha, se n'hi posa una). Al
+  WEBP no hi ha manera senzilla i el quadre de Desa ho diu.
+- **Massa gran per a l'aparell, no es deixa aplicar** (`MAX_DESA_MP`: 40
   megapíxels al mòbil, 150 a l'ordinador, i mai més de 16.384 px per costat,
   que és el que deixen fer els navegadors), i diu per què.
-- **La unitat i la resolució es recorden** en aquest aparell
-  (`cambra-fosca-mida`); la mida no, que cada foto és diferent.
+- **La unitat i la resolució de partida es recorden** en aquest aparell
+  (`cambra-fosca-mida`); en obrir una foto, `S.ppp` és la recordada.
 - Els números s'escriuen amb coma (`127,5`) i s'accepten amb coma o punt.
-- **Des de l'avís, «Amplia-la a aquesta mida amb IA»** (`#expAmplia`) tanca
-  el quadre i obre l'Amplia «A mida» amb aquells mil·límetres ja posats. El
-  botó es fa **una sola vegada** i només s'amaga o s'ensenya: al principi es
-  refeia a cada canvi, i en tocar-lo la casella perdia el cursor, el quadre
-  es tornava a pintar i el botó de sota el dit ja era un altre (el toc es
-  perdia, i la prova ho va trobar).
+- **Sis pestanyes a 320 px**: per sota de 400 px es fan una mica més
+  estretes.
+
+**Desa** només té el format, la qualitat i el nom, i diu quant farà i on es
+canvia la mida. Avisa si el JPG perdrà la transparència o si el WEBP no
+guardarà la resolució.
 
 **Desar la imatge.** A la web funciona la baixada normal del navegador
 (`desaFitxer`). La pàgina també es pot publicar com a *artifact* de claude.ai,
@@ -332,22 +348,20 @@ Coses que no s'han de desfer sense entendre-les:
   perdut del tot (unes lletres petitíssimes) no ho recupera: s'inventa una
   cosa que s'hi assembla.
 
-**«A mida (mm)»**: a més de ×2 i ×4, es pot dir l'ample que es vol, en mm, cm
-o px, i la resolució. L'usuari ho va demanar perquè, desant a 300 mm, l'eina
-li deia que l'ampliés primer i a l'Amplia només hi havia ×2 i ×4.
+**Ampliar «a mida»** (ara des de la pestanya Mida, amb «✦ Fes-la més gran amb
+IA»; a l'Amplia ja només hi ha ×2 i ×4). Abans era un «A mida (mm)» de
+l'Amplia: l'usuari ho va demanar perquè, desant a 300 mm, l'eina li deia que
+l'ampliés primer, i després el va trobar confús allà.
 
 - **El model sempre fa ×2 o ×4** (`plaAmplia`): el primer que n'hi ha prou, i
   després la foto es deixa a la mida justa (una reducció normal, de bona
   qualitat). Si cal més de 4 vegades, o si en aquest mode ×4 no cap a la
   memòria i es fa ×2, la resta s'estira a la manera normal, i el panell ho
   diu (i, al mòbil, que amb el mode Ordinador ho faria tot el model).
-- Si la mida demanada ja és la de la foto o més petita, no deixa ampliar i
-  diu que n'hi ha prou de posar els mil·límetres en desar.
-- **La unitat i la resolució són les mateixes del quadre de Desa**
-  (`cambra-fosca-mida`), i en acabar s'hi desen: desant, la foto ja surt a
-  300 mm sense tocar res.
-- **Les caselles es tornen a calcular a cada tecla sense refer el panell**
-  (`pintaMidaAmp`), que si no perdrien el cursor mentre escrius.
+- Si la mida demanada ja és la de la foto o més petita, el botó de la IA no
+  surt: n'hi ha prou amb «Aplica».
+- En acabar, la foto queda a la resolució que s'havia triat (`S.ppp`), i la
+  unitat i la resolució es desen com a les de partida.
 
 **El camí de la gràfica no es pot provar al contenidor**, que no en té (ni
 amb SwiftShader). Està fet perquè, si falla, vagi amb el processador. **Al
@@ -672,14 +686,17 @@ de debò i comprova:
   pintar, que pintant al verd amb l'origen al vermell hi surti vermell (i
   res fora d'on ha passat el dit), que la creueta torni a l'origen i que
   «Tria l'origen» el canviï. Amb el signe d'abans, la prova falla;
-- **desar a mida**: en mil·límetres, la foto fa els que toca a 300 ppp;
-  posant 300 mm d'ample l'alt surt proporcional, i escrivint l'alt, l'ample;
-  avisa que quedarà tova; el PNG fa els píxels que toca i porta 300 ppp
-  escrits (amb la suma de control bona i una sola vegada); en cm a 150 ppp,
-  el JPG també; es recorda la unitat; una mida massa gran no es deixa desar;
-  i a 320 px el quadre hi cap. Es va comprovar que falla sense escriure la
-  resolució, amb l'alt que no mana, amb la unitat del JPG malament o amb la
-  suma de control del PNG malament;
+- **la pestanya Mida**: que Desa ja no tingui la mida i digui on és; que la
+  resolució sola no canviï els punts (i desfer la torni); que en mm la foto
+  faci els que toca a 300 ppp, que posant 300 mm d'ample l'alt surti
+  proporcional (i escrivint l'alt, l'ample), que avisi que quedarà tova i
+  ofereixi la IA; que Aplica la deixi als punts justos, que s'apunti, que el
+  PNG desat faci aquells punts i porti 300 ppp escrits (amb la suma de
+  control bona i una sola vegada) i que desfer la torni; en cm a 150 ppp, el
+  JPG també; que una mida massa gran no es pugui aplicar; i que a 320 px les
+  sis pestanyes hi càpiguen. Es va comprovar que falla si el fitxer no porta
+  la resolució triada, i va trobar que després de desfer una resolució les
+  caselles en deien una altra;
 - **arregla la foto**: es fa una foto «bona» (cel, paret grisa, un full
   blanc, objectes de color) i s'espatlla de cinc maneres (fosca, cremada,
   groga, blava, i fosca i groga). «Arregla-la sola» ha de deixar la bona com
@@ -704,13 +721,12 @@ de debò i comprova:
   model porti peces que la gràfica no sap fer (PRelu). Es va comprovar que la
   prova falla si es canvien els colors, si el botó d'aturar no atura, si
   l'avís torna a començar una frase en minúscula o amb el model lleuger vell.
-  I «A mida»: que comenci en mm a 300 ppp, que no deixi ampliar a una mida
-  més petita que la foto, que avisi quan cal estirar, que a 10 mm amplii per
-  2 i deixi la foto als píxels justos (amb la mida a l'historial i al «✓
-  Feta»), que desant ja surti a 10 mm, i que el botó de l'avís de «Desa»
-  porti a l'Amplia amb la mida posada (i no surti quan no cal). Es va
-  comprovar que falla sense deixar-la a la mida justa, si el model sempre fa
-  ×4 o si no es desa la unitat en acabar.
+  I més gran amb IA des de la pestanya Mida: que l'Amplia ja no tingui «A
+  mida», que no s'ofereixi la IA per fer-la més petita, que avisi quan cal
+  estirar, que a 10 mm amplii per 2 i deixi la foto als punts justos (amb la
+  mida a l'historial i al «✓ Feta»), i que després la pestanya Mida digui 10
+  mm a 300 ppp. Es va comprovar (quan era a l'Amplia) que falla sense
+  deixar-la a la mida justa o si el model sempre fa ×4.
 - **esborrar coses amb el dit**, amb un mòbil simulat i un dit de debò (també
   serveix el repositori ella mateixa): que la tira d'eines, amb l'eina nova,
   hi càpiga a 320 px; que «Esborra-ho» no es pugui prémer sense vermell; que
