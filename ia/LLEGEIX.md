@@ -1,8 +1,8 @@
 # Els fitxers de la IA de La Cambra Fosca
 
 Aquesta carpeta és l'única excepció a la norma d'«un sol fitxer» de les Eines.
-La fan servir les pestanyes **Amplia** i **Fons** i l'eina **Esborra coses
-(IA)** de La Cambra Fosca, i només es baixa el que cal quan algú les fa servir. Res d'aquí no envia cap foto enlloc: el model corre dins
+La fan servir les pestanyes **Amplia** i **Fons**, l'eina **Esborra coses
+(IA)** i «Arregla les cares» de La Cambra Fosca, i només es baixa el que cal quan algú les fa servir. Res d'aquí no envia cap foto enlloc: el model corre dins
 del navegador.
 
 ## D'on surt cada cosa
@@ -45,6 +45,40 @@ amb aquesta empremta:
 L'entrada són quatre canals de 512 × 512: la màscara menys 0,5 (1 = es queda,
 0 = s'esborra) i la foto de −1 a 1 amb el forat a zero. La sortida, la foto
 sencera de −1 a 1 (només se n'agafa el forat).
+
+### `models/cares-troba.onnx` i `models/cares-arregla.onnx.1` i `.2` — arreglar les cares
+
+| Fitxer | Model | Projecte | Per a què |
+|---|---|---|---|
+| `cares-troba.onnx` | RetinaFace amb MobileNet 0.25 (1,6 MB) | facexlib, https://github.com/xinntao/facexlib (llicència **MIT**, `models/LICENSE-FACEXLIB`) | troba les cares i cinc punts de cada una |
+| `cares-arregla.onnx.1` i `.2` | GFPGAN v1.4 (167 MB, en dos trossos) | GFPGAN, de Tencent ARC, https://github.com/TencentARC/GFPGAN (llicència **Apache 2.0**, `models/LICENSE-GFPGAN`) | torna nítida una cara posada dreta a 512 × 512 |
+
+**Compte amb la llicència de GFPGAN**: és Apache 2.0, però el fitxer de
+llicència avisa que una part del codi ve de StyleGAN2, de NVIDIA, la llicència
+del qual només permet un ús no comercial. Aquí es fa servir la versió
+«clean», que no porta les peces especials de NVIDIA, i la xarxa s'ha tornat a
+muntar peça a peça, però els pesos són els entrenats per Tencent sobre aquella
+arquitectura. Per a ús personal no hi ha cap problema; si s'ha de fer servir
+per a feina pagada, val la pena mirar-ho.
+
+Els originals, amb aquestes empremtes:
+
+```
+2979b33ffafda5d74b6948cd7a5b9a7a62f62b949cef24e95fd15d2883a65220  detection_mobilenet0.25_Final.pth  (facexlib v0.1.0)
+e2cd4703ab14f4d01fd1383a8a8b266f9a5833dacee8e6a79d3bf21a1b6be5ad  GFPGANv1.4.pth  (GFPGAN v1.3.4)
+```
+
+**Canvis respecte dels originals** (la llicència Apache demana dir-ho): la
+xarxa de GFPGAN s'ha muntat en ONNX amb la normalització de cada convolució
+ja aplicada als pesos, les convolucions modulades de StyleGAN2 fetes com a
+multiplicar, convolució normal i normalitzar (dona el mateix amb una sola cara
+a la vegada), el soroll fix que porta el fitxer en lloc d'un d'aleatori, i els
+pesos desats amb la meitat de precisió. El fitxer es parteix en dos trossos
+(GitHub no n'accepta de més de 100 MB) i l'app els ajunta.
+
+Entrades: RetinaFace, la foto en BGR menys (104, 117, 123), amb els costats
+múltiples de 32; GFPGAN, la cara alineada amb els cinc punts a la plantilla de
+512 de facexlib, en RGB de −1 a 1.
 
 ### `models/ratllades.onnx` — trobar les ratllades d'una foto vella
 
@@ -133,6 +167,13 @@ peces que la gràfica sap fer anar.
 
 ```
 python conversio/fes_migan.py migan_traced.pt models/migan-512.onnx
+```
+
+Els de les cares surten de `conversio/fes_cares.py`, que llegeix els dos
+fitxers originals (del format antic de PyTorch, sense executar res):
+
+```
+python conversio/fes_cares.py <carpeta amb els dos .pth> models
 ```
 
 El de les ratllades surt de `conversio/fes_ratllades.py`, que llegeix el

@@ -536,7 +536,7 @@ await p.close();
   // aquelles peces van al processador i tornen, i amb gràfica i tot va lent.
   // El model lleuger en tenia 33 de PRelu. (La llista de les que sí que sap fer
   // és a docs/webgpu-operators.md del paquet onnxruntime-web.)
-  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus', 'migan-512', 'u2netp', 'isnet-fp16', 'ratllades']) {
+  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus', 'migan-512', 'u2netp', 'isnet-fp16', 'ratllades', 'cares-troba']) {
     const bytes = readFileSync(join(AQUI, 'ia/models', m + '.onnx'));
     if (bytes.includes('PRelu')) problemes.push(`el model ${m} fa servir PRelu, que la gràfica no sap fer`);
   }
@@ -1037,6 +1037,89 @@ await p.close();
     await q.click('#btnUndo'); await q.waitForTimeout(400);
     if ((await compara()).err < c1.errVella * 0.9) problemes.push('desfer no torna les ratllades');
     console.log(`${problemes.length > abansR ? '✗' : '✓'} trobar i esborrar ratllades (pel processador): en marca el ${(c1.trobat * 100).toFixed(0)}% (i de més, el ${(c1.demes * 100).toFixed(2)}%), la goma les respecta, les marcades, de ${c1.errVella.toFixed(0)} a ${c2.err.toFixed(0)} de diferència amb la foto neta, i desfer`);
+    await q.close();
+  }
+
+  // ------------------------------------------------- arreglar les cares
+  // Una cara dibuixada aquí mateix (cabell, ulls, nas, boca) i borrosa: la IA
+  // l'ha de trobar i tornar-la nítida, al seu lloc (els ulls on eren), sense
+  // tocar la resta de la foto. «Suau» n'ha de canviar menys que «Fort». En una
+  // foto sense cares, ho ha de dir. No es fa servir la foto de ningú.
+  {
+    const abansC = problemes.length;
+    const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+    vigila(q, 'cares');
+    await q.goto(BASE);
+    await q.waitForTimeout(1500);
+    const dibuix = await q.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 720; c.height = 480; const x = c.getContext('2d');
+      x.fillStyle = '#788ca0'; x.fillRect(0, 0, 720, 480);
+      x.fillStyle = '#5a7a4a'; x.fillRect(0, 380, 720, 100);
+      x.filter = 'blur(2px)';
+      const el = (cx, cy, rx, ry, col) => { x.fillStyle = col; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, 7); x.fill(); };
+      el(240, 195, 100, 135, '#462d1e');                       // cabell
+      el(150, 220, 15, 30, '#d7aa8c'); el(330, 220, 15, 30, '#d7aa8c');   // orelles
+      el(240, 220, 80, 120, '#e1b496');                        // cara
+      for (const ex of [200, 280]) {
+        el(ex, 207, 22, 12, '#fafafa'); el(ex, 207, 9, 9, '#463228'); el(ex, 207, 4, 4, '#0a0a0a');
+        x.strokeStyle = '#3c281e'; x.lineWidth = 6; x.beginPath(); x.moveTo(ex - 25, 180); x.lineTo(ex + 22, 176); x.stroke();
+      }
+      x.fillStyle = '#cd9b7d'; x.beginPath(); x.moveTo(240, 215); x.lineTo(225, 265); x.lineTo(255, 265); x.fill();
+      el(240, 295, 35, 10, '#aa4646');
+      x.fillStyle = '#e1b496'; x.fillRect(180, 335, 120, 145);
+      x.fillStyle = '#283c64'; x.fillRect(120, 400, 240, 80);
+      x.filter = 'none';
+      x.fillStyle = '#c8a050'; x.fillRect(560, 60, 120, 120);   // un quadre a la paret, lluny de la cara
+      return c.toDataURL('image/png');
+    });
+    const original = Buffer.from(dibuix.split(',')[1], 'base64');
+    const obre = async () => { await q.setInputFiles('#file', { name: 'cara.png', mimeType: 'image/png', buffer: original }); await q.waitForTimeout(600); };
+    const arregla = async forca => {
+      await q.click('#tab-adj'); await q.click('#caresF-' + forca); await q.click('#cares');
+      await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 600000 });
+      await q.waitForTimeout(300);
+    };
+    // nitidesa (quant canvia d'un punt al del costat) i diferència amb l'original, en un rectangle
+    const mira = r => q.evaluate(async ([r, orig]) => {
+      const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = 'data:image/png;base64,' + orig; });
+      const c = document.createElement('canvas'); c.width = 720; c.height = 480; const x = c.getContext('2d'); x.drawImage(i, 0, 0);
+      const o = x.getImageData(r[0], r[1], r[2], r[3]).data, d = document.querySelector('#view').getContext('2d').getImageData(r[0], r[1], r[2], r[3]).data;
+      const l = (a, k) => (a[k] + a[k + 1] + a[k + 2]) / 3;
+      let nit = 0, nit0 = 0, dif = 0, max = 0;
+      for (let k = 0; k < d.length; k += 4) {
+        if ((k / 4) % r[2] < r[2] - 1) { nit += Math.abs(l(d, k + 4) - l(d, k)); nit0 += Math.abs(l(o, k + 4) - l(o, k)); }
+        const e = Math.max(Math.abs(d[k] - o[k]), Math.abs(d[k + 1] - o[k + 1]), Math.abs(d[k + 2] - o[k + 2]));
+        dif += e; max = Math.max(max, e);
+      }
+      const n = d.length / 4; return { nit: nit / n, nit0: nit0 / n, dif: dif / n, max };
+    }, [r, original.toString('base64')]);
+    const ull = async (x, y) => (await q.evaluate(([x, y]) => [...document.querySelector('#view').getContext('2d').getImageData(x - 2, y - 2, 5, 5).data]
+      .reduce((s, v, i) => i % 4 === 3 ? s : s + v, 0) / 75, [x, y]));
+
+    await obre();
+    if (!(await q.locator('#caresInfo').innerText()).includes('MB')) problemes.push('el botó de les cares no diu quant es baixa la primera vegada');
+    await arregla('fort');
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Arregla les cares (1)')) problemes.push('arreglar les cares no surt a l\'historial amb 1 cara: ' + (await q.locator('.hitem span').allInnerTexts()).join(' · '));
+    const cara = await mira([170, 150, 140, 170]), fora = await mira([540, 40, 160, 160]);
+    if (!(cara.nit > cara.nit0 * 1.3)) problemes.push(`la cara arreglada no és més nítida (${cara.nit.toFixed(2)} contra ${cara.nit0.toFixed(2)})`);
+    if (fora.max > 0) problemes.push(`arreglant la cara ha canviat el quadre de la paret, lluny de la cara (${fora.max})`);
+    // els ulls continuen on eren (si la cara es tornés a un altre lloc, no hi serien)
+    for (const ex of [200, 280]) { const v = await ull(ex, 207); if (v > 110) problemes.push(`després d'arreglar la cara, l'ull de ${ex},207 ja no hi és (lluminositat ${v.toFixed(0)})`); }
+    if (!(await q.locator('#caresRes').innerText()).includes('amb el processador')) problemes.push('després d\'arreglar les cares no diu amb què s\'ha fet');
+    const difFort = cara.dif;
+    await q.click('#btnUndo'); await q.waitForTimeout(300);
+    if ((await mira([170, 150, 140, 170])).max > 0) problemes.push('desfer no torna la cara d\'abans');
+    await arregla('suau');
+    const suau = await mira([170, 150, 140, 170]);
+    if (!(suau.dif < difFort * 0.75)) problemes.push(`«Suau» canvia la cara tant com «Fort» (${suau.dif.toFixed(1)} contra ${difFort.toFixed(1)})`);
+    // una foto sense cares (la d'exemple): ho diu i no hi toca
+    await q.setInputFiles('#file', { name: 'paisatge.png', mimeType: 'image/png', buffer: Buffer.from((await q.evaluate(() => { const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+      const x = c.getContext('2d'); const g = x.createLinearGradient(0, 0, 0, 300); g.addColorStop(0, '#5b8fd0'); g.addColorStop(1, '#3a5a2a'); x.fillStyle = g; x.fillRect(0, 0, 400, 300); return c.toDataURL('image/png'); })).split(',')[1], 'base64') });
+    await q.waitForTimeout(500);
+    await arregla('fort');
+    if (!(await q.locator('#stMsg').innerText()).includes('No he trobat cap cara') || (await q.locator('.hitem span').allInnerTexts()).length !== 1)
+      problemes.push('en una foto sense cares, no diu que no n\'ha trobat cap o hi ha tocat');
+    console.log(`${problemes.length > abansC ? '✗' : '✓'} arreglar les cares (pel processador): troba la cara dibuixada, nitidesa de ${cara.nit0.toFixed(1)} a ${cara.nit.toFixed(1)}, els ulls al seu lloc, la resta igual, «Suau» menys que «Fort», sense cares ho diu, i desfer`);
     await q.close();
   }
 

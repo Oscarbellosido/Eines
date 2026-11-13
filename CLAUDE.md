@@ -16,7 +16,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepci
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla, esborra coses, treu el fons i amplia fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares), esborra coses, treu el fons i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -232,6 +232,42 @@ aplicar-ho, la foto es retalla el just perquè no quedin cantonades buides, amb
 la mateixa forma (`escalaEndreca`), i passa a ser la foto, com quan s'amplia:
 les pinzellades giren amb ella i desfer la torna com era. Qualsevol altra cosa
 que facis amb la foto mentre el control és mogut el cancel·la.
+
+**Arregla les cares** (a «Arregla la foto», sota Endreça). L'usuari arregla
+fotos deteriorades i ho va triar d'una llista: que les cares borroses o
+malmeses quedin nítides. Dues xarxes, convertides per
+`ia/conversio/fes_cares.py`:
+
+- **RetinaFace (MobileNet 0.25, 1,6 MB, de facexlib)** troba les cares i cinc
+  punts de cada una (els ulls, el nas i les comissures de la boca)
+  (`trobaCares`): la foto com a molt de 1.280 punts, amb els costats múltiples
+  de 32, en BGR menys la mitjana. Es queden les cares que el model veu segures
+  al **97%**, com al projecte original (amb el 80% hi entrava un tros de
+  passamà), sense repetides i amb els ulls a 5 punts o més.
+- **GFPGAN v1.4 (167 MB, de Tencent)** arregla cada cara posada dreta a
+  512 × 512 (`arreglaUnaCara`): amb els cinc punts es calcula el gir, l'escala
+  i el desplaçament que els porten a la plantilla de facexlib (`semblanca`,
+  mínims quadrats), la cara arreglada es torna al seu lloc amb el gir de
+  tornada i **s'enganxa un quadrat amb les vores suaus** (`mascaraCara`, 25
+  punts cap a dins i uns 8 de fos), que és el que fa el projecte original
+  sense el model que retalla la cara pel contorn.
+- **Força**: «Fort», «Mitjà» i «Suau» barregen la cara arreglada amb
+  l'original (100%, 70%, 45%): GFPGAN de vegades deixa la cara massa
+  perfecta.
+- **GFPGAN fa 87 milions de números**: 167 MB amb mitja precisió, en **dos
+  trossos** (GitHub no n'accepta de més de 100 MB) que l'app baixa i ajunta
+  (`preparaSessioCares`). És gran per al mòbil (amb els pesos desplegats a la
+  memòria són uns 500 MB) i ho diu.
+- Les convolucions de StyleGAN2 depenen de cada cara; al graf es fan com a
+  multiplicar l'entrada per l'estil, convolució normal i multiplicar per la
+  normalització, calculada amb un producte de matrius. El soroll és el fix que
+  porta el fitxer: la mateixa foto dona sempre el mateix.
+- **La llicència**: GFPGAN és Apache 2.0, però una part del codi ve de
+  StyleGAN2, de NVIDIA, només per a ús no comercial (`ia/LLEGEIX.md`). Es fa
+  servir la versió «clean», sense les peces especials de NVIDIA.
+- Sense gràfica, al contenidor tres cares triguen uns 45 segons comptant la
+  preparació. Es va comprovar amb fotos de prova del projecte GFPGAN (no són
+  al repositori): les cares surten nítides i al seu lloc.
 
 ## La Cambra Fosca: ampliar amb IA
 
@@ -686,6 +722,13 @@ de debò i comprova:
   pintar, que pintant al verd amb l'origen al vermell hi surti vermell (i
   res fora d'on ha passat el dit), que la creueta torni a l'origen i que
   «Tria l'origen» el canviï. Amb el signe d'abans, la prova falla;
+- **arreglar les cares** (també serveix el repositori ella mateixa): sobre
+  una cara dibuixada i borrosa (no es fa servir la foto de ningú; RetinaFace
+  la veu segura al 99%), que la trobi i la torni més nítida, que els ulls
+  continuïn on eren, que la resta de la foto no canviï, que desfer la torni,
+  que «Suau» la canviï menys que «Fort», i que en una foto sense cares ho
+  digui i no hi toqui. Es va comprovar que falla tornant la cara amb el gir
+  d'anada, sense la força o amb els cinc punts mal descodificats;
 - **la pestanya Mida**: que Desa ja no tingui la mida i digui on és; que la
   resolució sola no canviï els punts (i desfer la torni); que en mm la foto
   faci els que toca a 300 ppp, que posant 300 mm d'ample l'alt surti
