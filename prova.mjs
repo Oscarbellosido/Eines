@@ -18,6 +18,11 @@ const MIDES = [320, 360, 390, 768, 1280];
 
 const problemes = [];
 const errors = [];
+// les eines d'IA són a la pestanya ✦ IA, cadascuna en una targeta: obre la que toca
+async function obreTargeta(pg, k) {
+  await pg.click('#tab-ia');
+  if (await pg.locator('#iaCos-' + k).isHidden()) await pg.click('#iaCap-' + k);
+}
 
 function vigila(pagina, on) {
   pagina.on('pageerror', e => errors.push(`${on}: ${e.message}`));
@@ -260,7 +265,7 @@ console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename()
   if (!await p.locator('#midaAplica').isDisabled() || !(await p.locator('#midaAvis').innerText()).includes('massa gran'))
     problemes.push('una mida que l\'aparell no pot fer (300 cm a 300 ppp) es deixa aplicar, o no diu per què');
 
-  // a 320 px, les sis pestanyes i la pestanya Mida hi caben
+  // a 320 px, les cinc pestanyes i la pestanya Mida hi caben
   await p.setViewportSize({ width: 320, height: 640 });
   await p.waitForTimeout(300);
   const q = await p.evaluate(() => { const t = document.querySelector('.tabs');
@@ -270,6 +275,55 @@ console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename()
   await p.click('#midaU-px');
   await p.setViewportSize({ width: 1280, height: 800 });
   console.log(`${problemes.length > abansM ? '✗' : '✓'} la pestanya Mida: la resolució sola, 300 mm d'ample amb l'alt proporcional (${pw} × ${ph} px, 300 ppp escrits al PNG), desfer, 10 cm a 150 ppp en JPG, massa gran, a 320 px, i Desa sense mida`);
+
+// Els menús endreçats: totes les IA a la pestanya ✦ IA, en targetes (una
+// d'oberta), amb un sol «On ho fas»; Endreça a l'eina Retalla
+{
+  const abansIA = problemes.length;
+  await p.setViewportSize({ width: 1280, height: 800 }); await p.waitForTimeout(200);
+  const pest = await p.locator('.tabs .tab').allInnerTexts();
+  if (pest.join('·') !== 'Ajustos·Filtres·✦ IA·Mida·Historial') problemes.push('les pestanyes no són Ajustos · Filtres · ✦ IA · Mida · Historial: ' + pest.join(' · '));
+  await p.click('#tab-ia');
+  const est = () => p.evaluate(() => ({
+    targetes: [...document.querySelectorAll('#pane-ia .targeta')].map(t => t.id.replace('iaTarg-', '')),
+    oberts: [...document.querySelectorAll('#pane-ia .targeta-cos')].filter(c => !c.hidden).map(c => c.id.replace('iaCos-', '')),
+    modes: document.querySelectorAll('[id^="iaMode-"]').length,
+    altres: document.querySelectorAll('[id^="fonsMode-"]').length }));
+  let e = await est();
+  if (e.targetes.join() !== 'ratllades,esborra,cares,fons,amp') problemes.push('les targetes de la IA no són les cinc, per ordre: ' + e.targetes);
+  if (e.modes !== 2 || e.altres) problemes.push(`no hi ha un sol «On ho fas» per a totes les IA (${e.modes} botons de mode, ${e.altres} del fons)`);
+  await p.click('#iaCap-cares'); e = await est();
+  if (e.oberts.join() !== 'cares') problemes.push('obrint «Cares» no queda oberta només aquesta: ' + e.oberts);
+  await p.click('#iaCap-fons'); e = await est();
+  if (e.oberts.join() !== 'fons') problemes.push('obrint «Fons», «Cares» no es tanca: ' + e.oberts);
+  if (!await p.locator('#fonsGo').isVisible()) problemes.push('a la targeta del fons no hi ha el botó');
+  await p.click('#iaCap-fons'); e = await est();
+  if (e.oberts.length) problemes.push('tornant a tocar la targeta oberta no es tanca');
+  // per mode: el del fons i el de l'amplia segueixen el mateix
+  await p.click('#iaMode-ordinador'); await p.click('#iaCap-amp');
+  if (!(await p.locator('#pane-amp').innerText()).includes('Ordinador')) problemes.push('l\'Amplia no diu que fa servir el mode triat a dalt');
+  await p.click('#iaMode-mobil');
+  // esborrar coses: el botó porta a la vareta
+  await p.click('#iaCap-esborra'); await p.click('#iaVesEsborra');
+  if (await p.getAttribute('#tool-treu', 'aria-pressed') !== 'true') problemes.push('«Pinta el que vols treure» no posa l\'eina d\'esborrar');
+  if (await p.locator('#opts #treuRatllades').count()) problemes.push('el botó de les ratllades encara és a l\'eina d\'esborrar');
+  // ajustos: només l'arregla-la sola; Endreça és al Retalla
+  await p.click('#tab-adj');
+  if (await p.locator('#pane-adj #sl-endreca, #pane-adj #cares').count()) problemes.push('Endreça o les cares encara són a Ajustos');
+  await p.click('#tool-crop');
+  if (!await p.locator('#opts #sl-endreca').isVisible()) problemes.push('Endreça no és a l\'eina Retalla');
+  await p.click('#tool-move');
+  // a 320 px, les targetes hi caben
+  await p.setViewportSize({ width: 320, height: 640 }); await p.waitForTimeout(200);
+  await p.click('#tab-ia'); await p.click('#iaCap-cares');
+  const v = await p.evaluate(() => ({ pagina: document.documentElement.scrollWidth - innerWidth,
+    caps: [...document.querySelectorAll('.targeta-cap')].filter(b => b.scrollWidth > b.clientWidth + 1).length }));
+  if (v.pagina > 1 || v.caps) problemes.push('a 320 px, les targetes de la IA no hi caben: ' + JSON.stringify(v));
+  await p.click('#iaCap-cares');
+  await p.setViewportSize({ width: 1280, height: 800 }); await p.waitForTimeout(200);
+  await p.click('#tab-adj');
+  console.log(`${problemes.length > abansIA ? '✗' : '✓'} els menús: les cinc IA a la pestanya ✦ IA (una targeta oberta, un sol «On ho fas»), Endreça al Retalla, i a 320 px`);
+}
 }
 await p.close();
 
@@ -493,6 +547,7 @@ await p.close();
   }, src);
   const posaEndreca = g => p.evaluate(g => { const r = document.querySelector('#sl-endreca'); r.value = g; r.dispatchEvent(new Event('input', { bubbles: true })); }, g);
   await obre(tort, 'torta.png');
+  await p.click('#tool-crop');           // Endreça és a l'eina Retalla
   await posaEndreca(-5);
   const previa = await p.evaluate(() => ({ t: document.querySelector('#view').style.transform, reixa: !document.querySelector('#reixa').hidden }));
   if (!previa.t.includes('rotate(-5deg)') || !previa.reixa) problemes.push('moure Endreça no ensenya la foto girada amb la reixa: ' + JSON.stringify(previa));
@@ -595,7 +650,7 @@ await p.close();
   await p.setViewportSize({ width: 1280, height: 800 });
 
   // els límits: amb la foto de mostra (1500 × 1000), al mòbil ×4 no hi cap
-  await p.click('#tab-amp');
+  await obreTargeta(p, 'amp');
   await p.click('#iaMode-mobil');
   if (await text('#iaGo') !== 'Amplia ×2') problemes.push('al mòbil, amb una foto que per 4 no hi cap, no tria ×2 de partida: ' + await text('#iaGo'));
   await p.click('#iaF-4');
@@ -620,14 +675,14 @@ await p.close();
       x.fillStyle = g; x.fillRect(0, 0, 6000, 4000); return c.toDataURL('image/jpeg', .8); });
     await p.setInputFiles('#file', { name: 'gran.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(gran.split(',')[1], 'base64') });
     await p.waitForTimeout(1500);
-    await p.click('#tab-amp'); await p.click('#iaMode-ordinador');
+    await obreTargeta(p, 'amp'); await p.click('#iaMode-ordinador');
     if (!await p.locator('#iaGo').isDisabled()) problemes.push('una foto de 24 megapíxels es deixa ampliar a l\'ordinador');
     if (!(await avisBenEscrit('foto molt gran')).includes('ja és molt gran')) problemes.push('amb una foto molt gran, l\'avís no diu que ja és molt gran');
   }
 
   // el model lleuger, ×4
   await obre(64, 48);
-  await p.click('#tab-amp');
+  await obreTargeta(p, 'amp');
   await p.click('#iaMode-mobil'); await p.click('#iaF-4');
   await p.click('#iaGo');
   await acaba();
@@ -635,7 +690,7 @@ await p.close();
   if (!(await historial()).includes('Amplia ×4 · model lleuger')) problemes.push('l\'ampliació no surt a l\'historial');
   // en acabar, a dalt del panell diu que s'ha fet, abans que cap avís de «no hi cap»
   // (l'usuari va esperar una hora i el primer que va veure va ser un avís vermell)
-  await p.click('#tab-amp');
+  await obreTargeta(p, 'amp');
   const fet = await p.evaluate(() => { const f = document.querySelector('#iaFet'), a = document.querySelector('#iaNoHiCap');
     return { text: f ? f.textContent : '', primer: !!f && (!a || (f.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING)) }; });
   if (!fet.text.includes('Feta') || !fet.text.includes('64 × 48 a 256 × 192')) problemes.push('en acabar d\'ampliar, no diu que s\'ha fet ni la mida: ' + fet.text);
@@ -667,7 +722,7 @@ await p.close();
   if (await mida() !== '256 × 192 px') problemes.push('refer no torna a l\'ampliada: ' + await mida());
 
   // la segona vegada no torna a baixar res
-  await p.click('#tab-amp');
+  await obreTargeta(p, 'amp');
   if (!(await text('#iaLinies')).includes('no cal baixar res')) problemes.push('la segona vegada torna a dir que s\'ha de baixar el model');
 
   // Més gran amb IA fins a uns mil·límetres, des de la pestanya Mida (abans
@@ -676,7 +731,7 @@ await p.close();
   {
     if (await p.locator('#iaF-mida').count()) problemes.push('a l\'Amplia encara hi ha «A mida»');
     await obre(64, 48);
-    await p.click('#tab-amp'); await p.click('#iaMode-mobil');
+    await obreTargeta(p, 'amp'); await p.click('#iaMode-mobil');
     await p.click('#tab-mida'); await p.click('#midaU-mm');
     const posa = async (sel, v) => { await p.fill(sel, ''); await p.locator(sel).pressSequentially(String(v)); await p.waitForTimeout(80); };
     if (await p.locator('#midaPPP').inputValue() !== '300') problemes.push('la pestanya Mida no comença a 300 ppp');
@@ -698,14 +753,14 @@ await p.close();
     await p.click('#tab-mida');
     if (!(await text('#midaAra')).includes('300 ppp') || await p.locator('#midaW').inputValue() !== '10')
       problemes.push(`després d'ampliar a 10 mm, la pestanya Mida no diu 10 mm (${await p.locator('#midaW').inputValue()})`);
-    await p.click('#tab-amp');
+    await obreTargeta(p, 'amp');
     if (!(await text('#iaFet')).includes('Ampliada a 10')) problemes.push('en acabar d\'ampliar a mida, el «✓ Feta» no diu la mida');
     if (await p.locator('#iaGo').innerText() === 'Amplia ×mida') problemes.push('després d\'ampliar a mida, l\'Amplia es queda «a mida»');
   }
 
   // aturar a mig fer deixa la foto com era
   await obre(400, 300);
-  await p.click('#tab-amp');
+  await obreTargeta(p, 'amp');
   await p.click('#iaMode-mobil'); await p.click('#iaF-2');
   await p.click('#iaGo');
   await p.waitForFunction(() => /Tros [1-9]/.test(document.querySelector('#velDetall').textContent), null, { timeout: 120000 });
@@ -716,7 +771,7 @@ await p.close();
 
   // una feina llarga (el model gran sense gràfica): ho diu de seguida i pregunta,
   // amb el percentatge a la pestanya; i «Atura» deixa la foto com era
-  await p.click('#tab-amp');
+  await obreTargeta(p, 'amp');
   await p.click('#iaMode-ordinador'); await p.click('#iaF-2');
   await p.click('#iaGo');
   try {
@@ -733,7 +788,7 @@ await p.close();
 
   // el model gran, ×4, amb una foto petita (sense gràfica va molt a poc a poc)
   await obre(32, 24);
-  await p.click('#tab-amp');
+  await obreTargeta(p, 'amp');
   await p.click('#iaMode-ordinador'); await p.click('#iaF-4');
   await p.click('#iaGo');
   await acaba(600000);
@@ -986,7 +1041,7 @@ await p.close();
     const [vella, neta, mascara] = fotos.map(u => Buffer.from(u.split(',')[1], 'base64'));
     await q.setInputFiles('#file', { name: 'vella.png', mimeType: 'image/png', buffer: vella });
     await q.waitForTimeout(700);
-    await q.click('#tool-treu');
+    await obreTargeta(q, 'ratllades');
     if (!(await q.locator('#treuRatlladesInfo').innerText()).includes('MB')) problemes.push('el botó de les ratllades no diu quant es baixa la primera vegada');
     await q.click('#treuRatllades');
     await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 });
@@ -1075,7 +1130,7 @@ await p.close();
     const original = Buffer.from(dibuix.split(',')[1], 'base64');
     const obre = async () => { await q.setInputFiles('#file', { name: 'cara.png', mimeType: 'image/png', buffer: original }); await q.waitForTimeout(600); };
     const arregla = async forca => {
-      await q.click('#tab-adj'); await q.click('#caresF-' + forca); await q.click('#cares');
+      await obreTargeta(q, 'cares'); await q.click('#caresF-' + forca); await q.click('#cares');
       await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 600000 });
       await q.waitForTimeout(300);
     };
@@ -1149,7 +1204,7 @@ await p.close();
     const dins = (x, y) => ((x - 300) / 80) ** 2 + ((y - 250) / 110) ** 2 < 1 || (x >= 270 && x < 330 && y >= 100 && y < 160) || ((x - 300) / 42) ** 2 + ((y - 100) / 16) ** 2 < 1;
     const obre = async () => { await q.setInputFiles('#file', { name: 'gerro.png', mimeType: 'image/png', buffer: original }); await q.waitForTimeout(600); };
     const fesho = async (mode, darrere) => {
-      await q.click('#tab-fons'); await q.click('#fonsMode-' + mode); await q.click('#fonsD-' + darrere);
+      await obreTargeta(q, 'fons'); await q.click('#iaMode-' + mode); await q.click('#fonsD-' + darrere);
       await q.click('#fonsGo');
       await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 });
       await q.waitForTimeout(300);

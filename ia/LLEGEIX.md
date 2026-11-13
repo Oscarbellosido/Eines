@@ -1,8 +1,9 @@
 # Els fitxers de la IA de La Cambra Fosca
 
 Aquesta carpeta és l'única excepció a la norma d'«un sol fitxer» de les Eines.
-La fan servir les pestanyes **Amplia** i **Fons**, l'eina **Esborra coses
-(IA)** i «Arregla les cares» de La Cambra Fosca, i només es baixa el que cal quan algú les fa servir. Res d'aquí no envia cap foto enlloc: el model corre dins
+La fa servir la pestanya **✦ IA** de La Cambra Fosca (les ratllades,
+esborrar coses, les cares, el fons i ampliar), i només es baixa el que cal
+quan algú les fa servir. Res d'aquí no envia cap foto enlloc: el model corre dins
 del navegador.
 
 ## D'on surt cada cosa

@@ -4,7 +4,7 @@
 //
 // Cada canvi en un fitxer d'aquesta llista: pujar la versió, que si no l'app
 // instal·lada sense connexió seguiria servint la vella.
-const VERSIO = 'cambra-fosca-v12';
+const VERSIO='cambra-fosca-v13';
 const FITXERS = [
   'cambra-fosca.html',
   'cambra-fosca.webmanifest',

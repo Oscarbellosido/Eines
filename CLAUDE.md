@@ -155,7 +155,7 @@ que l'**Amplia** fos només per guanyar qualitat. Ara és així:
 - **La unitat i la resolució de partida es recorden** en aquest aparell
   (`cambra-fosca-mida`); en obrir una foto, `S.ppp` és la recordada.
 - Els números s'escriuen amb coma (`127,5`) i s'accepten amb coma o punt.
-- **Sis pestanyes a 320 px**: per sota de 400 px es fan una mica més
+- **Cinc pestanyes a 320 px**: per sota de 400 px es fan una mica més
   estretes.
 
 **Desa** només té el format, la qualitat i el nom, i diu quant farà i on es
@@ -169,6 +169,29 @@ demanar a la plataforma (`claude.use('downloads')`). Es prova primer la
 plataforma i, si no hi és, l'enllaç de tota la vida. **Si es toca una de les
 dues bandes, s'ha de comprovar l'altra.**
 
+## La Cambra Fosca: els menús
+
+L'usuari va trobar els menús embolicats quan ja hi havia cinc IA: les cares
+eren a Ajustos (sota Endreça), les ratllades dins de l'eina d'esborrar,
+l'Amplia i el Fons tenien una pestanya cadascuna i **cadascuna el seu
+«Mòbil / Ordinador»**. Ara les pestanyes són **Ajustos · Filtres · ✦ IA ·
+Mida · Historial**:
+
+- **Ajustos**: «Arregla-la sola» a dalt (és d'ajustos: mou els controls) i
+  els controls de sempre.
+- **✦ IA** (`construeixIA`, `pintaIA`): a dalt, **un sol «On ho fas»** per a
+  totes (`IA.mode`), i una **targeta** per a cada IA, per l'ordre en què
+  s'arregla una foto vella (`TARGETES`): Ratllades i taques, Esborra coses,
+  Cares, Fons i Amplia. **Només una d'oberta** (`IA.targeta`), que al mòbil
+  no s'hagi de baixar tant; tocant-la oberta, es tanca. El Fons i l'Amplia
+  es pinten dins de la seva targeta (`#pane-fons`, `#pane-amp`, que ara són
+  dins), i diuen amb quin mode van.
+- **Esborra coses** es pinta a la foto, o sigui que la targeta només porta a
+  la vareta (`#iaVesEsborra`); al mòbil, a més, puja fins a la foto
+  (`veuFoto`). La vareta segueix a la tira d'eines.
+- **Endreça** és a l'eina Retalla, amb girar i invertir.
+- Les eines no han canviat gens: només de lloc.
+
 ## La Cambra Fosca: arregla la foto
 
 L'usuari va preguntar si es podien arreglar fotos mal fetes «com fa ChatGPT».
@@ -177,7 +200,7 @@ fons») és un model enorme que corre als seus servidors i no es pot fer a
 l'aparell. Es van proposar tres coses que sí: un botó que arregla sol la
 claredat i el color, esborrar coses amb una IA (LaMa, uns 200 MB) i arreglar
 cares (GFPGAN, uns 350 MB). L'usuari va triar començar per la primera. A dalt
-del panell d'ajustos hi ha **Arregla la foto**, amb dues coses:
+de la pestanya Ajustos hi ha **Arregla la foto**:
 
 **✦ Arregla-la sola** (`calculaArregla`). **No fa cap màgia: mou els mateixos
 controls d'ajust de sota**, perquè es vegi què ha fet i es pugui retocar, i ho
@@ -224,7 +247,9 @@ bona, de 0 a 255): la fosca de 71 a 35, la cremada de 65 a 23, la fosca i
 groga de 68 a 33, i a la groga i la blava el tint baixa a menys de la meitat.
 La bona i la posta de sol de mostra no es toquen de color.
 
-**Endreça** (`aplicaEndreca`): un control de −15° a +15° per redreçar una foto
+**Endreça** (`aplicaEndreca`, a l'eina **Retalla**, amb girar i invertir:
+tot el que canvia la forma de la foto, junt; mentre el control és mogut, el
+marc del retall s'amaga): un control de −15° a +15° per redreçar una foto
 torta. Mentre es mou, **només gira la imatge de la pantalla** (CSS), amb una
 reixa al damunt per veure-hi les rectes; la foto no es toca fins a **Aplica**,
 que si no cada retoc la tornaria a passar pel girat i la perdria. En
@@ -233,7 +258,7 @@ la mateixa forma (`escalaEndreca`), i passa a ser la foto, com quan s'amplia:
 les pinzellades giren amb ella i desfer la torna com era. Qualsevol altra cosa
 que facis amb la foto mentre el control és mogut el cancel·la.
 
-**Arregla les cares** (a «Arregla la foto», sota Endreça). L'usuari arregla
+**Arregla les cares** (pestanya ✦ IA, targeta «Cares»). L'usuari arregla
 fotos deteriorades i ho va triar d'una llista: que les cares borroses o
 malmeses quedin nítides. Dues xarxes, convertides per
 `ia/conversio/fes_cares.py`:
@@ -273,7 +298,7 @@ malmeses quedin nítides. Dues xarxes, convertides per
 
 L'usuari va demanar poder ampliar una foto guanyant qualitat, com fa Upscayl,
 i que hi hagués **dues opcions: una per al mòbil i una per a l'ordinador**, que
-té molta més capacitat. És la pestanya **Amplia**. Fa servir les mateixes
+té molta més capacitat. És la targeta **Amplia** de la pestanya ✦ IA. Fa servir les mateixes
 xarxes neuronals que Upscayl (Real-ESRGAN), que corren dins del navegador amb
 ONNX Runtime Web. La foto no surt de l'aparell.
 
@@ -481,7 +506,8 @@ Després de provar-la, l'usuari va demanar tres millores per al mòbil:
   queden sota la foto i, després de pintar, les havies d'anar a buscar. La X
   de netejar és petita i separada, que el gros és el que es prem sempre.
 
-**«✦ Troba les ratllades»**, a dalt de les opcions de l'eina. L'usuari arregla
+**«✦ Troba les ratllades»**, a la targeta «Ratllades i taques» de la pestanya
+✦ IA (en prémer-lo, es passa sola a l'eina d'esborrar, que és on es repassa). L'usuari arregla
 fotos deteriorades i va triar això d'una llista: que la IA marqui sola les
 ratllades, els plecs i les taques clares d'una foto vella, i l'esborrador les
 tregui. Fa servir la xarxa de detecció de **Bringing Old Photos Back to
@@ -535,11 +561,11 @@ zero després de la primera multiplicació.
 
 ## La Cambra Fosca: treure el fons
 
-L'usuari ho va triar d'una llista de millores. És la pestanya **Fons**: deixa
+L'usuari ho va triar d'una llista de millores. És la targeta **Fons** de la pestanya ✦ IA: deixa
 sol el que hi ha al davant (una persona, un objecte) i el fons el fa
 **transparent**, **blanc**, **d'un color** o **difuminat** (com el mode retrat
-del mòbil). Dos models, amb el mateix mode Mòbil / Ordinador de l'Amplia
-(`IA.mode`, compartit):
+del mòbil). Dos models, amb el mateix «On ho fas: Mòbil / Ordinador» de dalt
+de la pestanya (`IA.mode`, compartit):
 
 | Mode | Model | Pes | Entrada |
 |---|---|---|---|
@@ -737,9 +763,15 @@ de debò i comprova:
   PNG desat faci aquells punts i porti 300 ppp escrits (amb la suma de
   control bona i una sola vegada) i que desfer la torni; en cm a 150 ppp, el
   JPG també; que una mida massa gran no es pugui aplicar; i que a 320 px les
-  sis pestanyes hi càpiguen. Es va comprovar que falla si el fitxer no porta
+  cinc pestanyes hi càpiguen. Es va comprovar que falla si el fitxer no porta
   la resolució triada, i va trobar que després de desfer una resolució les
   caselles en deien una altra;
+- **els menús**: que les pestanyes siguin Ajustos · Filtres · ✦ IA · Mida ·
+  Historial; que a ✦ IA hi hagi les cinc targetes per ordre, només una
+  d'oberta (i que tornant-la a tocar es tanqui), un sol «On ho fas» que
+  segueixen el fons i l'amplia; que «Pinta el que vols treure» posi la
+  vareta; que Endreça i les cares ja no siguin a Ajustos i Endreça sigui al
+  Retalla; i que a 320 px les targetes hi càpiguen;
 - **arregla la foto**: es fa una foto «bona» (cel, paret grisa, un full
   blanc, objectes de color) i s'espatlla de cinc maneres (fosca, cremada,
   groga, blava, i fosca i groga). «Arregla-la sola» ha de deixar la bona com

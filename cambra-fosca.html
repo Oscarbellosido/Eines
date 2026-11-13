@@ -415,7 +415,17 @@ input.mida-num{
 }
 .mida-fila .x{color:var(--fg-faint)}
 .mida-avis{color:#f4c789}
-/* sis pestanyes a 320 px: una mica més estretes */
+/* les targetes de la pestanya ✦ IA: només una d'oberta */
+.targeta{border:1px solid var(--line);border-radius:8px;margin:0 0 8px;background:var(--bg-2)}
+.targeta-cap{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;text-align:left;color:var(--fg)}
+.targeta-cap .tt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.targeta-cap b{font-size:13px;font-weight:600}
+.targeta-cap .tt span{font-size:11px;color:var(--fg-dim);line-height:1.35}
+.targeta-cap .fletxa{margin-left:auto;font-style:normal;font-size:18px;color:var(--fg-faint);transition:transform .15s}
+.targeta.obert{border-color:rgba(240,163,60,.45)}
+.targeta.obert .fletxa{transform:rotate(90deg);color:var(--accent)}
+.targeta-cos{padding:0 12px 12px}
+/* cinc pestanyes a 320 px: una mica més estretes */
 @media (max-width:400px){ .tab{font-size:11px;padding:7px 1px} }
 .dlg header{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
 .dlg header h3{margin:0;font-size:13.5px;font-weight:600}
@@ -580,18 +590,16 @@ input.mida-num{
       <div class="tabs" role="tablist">
         <button class="tab" role="tab" id="tab-adj" aria-selected="true" aria-controls="pane-adj">Ajustos</button>
         <button class="tab" role="tab" id="tab-fil" aria-selected="false" aria-controls="pane-fil">Filtres</button>
-        <button class="tab" role="tab" id="tab-his" aria-selected="false" aria-controls="pane-his">Historial</button>
-        <button class="tab" role="tab" id="tab-amp" aria-selected="false" aria-controls="pane-amp">Amplia</button>
-        <button class="tab" role="tab" id="tab-fons" aria-selected="false" aria-controls="pane-fons">Fons</button>
+        <button class="tab" role="tab" id="tab-ia" aria-selected="false" aria-controls="pane-ia">✦ IA</button>
         <button class="tab" role="tab" id="tab-mida" aria-selected="false" aria-controls="pane-mida">Mida</button>
+        <button class="tab" role="tab" id="tab-his" aria-selected="false" aria-controls="pane-his">Historial</button>
       </div>
       <div class="scroll">
         <div class="pane on" id="pane-adj" role="tabpanel" aria-labelledby="tab-adj"></div>
         <div class="pane" id="pane-fil" role="tabpanel" aria-labelledby="tab-fil">
           <div class="fgrid" id="fgrid"></div>
         </div>
-        <div class="pane" id="pane-amp" role="tabpanel" aria-labelledby="tab-amp"></div>
-        <div class="pane" id="pane-fons" role="tabpanel" aria-labelledby="tab-fons"></div>
+        <div class="pane" id="pane-ia" role="tabpanel" aria-labelledby="tab-ia"></div>
         <div class="pane" id="pane-mida" role="tabpanel" aria-labelledby="tab-mida"></div>
         <div class="pane" id="pane-his" role="tabpanel" aria-labelledby="tab-his">
           <div class="hlist" id="hlist"></div>
@@ -1461,12 +1469,6 @@ function buildOpts(id,hint){
     addHint();
   }
   else if(id==='treu'){
-    // per a fotos velles: la IA marca sola les ratllades i els plecs
-    const rb=el('button','btn','✦ Troba les ratllades'); rb.type='button'; rb.id='treuRatllades';
-    rb.style.cssText='width:100%;justify-content:center;height:34px';
-    rb.onclick=trobaRatllades;
-    box.appendChild(rb);
-    const rinfo=el('div','tiny'); rinfo.id='treuRatlladesInfo'; box.appendChild(rinfo);
     slider('Mida',S.brush.size,4,400,' px',v=>{S.brush.size=v;updateCursorSize();});
     // pintar o treure vermell: si se t'ha escapat el dit, no cal tornar a començar
     const modes=el('div','chips');
@@ -1483,6 +1485,7 @@ function buildOpts(id,hint){
     net.onclick=netejaVermell;
     row.append(go,net); box.appendChild(row);
     const info=el('div','tiny'); info.id='treuInfo'; box.appendChild(info);
+    box.appendChild(el('div','tiny','Per trobar soles les ratllades d\'una foto vella: pestanya ✦ IA, «Ratllades i taques».'));
     addHint();
     estatTreu();
   }
@@ -1502,6 +1505,22 @@ function buildOpts(id,hint){
     addHint();
   }
   else if(id==='crop'){
+    // Endreça és aquí, amb girar i invertir: tot el que canvia la forma de la
+    // foto, junt (abans era a Ajustos, i l'usuari trobava els menús embolicats)
+    const er=el('div','row');
+    const el2=el('label',null,'Endreça'); el2.htmlFor='sl-endreca';
+    const ev=el('span','val zero','0°'); ev.id='endrecaVal';
+    const erg=document.createElement('input');
+    erg.type='range'; erg.min=-15; erg.max=15; erg.step=0.1; erg.value=S.endreca||0; erg.id='sl-endreca';
+    erg.setAttribute('aria-label','Endreça');
+    erg.oninput=()=>{ S.endreca=+erg.value; pintaEndreca(); };
+    el2.ondblclick=cancelaEndreca;
+    er.append(el2,ev,erg); box.appendChild(er);
+    const eb=el('div','optrow'); eb.id='endrecaBotons'; eb.hidden=true;
+    const eap=el('button','btn primary','Aplica'); eap.type='button'; eap.id='endrecaAplica'; eap.onclick=aplicaEndreca;
+    const eca=el('button','btn','Cancel·la'); eca.type='button'; eca.id='endrecaCancela'; eca.onclick=cancelaEndreca;
+    eb.append(eap,eca,el('span','tiny','Endreça una foto torta. Es retalla una mica, que no quedin cantonades buides.'));
+    box.appendChild(eb);
     const chips=el('div','chips');
     [['lliure','Lliure',0],['1:1','1:1',1],['4:5','4:5',4/5],['3:2','3:2',3/2],['4:3','4:3',4/3],['16:9','16:9',16/9]]
       .forEach(([id2,lab,r])=>{
@@ -1806,6 +1825,8 @@ function pintaEndreca(){
   if(!r) return;
   r.value=g; v.textContent=g?grausText(g):'0°'; v.classList.toggle('zero',!g); r.classList.toggle('touched',!!g);
   b.hidden=!g;
+  // mentre s'endreça, el marc del retall s'amaga (si no, s'hi veuria a sobre, sense girar)
+  const cr=$('#crop'); if(cr) cr.classList.toggle('on', cropOn && !g);
   previsualitzaEndreca();
 }
 function cancelaEndreca(){ if(S.endreca){ S.endreca=0; pintaEndreca(); } }
@@ -1825,6 +1846,7 @@ function aplicaEndreca(){
   S.endreca=0; pintaEndreca();
   buildBase(); fitToStage();
   push('Endreça '+grausText(graus));
+  if(S.tool==='crop') setTool('crop');     // el marc del retall, de la foto nova
   say('Endreçada '+grausText(graus)+'. Ara fa '+ow+' × '+oh+' px.');
 }
 function grupArregla(){
@@ -1836,39 +1858,6 @@ function grupArregla(){
   box.appendChild(b);
   const res=el('div','tiny'); res.id='arreglaRes'; res.hidden=true; box.appendChild(res);
 
-  const row=el('div','row');
-  const l=el('label',null,'Endreça'); l.htmlFor='sl-endreca';
-  const v=el('span','val zero','0°'); v.id='endrecaVal';
-  const r=document.createElement('input');
-  r.type='range'; r.min=-15; r.max=15; r.step=0.1; r.value=0; r.id='sl-endreca';
-  r.setAttribute('aria-label','Endreça');
-  r.oninput=()=>{ S.endreca=+r.value; pintaEndreca(); };
-  l.ondblclick=cancelaEndreca;
-  row.append(l,v,r); box.appendChild(row);
-  const bot=el('div','optrow'); bot.id='endrecaBotons'; bot.hidden=true;
-  const ap=el('button','btn primary','Aplica'); ap.type='button'; ap.id='endrecaAplica'; ap.onclick=aplicaEndreca;
-  const ca=el('button','btn','Cancel·la'); ca.type='button'; ca.id='endrecaCancela'; ca.onclick=cancelaEndreca;
-  bot.append(ap,ca,el('span','tiny','Es retalla una mica, que no quedin cantonades buides.'));
-  box.appendChild(bot);
-
-  // les cares: per a fotos velles, borroses o petites
-  const ct=el('div','tiny'); ct.style.marginTop='12px';
-  ct.innerHTML='<b>Cares</b>: les cares borroses o malmeses, la IA les torna nítides.';
-  box.appendChild(ct);
-  const fc=el('div','chips'); fc.id='caresForca';
-  [['1','Fort'],['0.7','Mitjà'],['0.45','Suau']].forEach(([v,lab])=>{
-    const c=el('button','chip',lab); c.type='button'; c.id='caresF-'+lab.toLowerCase().replace('à','a');
-    c.setAttribute('aria-pressed',+v===IA.cares.forca?'true':'false');
-    c.onclick=()=>{ IA.cares.forca=+v; fc.querySelectorAll('.chip').forEach(n=>n.setAttribute('aria-pressed',n===c?'true':'false')); };
-    fc.appendChild(c);
-  });
-  box.appendChild(fc);
-  const cb=el('button','btn','✦ Arregla les cares'); cb.type='button'; cb.id='cares';
-  cb.style.cssText='width:100%;height:34px;justify-content:center;margin-top:6px';
-  cb.onclick=arreglaCares;
-  box.appendChild(cb);
-  const ci=el('div','tiny'); ci.id='caresInfo'; box.appendChild(ci);
-  const cr=el('div','tiny'); cr.id='caresRes'; cr.hidden=true; box.appendChild(cr);
   return box;
 }
 
@@ -2267,8 +2256,7 @@ function adopt(canvas,name,isSample){
   $('#fileName').textContent=S.name;
   fitToStage(); push('Obre '+S.name);
   if(S.tool==='crop') startCrop();
-  if($('#pane-amp').classList.contains('on')) pintaAmplia();
-  if($('#pane-fons').classList.contains('on')) pintaFons();
+  if($('#pane-ia').classList.contains('on')) pintaIA();
   if($('#pane-mida').classList.contains('on')) pintaMidaFoto();
   say(isSample
     ? 'Imatge d\'exemple generada per la pàgina. Obre\'n una teva per començar.'
@@ -2506,7 +2494,7 @@ function pintaMidaFoto(){
       const o={unitat:MF.unitat, ppp:MF.ppp, ample:aU(MF.pw)};
       const ant=[IA.factor,IA.objectiu]; IA.factor='mida'; IA.objectiu=o;
       const p=plaAmplia(); IA.factor=ant[0]; IA.objectiu=ant[1];
-      let t='Amb el mode '+IA.models[IA.mode].nom+' de la pestanya Amplia. ';
+      let t='Amb el mode '+IA.models[IA.mode].nom+' de la pestanya ✦ IA. ';
       if(!p.cap){ t+='No cabria a la memòria: faria '+round(p.mp)+' megapíxels, i en aquest mode el màxim és '+IA.models[IA.mode].maxMP+'.'+
         (IA.mode==='mobil'?' Amb el mode Ordinador potser sí.':''); }
       else if(!p.estira) t+='El model l\'amplia per '+p.fm+(Math.abs(p.r-p.fm)>0.001?' i després es deixa a la mida justa.':'.');
@@ -2958,20 +2946,8 @@ function pintaAmplia(){
     pane.appendChild(ok);
   }
   const g1=el('div','grp');
-  g1.appendChild(el('h4',null,'Amplia amb IA'));
-  g1.appendChild(el('div','tiny','Fa la foto més gran i s\'inventa el detall que hi falta, com Upscayl. Va molt bé amb fotos petites o borroses; el que s\'ha perdut del tot no ho recupera. La foto no surt del teu aparell.'));
+  g1.appendChild(el('div','tiny','Fa la foto més gran i s\'inventa el detall que hi falta, com Upscayl. Va molt bé amb fotos petites o borroses; el que s\'ha perdut del tot no ho recupera. Amb el mode '+md.nom+': '+md.desc.toLowerCase().replace(/\.$/,'')+' ('+mb(md.mb)+').'));
   pane.appendChild(g1);
-
-  const g2=el('div','grp'); g2.appendChild(el('h4',null,'On ho fas'));
-  const modes=el('div','modes');
-  for(const k of ['mobil','ordinador']){
-    const m=IA.models[k], b=el('button','mode');
-    b.type='button'; b.id='iaMode-'+k; b.setAttribute('aria-pressed', k===IA.mode?'true':'false');
-    b.innerHTML='<b>'+m.nom+'<em>'+mb(m.mb)+'</em></b><span>'+m.desc+'</span>';
-    b.onclick=()=>{ IA.mode=k; IA.factorTriat=false; pintaAmplia(); };
-    modes.appendChild(b);
-  }
-  g2.appendChild(modes); pane.appendChild(g2);
 
   const g3=el('div','grp'); g3.appendChild(el('h4',null,'Quant més gran'));
   const chips=el('div','chips');
@@ -3188,7 +3164,7 @@ function estatFlota(){
   if(f.hidden===si) f.hidden=!si;
 }
 function estatTreu(){
-  estatFlota();
+  estatFlota(); estatRatllades();
   const go=$('#treuGo'); if(!go) return;
   go.disabled=!hiHaVermell() || IA.treballant;
   $('#treuNeteja').disabled=!S.mascara.length;
@@ -3201,12 +3177,11 @@ function estatTreu(){
     h='La primera vegada es baixa la IA ('+mb(t.mb+motor)+'); després funciona sense connexió.';
   } else h='La IA ja és en aquest aparell.';
   info.textContent=h+' La foto no surt de l\'aparell.';
-  const ri=$('#treuRatlladesInfo');
-  if(ri){
-    $('#treuRatllades').disabled=IA.treballant || IA.motor==null;
-    ri.textContent='Per a fotos velles: marca de vermell les ratllades, els plecs i les taques clares. Repassa-ho i prem «Esborra-ho».'+
-      (IA.baixats[IA.ratllades.fitxer]||IA.ratllades.sessio ? '' : ' La primera vegada es baixen '+mb(IA.ratllades.mb)+'.');
-  }
+}
+function estatRatllades(){
+  const ri=$('#treuRatlladesInfo'); if(!ri) return;
+  $('#treuRatllades').disabled=IA.treballant || IA.motor==null;
+  ri.textContent=IA.baixats[IA.ratllades.fitxer]||IA.ratllades.sessio ? 'La IA ja és en aquest aparell.' : 'La primera vegada es baixen '+mb(IA.ratllades.mb)+'.';
 }
 async function preparaSessioTreu(progres){
   const t=IA.treu;
@@ -3389,6 +3364,8 @@ async function mapaRatllades(src, sessio){
 }
 async function trobaRatllades(){
   if(IA.treballant || !baseCanvas) return;
+  // el vermell es repassa amb la vareta: s'hi canvia ja
+  if(S.tool!=='treu') setTool('treu');
   if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
   hideTextEdit();
   IA.treballant=true; IA.atura=false; estatTreu();
@@ -3408,7 +3385,7 @@ async function trobaRatllades(){
     if(!r){ say('No he trobat ratllades clares. Si n\'hi ha, pinta-les tu de vermell.'); return; }
     S.mascara.push(r); S.mascGoma=false;
     buildOpts('treu',TOOLS.find(x=>x.id==='treu').hint);
-    pintaVista();
+    pintaVista(); veuFoto();
     say('Ratllades marcades de vermell. Repassa-ho: amb «Treu vermell» treus el que no ho sigui i pintes el que falti. Després, «Esborra-ho».');
   }catch(e){
     const msg=String(e&&e.message||e);
@@ -3472,6 +3449,92 @@ async function fesTreu(){
     estatTreu();
   }
 }
+
+/* ===================================================================
+   16e. la pestanya ✦ IA: totes les eines d'IA juntes
+   L'usuari trobava els menús embolicats: les cares eren a Ajustos, les
+   ratllades dins de l'eina d'esborrar, l'Amplia i el Fons a pestanyes seves
+   i cadascuna amb el seu «Mòbil / Ordinador». Ara són aquí, en targetes (només
+   una d'oberta, que al mòbil no s'hagi de baixar tant), per l'ordre en què
+   s'arregla una foto vella, i amb un sol «On ho fas» per a totes.
+=================================================================== */
+const TARGETES=[
+  ['ratllades','Ratllades i taques','Per a fotos velles: les troba soles i les esborra.'],
+  ['esborra','Esborra coses','Pinta el que vulguis treure i la IA hi posa el que hi hauria al darrere.'],
+  ['cares','Cares','Torna nítides les cares borroses o malmeses.'],
+  ['fons','Fons','El treu, o el fa blanc, d\'un color o difuminat.'],
+  ['amp','Amplia','La fa 2 o 4 vegades més gran, guanyant detall.'],
+];
+IA.targeta=null;
+function construeixIA(){
+  const pane=$('#pane-ia'); pane.textContent='';
+  const g=el('div','grp'); g.appendChild(el('h4',null,'On ho fas'));
+  const modes=el('div','modes');
+  for(const [k,nom,desc] of [['mobil','Mòbil','IA més petites i ràpides: serveixen a qualsevol aparell.'],
+                             ['ordinador','Ordinador','Les de més qualitat: més grosses i més lentes, per a un ordinador.']]){
+    const b=el('button','mode'); b.type='button'; b.id='iaMode-'+k;
+    b.innerHTML='<b>'+nom+'</b><span>'+desc+'</span>';
+    b.onclick=()=>{ IA.mode=k; IA.factorTriat=false; pintaIA(); };
+    modes.appendChild(b);
+  }
+  g.appendChild(modes);
+  g.appendChild(el('div','tiny','Cada IA es baixa la primera vegada que la fas servir. La foto no surt mai del teu aparell.'));
+  pane.appendChild(g);
+  for(const [k,titol,desc] of TARGETES){
+    const t=el('div','targeta'); t.id='iaTarg-'+k;
+    const cap=el('button','targeta-cap'); cap.type='button'; cap.id='iaCap-'+k;
+    cap.innerHTML='<span class="tt"><b>'+titol+'</b><span>'+desc+'</span></span><i class="fletxa">›</i>';
+    cap.onclick=()=>{ IA.targeta = IA.targeta===k ? null : k; pintaIA();
+      if(IA.targeta) setTimeout(()=>t.scrollIntoView({block:'nearest',behavior:'smooth'}),30); };
+    const cos=el('div','targeta-cos'); cos.id='iaCos-'+k; cos.hidden=true;
+    t.append(cap,cos); pane.appendChild(t);
+  }
+  // ratllades: troba-les i repassa-les amb la vareta
+  const cr=$('#iaCos-ratllades');
+  cr.appendChild(el('div','tiny','Marca de vermell les ratllades, els plecs i les taques clares. Després les repasses (amb «Treu vermell» treus el que no ho sigui, i pintes el que falti) i prems «Esborra-ho».'));
+  const rb=el('button','btn primary','✦ Troba les ratllades'); rb.type='button'; rb.id='treuRatllades';
+  rb.style.cssText='width:100%;justify-content:center;height:36px;margin-top:8px'; rb.onclick=trobaRatllades;
+  const ri=el('div','tiny'); ri.id='treuRatlladesInfo';
+  cr.append(rb,ri);
+  // esborrar coses: es pinta a la foto, amb la vareta
+  const ce=$('#iaCos-esborra');
+  ce.appendChild(el('div','tiny','Una persona del fons, un cable, una taca: la pintes de vermell amb el dit, prems «Esborra-ho» i la IA hi posa el que hi hauria al darrere.'));
+  const eb=el('button','btn primary','Pinta el que vols treure'); eb.type='button'; eb.id='iaVesEsborra';
+  eb.style.cssText='width:100%;justify-content:center;height:36px;margin-top:8px';
+  eb.onclick=()=>{ setTool('treu'); veuFoto(); say('Pinta de vermell el que vulguis treure i prem «Esborra-ho».'); };
+  ce.appendChild(eb);
+  // les cares
+  const cc=$('#iaCos-cares');
+  cc.appendChild(el('div','tiny','Troba les cares de la foto i les torna nítides, cadascuna al seu lloc.'));
+  const fc=el('div','chips'); fc.id='caresForca'; fc.style.marginTop='8px';
+  [['1','Fort'],['0.7','Mitjà'],['0.45','Suau']].forEach(([v,lab])=>{
+    const c=el('button','chip',lab); c.type='button'; c.id='caresF-'+lab.toLowerCase().replace('à','a');
+    c.setAttribute('aria-pressed',+v===IA.cares.forca?'true':'false');
+    c.onclick=()=>{ IA.cares.forca=+v; fc.querySelectorAll('.chip').forEach(n=>n.setAttribute('aria-pressed',n===c?'true':'false')); };
+    fc.appendChild(c);
+  });
+  const cb=el('button','btn primary','✦ Arregla les cares'); cb.type='button'; cb.id='cares';
+  cb.style.cssText='width:100%;height:36px;justify-content:center;margin-top:8px'; cb.onclick=arreglaCares;
+  const ci=el('div','tiny'); ci.id='caresInfo';
+  const crr=el('div','tiny'); crr.id='caresRes'; crr.hidden=true;
+  cc.append(fc,cb,ci,crr);
+  // el fons i l'amplia es pinten soles dins de la seva targeta
+  const pf=el('div'); pf.id='pane-fons'; $('#iaCos-fons').appendChild(pf);
+  const pa=el('div'); pa.id='pane-amp'; $('#iaCos-amp').appendChild(pa);
+}
+function pintaIA(){
+  if(!$('#iaModes') && !$('#iaMode-mobil')) construeixIA();
+  for(const k of ['mobil','ordinador']) $('#iaMode-'+k).setAttribute('aria-pressed', k===IA.mode?'true':'false');
+  for(const [k] of TARGETES){
+    const obert=IA.targeta===k;
+    $('#iaCos-'+k).hidden=!obert;
+    $('#iaTarg-'+k).classList.toggle('obert',obert);
+    $('#iaCap-'+k).setAttribute('aria-expanded',obert?'true':'false');
+  }
+  pintaAmplia(); pintaFons(); estatCares(); estatRatllades();
+}
+// al mòbil, les opcions queden sota la foto: per pintar-hi, s'hi torna
+function veuFoto(){ if(innerWidth<=760) $('#stage').scrollIntoView({block:'start',behavior:'smooth'}); }
 
 /* ===================================================================
    16d. arreglar les cares
@@ -3672,20 +3735,9 @@ function pintaFons(){
   if(F.fet && F.fet.src===S.src){
     const ok=el('div','ia-fet'); ok.id='fonsFet'; ok.innerHTML='<b>✓ Fet.</b> '+F.fet.text; pane.appendChild(ok);
   }
-  const g1=el('div','grp'); g1.appendChild(el('h4',null,'Treu el fons'));
-  g1.appendChild(el('div','tiny','Deixa sol el que hi ha al davant (una persona, un animal, un objecte) i en treu el fons, o el difumina. Va millor quan el que hi ha al davant es distingeix bé. La foto no surt del teu aparell.'));
+  const g1=el('div','grp');
+  g1.appendChild(el('div','tiny','Deixa sol el que hi ha al davant (una persona, un animal, un objecte) i en treu el fons, o el difumina. Va millor quan el que hi ha al davant es distingeix bé. Amb el mode '+IA.models[IA.mode].nom+': '+md.desc.toLowerCase().replace(/\.$/,'')+' ('+mb(md.mb)+').'));
   pane.appendChild(g1);
-
-  const g2=el('div','grp'); g2.appendChild(el('h4',null,'On ho fas'));
-  const modes=el('div','modes');
-  for(const k of ['mobil','ordinador']){
-    const m=F.models[k], b=el('button','mode');
-    b.type='button'; b.id='fonsMode-'+k; b.setAttribute('aria-pressed', k===IA.mode?'true':'false');
-    b.innerHTML='<b>'+IA.models[k].nom+'<em>'+mb(m.mb)+'</em></b><span>'+m.desc+'</span>';
-    b.onclick=()=>{ IA.mode=k; IA.factorTriat=false; pintaFons(); };
-    modes.appendChild(b);
-  }
-  g2.appendChild(modes); pane.appendChild(g2);
 
   const g3=el('div','grp'); g3.appendChild(el('h4',null,'Què hi poso al darrere'));
   const chips=el('div','chips');
@@ -3891,15 +3943,14 @@ async function fesFons(){
 /* ===================================================================
    17. pestanyes, ratlla d'estat i teclat
 =================================================================== */
-['adj','fil','his','amp','fons','mida'].forEach(id=>{
+['adj','fil','ia','mida','his'].forEach(id=>{
   $('#tab-'+id).onclick=()=>{
-    ['adj','fil','his','amp','fons','mida'].forEach(o=>{
+    ['adj','fil','ia','mida','his'].forEach(o=>{
       $('#tab-'+o).setAttribute('aria-selected', o===id?'true':'false');
       $('#pane-'+o).classList.toggle('on', o===id);
     });
     if(id==='fil') drawThumbs();
-    if(id==='amp') pintaAmplia();
-    if(id==='fons') pintaFons();
+    if(id==='ia') pintaIA();
     if(id==='mida') pintaMidaFoto();
   };
 });
@@ -3964,7 +4015,7 @@ buildFilters();
 setTool('move');
 adopt(makeSample(),'exemple.png',true);
 requestAnimationFrame(()=>{ fitToStage(); drawThumbs(); });
-miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats(); pintaAmplia(); pintaFons(); estatTreu(); estatCares(); });
+miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats(); pintaIA(); estatTreu(); });
 
 if(window.claude && typeof window.claude.use==='function'){
   window.claude.use('downloads').then(d=>{ downloads=d; }).catch(()=>{});
