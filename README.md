@@ -22,7 +22,7 @@ Els jocs són a [la seva col·lecció](https://oscarbellosido.github.io/Jocs/).
 L'ampliació amb IA fa servir els models de
 [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) (llicència BSD); esborrar
 coses, el model [MI-GAN](https://github.com/Picsart-AI-Research/MI-GAN) de
-Picsart AI Research (llicència MIT), i les ratllades les troba la xarxa de
+Picsart AI Research (llicència MIT) i, al mode Ordinador, [LaMa](https://github.com/advimman/lama) de Samsung AI (Apache 2.0), i les ratllades les troba la xarxa de
 [Bringing Old Photos Back to Life](https://github.com/microsoft/Bringing-Old-Photos-Back-to-Life)
 de Microsoft (llicència MIT); el soroll, [SCUNet](https://github.com/cszn/SCUNet) (Apache 2.0); les cares, [GFPGAN](https://github.com/TencentARC/GFPGAN) de Tencent ARC
 (Apache 2.0, amb part del codi de StyleGAN2 de NVIDIA, que només és per a ús no comercial)

@@ -617,6 +617,31 @@ deixarien el mòbil sense memòria. Quan les fotos guardades passen de 300 MB
 se'n queden dues (l'actual i la d'abans): desfer l'últim sempre es pot, però
 després de moltes esborrades potser ja no es pot tornar a la foto del principi.
 
+**Al mode Ordinador, LaMa.** L'usuari ho va triar de la llista de millores:
+un esborrador millor per a forats i taques grosses. **LaMa** («big-lama», de
+Samsung, Apache 2.0, 51 milions de números, 99 MB amb mitja precisió, en dos
+trossos) és el que es va descartar al principi perquè era massa gros per al
+mòbil; ara és el del mode Ordinador (`IA.mode`), i el Mòbil continua amb
+MI-GAN. Amb tres fotos de mostra i forats grossos, l'error dins dels forats
+va ser de 11,5 contra 20,5 de MI-GAN (sobre 255), i on MI-GAN posava una taca
+estranya, LaMa refeia la vora de la tassa.
+
+- **Les dues IA es fan servir pel mateix camí** (`treuAmbIA` i
+  `treuPerTrossos`, a 512 × 512); només canvia com se'ls dona el tros i com
+  el tornen (`omple512`): MI-GAN, quatre canals de −1 a 1 amb la màscara
+  menys 0,5; LaMa, la foto de 0 a 1 i la màscara a part (1 = s'omple).
+- **Les transformades de Fourier de LaMa es fan amb matrius.** És el que
+  l'omple tan bé (veu tota la foto alhora), però el motor no sap fer-les a la
+  gràfica. Com que la mida és fixa (els blocs treballen a 64 × 64), es fan com
+  a multiplicacions per les taules de sinus i cosinus (`fes_lama.py`, que
+  comprova abans que donen el mateix que numpy).
+- **Va més lenta**: al contenidor, sense gràfica, uns segons per tros de 512.
+  La targeta i les opcions de l'eina diuen quina IA fa servir cada mode.
+- L'historial diu «Esborra amb IA · LaMa» quan és ella.
+- El fitxer és el que publica IOPaint a GitHub (TorchScript); `fes_lama.py`
+  només en llegeix els pesos, amb el lector de `fes_migan.py`, i munta la
+  xarxa com al codi original.
+
 **Com es va fer el model.** Picsart publica MI-GAN en PyTorch, i la versió que
 es podia baixar d'aquí és la «TorchScript» (`migan_traced.pt`), que porta el
 model escrit a dins en una mena de Python. `ia/conversio/fes_migan.py` el
@@ -900,7 +925,9 @@ de debò i comprova:
   foto no canviï ni un nivell**; desfer i refer; i el mateix amb una foto de
   1.600 px, més gran que el model. Es va comprovar que la prova falla amb la
   màscara al revés, enganxant el tros sencer, sense el vermell a la pantalla i
-  si canviar d'eina no el treu. A més: la goma del vermell (treu on passa i
+  si canviar d'eina no el treu. Al mode Ordinador, el mateix amb LaMa
+  (l'objecte fora, paret amb maons, la resta intacta, «· LaMa» a
+  l'historial, dos trossos baixats i la segona vegada cap). A més: la goma del vermell (treu on passa i
   no enlloc més; si ho treu tot, no es fa res i es diu), el zoom amb dos dits
   sense que en quedi cap ratlla (amb el vermell i amb el pinzell), que el
   botó que sura surti sencer al mòbil i no a l'ordinador, i que mantenint

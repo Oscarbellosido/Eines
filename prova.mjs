@@ -1001,7 +1001,35 @@ await p.close();
       const m = await mira(r, gran);
       if (m.max > 0) problemes.push(`a la foto gran, esborrant ha canviat la foto lluny del forat (${r}: ${m.max})`);
     }
-    console.log(`${problemes.length > abansT ? '✗' : '✓'} esborrar coses amb el dit (pel processador): pintar amb el dit, el vermell no es desa, netejar, la goma del vermell, zoom amb dos dits, el botó que sura, esborrar la paret de maons sense tocar la resta, abans i després, desfer i refer, i una foto gran`);
+    // el mode Ordinador fa servir LaMa: la mateixa paret, i el mateix que abans
+    // (l'objecte fora, paret amb maons, la resta intacta), i surt amb el seu nom
+    let baixadesLama = 0;
+    q.on('request', r => { if (/lama-512\.onnx/.test(r.url())) baixadesLama++; });
+    const originalL = await obreParet(1);
+    await obreTargeta(q, 'esborra'); await q.click('#iaMode-ordinador'); await q.click('#iaVesEsborra');
+    await q.waitForTimeout(900);          // puja fins a la foto, a poc a poc
+    if (!(await q.locator('#treuInfo').innerText()).includes('LaMa')) problemes.push('al mode Ordinador, l\'eina d\'esborrar no diu que fa servir LaMa');
+    await q.evaluate(() => { const r = document.querySelector('#opt-Mida'); r.value = 40; r.dispatchEvent(new Event('input')); });
+    await dit(ziga(290, 340, 250, 372, 12));
+    await q.click(await q.locator('#treuFlotaGo').isVisible() ? '#treuFlotaGo' : '#treuGo');
+    await acabaT();
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Esborra amb IA · LaMa')) problemes.push('al mode Ordinador no s\'ha esborrat amb LaMa (historial: ' + (await q.locator('.hitem span').allInnerTexts()).slice(-1) + ')');
+    const foratL = await mira([280, 250, 70, 120], originalL), paretL = await mira([420, 250, 70, 120]);
+    if (foratL.m[0] - foratL.m[1] > 25) problemes.push(`amb LaMa, l'objecte vermell no s'ha esborrat (${foratL.m.map(Math.round)})`);
+    if (foratL.m.some((v, i) => Math.abs(v - paretL.m[i]) > 22)) problemes.push(`amb LaMa, on hi havia l'objecte no hi ha paret (${foratL.m.map(Math.round)} contra ${paretL.m.map(Math.round)})`);
+    if (foratL.var < paretL.var * 0.35) problemes.push(`amb LaMa, la paret ha quedat llisa, sense maons (${foratL.var.toFixed(1)} contra ${paretL.var.toFixed(1)})`);
+    for (const r of [[0, 0, 640, 200], [0, 200, 200, 280], [450, 200, 190, 280]]) {
+      const m = await mira(r, originalL);
+      if (m.max > 0) problemes.push(`amb LaMa, ha canviat la foto lluny del forat (${r}: diferència ${m.max})`);
+    }
+    if (baixadesLama !== 2) problemes.push(`LaMa s'havia de baixar en dos trossos, i se n'han baixat ${baixadesLama}`);
+    // la segona vegada, sense baixar res
+    await q.click('#btnUndo'); await q.waitForTimeout(400);
+    await dit(ziga(290, 340, 250, 372, 12));
+    await q.click(await q.locator('#treuFlotaGo').isVisible() ? '#treuFlotaGo' : '#treuGo');
+    await acabaT();
+    if (baixadesLama !== 2) problemes.push('la segona vegada, LaMa es torna a baixar');
+    console.log(`${problemes.length > abansT ? '✗' : '✓'} esborrar coses amb el dit (pel processador): pintar amb el dit, el vermell no es desa, netejar, la goma del vermell, zoom amb dos dits, el botó que sura, esborrar la paret de maons sense tocar la resta, abans i després, desfer i refer, una foto gran, i amb LaMa al mode Ordinador`);
     await ctx.close();
   }
 
@@ -1084,7 +1112,7 @@ await p.close();
     await q.click('#treuGo');
     await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 600000 });
     await q.waitForTimeout(300);
-    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Esborra les ratllades (IA)')) problemes.push('esborrar les ratllades no surt a l\'historial');
+    if (!(await q.locator('.hitem span').allInnerTexts()).some(t => t.startsWith('Esborra les ratllades (IA)'))) problemes.push('esborrar les ratllades no surt a l\'historial');
     const c2 = await compara();
     if (!(c2.err < c1.errVella * 0.25)) problemes.push(`a les ratllades marcades, la foto no s'acosta prou a la neta (diferència ${c2.err.toFixed(1)}; abans ${c1.errVella.toFixed(1)})`);
     if (c2.canviFora > 0.5) problemes.push(`esborrant les ratllades, ha canviat la resta de la foto (${c2.canviFora.toFixed(2)} de mitjana)`);

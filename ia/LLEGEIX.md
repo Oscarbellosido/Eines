@@ -47,6 +47,29 @@ L'entrada són quatre canals de 512 × 512: la màscara menys 0,5 (1 = es queda,
 0 = s'esborra) i la foto de −1 a 1 amb el forat a zero. La sortida, la foto
 sencera de −1 a 1 (només se n'agafa el forat).
 
+### `models/lama-512.onnx.1` i `.2` — esborrar coses al mode Ordinador
+
+És **LaMa** («big-lama»), de Samsung AI Center, https://github.com/advimman/lama,
+amb llicència **Apache 2.0** (`models/LICENSE-LAMA`). 51 milions de números. El
+fitxer és el que publica el projecte IOPaint a GitHub (els pesos originals són
+en un servei de fitxers que des d'aquí no s'hi arriba), en format TorchScript:
+
+```
+344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9  big-lama.pt
+https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt
+```
+
+**Canvis respecte de l'original** (la llicència Apache demana dir-ho): la xarxa
+es munta peça a peça en ONNX amb una mida fixa de 512 × 512; les
+transformades de Fourier de les FourierUnit (rfftn i irfftn) es fan com a
+multiplicacions de matrius amb les taules de sinus i cosinus (el motor no sap
+fer-les a la gràfica), i l'script comprova abans que donen el mateix que
+numpy; la normalització (BatchNorm) es fa com a multiplicar i sumar; els pesos
+amb la meitat de precisió, en dos trossos.
+
+Entrades: `foto` [1,3,512,512] de 0 a 1 i `mascara` [1,1,512,512], 1 on s'ha
+d'omplir. Sortida: la foto plena, de 0 a 1.
+
 ### `models/cares-troba.onnx` i `models/cares-arregla.onnx.1` i `.2` — arreglar les cares
 
 | Fitxer | Model | Projecte | Per a què |
@@ -228,6 +251,14 @@ peces que la gràfica sap fer anar.
 
 ```
 python conversio/fes_migan.py migan_traced.pt models/migan-512.onnx
+```
+
+LaMa surt de `conversio/fes_lama.py`, que en llegeix només els pesos (amb
+el lector de `fes_migan.py`, sense executar res del codi que porta) i la munta
+amb les transformades fetes amb matrius:
+
+```
+python conversio/fes_lama.py big-lama.pt models
 ```
 
 El del soroll surt de `conversio/fes_soroll.py`, que llegeix el fitxer

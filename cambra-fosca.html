@@ -2695,7 +2695,10 @@ const IA={
   baixats:{},             // què ja hi ha a la memòria del navegador
   error:null,
   // «Esborra coses»: MI-GAN, de Picsart. Sempre treballa a 512 × 512.
-  treu:{ fitxer:'models/migan-512.onnx', mb:25.5, N:512, sessio:null, motorReal:null, errorGPU:null, ultim:null },
+  treu:{ fitxer:'models/migan-512.onnx', mb:25.5, N:512, sessio:null, motorReal:null, errorGPU:null, ultim:null,
+         // al mode Ordinador, LaMa (Samsung, Apache 2.0): omple molt millor els
+         // forats grossos, però fa 99 MB (en dos trossos) i va més lenta
+         lama:{ parts:['models/lama-512.onnx.1','models/lama-512.onnx.2'], mb:98.7, sessio:null, motorReal:null } },
   // «Arregla les cares»: RetinaFace (troba les cares i cinc punts de cada una)
   // i GFPGAN v1.4 (les arregla posades dretes a 512 × 512). GFPGAN fa 167 MB i
   // va en dos trossos, que GitHub no n'accepta de més de 100.
@@ -2743,7 +2746,7 @@ async function miraBaixats(){
   const c=await cauIA(); if(!c) return;
   // la primera versió del model lleuger, que la gràfica no sabia fer anar sencera
   try{ await c.delete(urlIA('models/realesr-general-x4v3.onnx')); }catch(e){}
-  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, IA.ratllades.fitxer, IA.nitida.fitxer, IA.cares.troba, ...IA.cares.arregla, ...IA.color.parts, IA.fons.models.mobil.fitxer, IA.fons.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
+  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, ...IA.treu.lama.parts, IA.ratllades.fitxer, IA.nitida.fitxer, IA.cares.troba, ...IA.cares.arregla, ...IA.color.parts, IA.fons.models.mobil.fitxer, IA.fons.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
   for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
 }
 /* Baixa un fitxer gros una sola vegada: després el treu de la memòria del
@@ -3184,13 +3187,14 @@ function estatTreu(){
   go.disabled=!hiHaVermell() || IA.treballant;
   $('#treuNeteja').disabled=!S.mascara.length;
   const info=$('#treuInfo'); if(!info) return;
-  const t=IA.treu;
-  let h;
-  if(t.ultim) h='L\'última, en '+t.ultim.temps+', '+(t.ultim.motor==='gpu'?'amb la gràfica':'amb el processador')+'. Si no t\'agrada, desfés-la.';
-  else if(!IA.baixats[t.fitxer]){
-    const motor=IA.motor&&!IA.baixats[IA.motors[IA.motor].wasm] ? IA.motors[IA.motor].mb : 0;
-    h='La primera vegada es baixa la IA ('+mb(t.mb+motor)+'); després funciona sense connexió.';
-  } else h='La IA ja és en aquest aparell.';
+  const t=IA.treu, lama=IA.mode==='ordinador';
+  const baixada=lama ? (t.lama.sessio || t.lama.parts.every(f=>IA.baixats[f])) : (t.sessio || IA.baixats[t.fitxer]);
+  let h=lama ? 'Amb el mode Ordinador fa servir LaMa, que omple millor els forats grossos.' : 'Amb el mode Mòbil fa servir MI-GAN, petita i ràpida; per a forats grossos, millor el mode Ordinador (pestanya ✦ IA).';
+  if(t.ultim) h+=' L\'última, en '+t.ultim.temps+', '+(t.ultim.motor==='gpu'?'amb la gràfica':'amb el processador')+'. Si no t\'agrada, desfés-la.';
+  else if(!baixada){
+    const motor=IA.motor&&!IA.baixats[IA.motors[IA.motor].wasm]&&IA.carregat!==IA.motor ? IA.motors[IA.motor].mb : 0;
+    h+=' La primera vegada es baixa la IA ('+mb((lama?t.lama.mb:t.mb)+motor)+'); després funciona sense connexió.';
+  } else h+=' La IA ja és en aquest aparell.';
   info.textContent=h+' La foto no surt de l\'aparell.';
 }
 function estatRatllades(){
@@ -3198,14 +3202,61 @@ function estatRatllades(){
   $('#treuRatllades').disabled=IA.treballant || IA.motor==null;
   ri.textContent=IA.baixats[IA.ratllades.fitxer]||IA.ratllades.sessio ? 'La IA ja és en aquest aparell.' : 'La primera vegada es baixen '+mb(IA.ratllades.mb)+'.';
 }
+/* La IA d'esborrar: MI-GAN al mode Mòbil i LaMa a l'Ordinador. Torna la
+   sessió i quina és, que les dues volen l'entrada d'una altra manera. */
 async function preparaSessioTreu(progres){
   const t=IA.treu;
-  if(t.sessio) return t.sessio;
-  const bytes=await baixaIA(t.fitxer, (a,n)=>progres('la IA',a,n||t.mb*1048576));
-  progres('preparant el model',0,0);
-  const r=await creaSessio(bytes);
-  t.sessio=r.sessio; t.motorReal=r.motorReal; t.errorGPU=r.errorGPU;
-  return t.sessio;
+  if(IA.mode==='ordinador'){
+    const L=t.lama;
+    if(!L.sessio){
+      const parts=[]; let fet=0;
+      for(const f of L.parts){
+        parts.push(await baixaIA(f,(a,n)=>progres('la IA (LaMa)',fet+a,L.mb*1048576)));
+        fet+=parts[parts.length-1].length;
+      }
+      const tot=new Uint8Array(fet); let o=0; for(const p of parts){ tot.set(p,o); o+=p.length; }
+      parts.length=0;
+      progres('preparant el model',0,0);
+      const r=await creaSessio(tot); L.sessio=r.sessio; L.motorReal=r.motorReal;
+    }
+    t.motorReal=L.motorReal;
+    return { sessio:L.sessio, lama:true };
+  }
+  if(!t.sessio){
+    const bytes=await baixaIA(t.fitxer, (a,n)=>progres('la IA',a,n||t.mb*1048576));
+    progres('preparant el model',0,0);
+    const r=await creaSessio(bytes);
+    t.sessio=r.sessio; t.migan=r.motorReal; t.errorGPU=r.errorGPU;
+  }
+  t.motorReal=t.migan;
+  return { sessio:t.sessio, lama:false };
+}
+/* Omple un tros de 512 × 512: d, els punts (RGBA); forat, 1 on s'ha
+   d'omplir. Torna la foto plena en tres plans, de 0 a 255.
+   - MI-GAN: quatre canals, la màscara menys 0,5 (1 = es queda) i la foto de
+     -1 a 1 amb el forat a zero; surt de -1 a 1.
+   - LaMa: la foto de 0 a 1 i la màscara a part (1 = s'omple); surt de 0 a 1. */
+async function omple512(m, d, forat){
+  const N=IA.treu.N, P=N*N, s=m.sessio;
+  let res;
+  if(m.lama){
+    const f=new Float32Array(3*P), k=new Float32Array(P);
+    for(let i=0,j=0;i<P;i++,j+=4){ f[i]=d[j]/255; f[P+i]=d[j+1]/255; f[2*P+i]=d[j+2]/255; k[i]=forat[i]; }
+    res=await s.run({ foto:new ort.Tensor('float32',f,[1,3,N,N]), mascara:new ort.Tensor('float32',k,[1,1,N,N]) });
+  } else {
+    const e=new Float32Array(4*P);
+    for(let i=0,j=0;i<P;i++,j+=4){
+      const q=1-forat[i];
+      e[i]=q-0.5;
+      e[P+i]=(d[j]/127.5-1)*q; e[2*P+i]=(d[j+1]/127.5-1)*q; e[3*P+i]=(d[j+2]/127.5-1)*q;
+    }
+    res=await s.run({[s.inputNames[0]]: new ort.Tensor('float32',e,[1,4,N,N])});
+  }
+  const sortida=res[s.outputNames[0]], y=sortida.data, o=new Float32Array(3*P);
+  if(m.lama) for(let i=0;i<3*P;i++) o[i]=y[i]*255;
+  else for(let i=0;i<3*P;i++) o[i]=(y[i]+1)*127.5;
+  if(sortida.dispose) sortida.dispose();
+  return o;
 }
 
 /* La feina. El model només sap treballar a 512 × 512, així que es retalla un
@@ -3243,23 +3294,14 @@ async function treuAmbIA(src, sessio){
   tracaMascara(mx,'#fff',engreix);
   const md=mx.getImageData(0,0,N,N).data, d=im.data;
 
-  // l'entrada: la màscara menys 0,5 (1 = es queda, 0 = s'esborra) i la foto
-  // de -1 a 1, amb el forat a zero
-  const P=N*N, e=new Float32Array(4*P), forat=new Uint8Array(P);
+  const P=N*N, forat=new Uint8Array(P);
   let quants=0;
-  for(let i=0,k=0;i<P;i++,k+=4){
-    const f=md[k+3]>127 ? 1 : 0, q=1-f;
-    forat[i]=f; quants+=f;
-    e[i]=q-0.5;
-    e[P+i]=(d[k]/127.5-1)*q; e[2*P+i]=(d[k+1]/127.5-1)*q; e[3*P+i]=(d[k+2]/127.5-1)*q;
-  }
+  for(let i=0,k=3;i<P;i++,k+=4){ const f=md[k]>127 ? 1 : 0; forat[i]=f; quants+=f; }
   if(!quants) return null;        // la goma ho ha tret tot
-  const res=await sessio.run({[sessio.inputNames[0]]: new ort.Tensor('float32',e,[1,4,N,N])});
-  const sortida=res[sessio.outputNames[0]], y=sortida.data;
+  const y=await omple512(sessio, d, forat);
   for(let i=0,k=0;i<P;i++,k+=4) if(forat[i]){
-    d[k]=(y[i]+1)*127.5; d[k+1]=(y[P+i]+1)*127.5; d[k+2]=(y[2*P+i]+1)*127.5; d[k+3]=255;
+    d[k]=y[i]; d[k+1]=y[P+i]; d[k+2]=y[2*P+i]; d[k+3]=255;
   }
-  if(sortida.dispose) sortida.dispose();
   ex.putImageData(im,0,0);
 
   // de tornada a la mida de debò, retallat amb la forma del forat
@@ -3309,17 +3351,12 @@ async function treuPerTrossos(src, sessio, cadaTros){
   for(const t of trossos){
     ex.clearRect(0,0,N,N);
     ex.drawImage(feina,t.x0,t.y0,tw,th,0,0,N,N);
-    const d=ex.getImageData(0,0,N,N).data, e=new Float32Array(4*P);
+    const d=ex.getImageData(0,0,N,N).data, ft=new Uint8Array(P);
     for(let v=0,i=0;v<N;v++){
       const f=(t.y0+Math.min(th-1,Math.floor(v/sy)))*W+t.x0;
-      for(let u=0;u<N;u++,i++){
-        const q=1-forat[f+Math.min(tw-1,Math.floor(u/sx))], k=i*4;
-        e[i]=q-0.5;
-        e[P+i]=(d[k]/127.5-1)*q; e[2*P+i]=(d[k+1]/127.5-1)*q; e[3*P+i]=(d[k+2]/127.5-1)*q;
-      }
+      for(let u=0;u<N;u++,i++) ft[i]=forat[f+Math.min(tw-1,Math.floor(u/sx))];
     }
-    const res=await sessio.run({[sessio.inputNames[0]]: new ort.Tensor('float32',e,[1,4,N,N])});
-    const sortida=res[sessio.outputNames[0]], y=sortida.data;
+    const y=await omple512(sessio, d, ft);
     // només els punts del forat del mig del tros, a la mida de debò
     const iw=t.ix1-t.ix0, ih=t.iy1-t.iy0, reg=fx.getImageData(t.ix0,t.iy0,iw,ih), r=reg.data;
     for(let yy=0;yy<ih;yy++){
@@ -3328,10 +3365,9 @@ async function treuPerTrossos(src, sessio, cadaTros){
         const gx=t.ix0+xx;
         if(!forat[gy*W+gx]) continue;
         const u=Math.min(N-1,Math.floor((gx-t.x0)*sx)), j=v*N+u, k=(yy*iw+xx)*4;
-        r[k]=(y[j]+1)*127.5; r[k+1]=(y[P+j]+1)*127.5; r[k+2]=(y[2*P+j]+1)*127.5; r[k+3]=255;
+        r[k]=y[j]; r[k+1]=y[P+j]; r[k+2]=y[2*P+j]; r[k+3]=255;
       }
     }
-    if(sortida.dispose) sortida.dispose();
     fx.putImageData(reg,t.ix0,t.iy0);
     n++; cadaTros(n,trossos.length);
     await new Promise(ok=>setTimeout(ok,0));      // que la barra es vegi avançar
@@ -3434,7 +3470,7 @@ async function fesTreu(){
     const sessio=await preparaSessioTreu(progres);
     if(IA.atura) throw new Error('aturat');
     const ambRatllades=S.mascara.some(m=>m.ras);
-    vel('Esborrant…',1,IA.treu.motorReal==='gpu'?'Amb la gràfica.':'Amb el processador: pot trigar uns segons.');
+    vel('Esborrant…',1,(sessio.lama?'Amb LaMa, ':'Amb MI-GAN, ')+(IA.treu.motorReal==='gpu'?'amb la gràfica.':'amb el processador: pot trigar uns segons.'));
     const nova=ambRatllades
       ? await treuPerTrossos(baseCanvas, sessio, (n,t)=>{
           if(IA.atura) throw new Error('aturat');
@@ -3448,7 +3484,7 @@ async function fesTreu(){
     // mateixa) i desfer torna a la d'abans.
     S.src=nova; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
     buildBase(); scheduleRender();
-    push(ambRatllades ? 'Esborra les ratllades (IA)' : 'Esborra amb IA');
+    push((ambRatllades ? 'Esborra les ratllades (IA)' : 'Esborra amb IA')+(sessio.lama?' · LaMa':''));
     const temps=minuts((performance.now()-t0)/1000);
     IA.treu.ultim={ temps, motor:IA.treu.motorReal };
     say('Esborrat en '+temps+'. Si no t\'agrada, desfés-ho; si en queda un tros, torna-hi.');
@@ -3515,7 +3551,7 @@ function construeixIA(){
   cr.append(rb,ri);
   // esborrar coses: es pinta a la foto, amb la vareta
   const ce=$('#iaCos-esborra');
-  ce.appendChild(el('div','tiny','Una persona del fons, un cable, una taca: la pintes de vermell amb el dit, prems «Esborra-ho» i la IA hi posa el que hi hauria al darrere.'));
+  ce.appendChild(el('div','tiny','Una persona del fons, un cable, una taca: la pintes de vermell amb el dit, prems «Esborra-ho» i la IA hi posa el que hi hauria al darrere. Amb el mode Ordinador fa servir una IA més grossa (LaMa, 99 MB), que omple molt millor els forats grossos.'));
   const eb=el('button','btn primary','Pinta el que vols treure'); eb.type='button'; eb.id='iaVesEsborra';
   eb.style.cssText='width:100%;justify-content:center;height:36px;margin-top:8px';
   eb.onclick=()=>{ setTool('treu'); veuFoto(); say('Pinta de vermell el que vulguis treure i prem «Esborra-ho».'); };
@@ -3586,7 +3622,7 @@ function pintaIA(){
     $('#iaTarg-'+k).classList.toggle('obert',obert);
     $('#iaCap-'+k).setAttribute('aria-expanded',obert?'true':'false');
   }
-  pintaAmplia(); pintaFons(); estatCares(); estatRatllades(); estatColor(); estatNitida();
+  pintaAmplia(); pintaFons(); estatCares(); estatRatllades(); estatColor(); estatNitida(); estatTreu();
 }
 // al mòbil, les opcions queden sota la foto: per pintar-hi, s'hi torna
 function veuFoto(){ if(innerWidth<=760) $('#stage').scrollIntoView({block:'start',behavior:'smooth'}); }
