@@ -290,7 +290,7 @@ console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename()
     modes: document.querySelectorAll('[id^="iaMode-"]').length,
     altres: document.querySelectorAll('[id^="fonsMode-"]').length }));
   let e = await est();
-  if (e.targetes.join() !== 'ratllades,esborra,cares,color,fons,amp') problemes.push('les targetes de la IA no són les sis, per ordre: ' + e.targetes);
+  if (e.targetes.join() !== 'ratllades,nitida,esborra,cares,color,fons,amp') problemes.push('les targetes de la IA no són les set, per ordre: ' + e.targetes);
   if (e.modes !== 2 || e.altres) problemes.push(`no hi ha un sol «On ho fas» per a totes les IA (${e.modes} botons de mode, ${e.altres} del fons)`);
   await p.click('#iaCap-cares'); e = await est();
   if (e.oberts.join() !== 'cares') problemes.push('obrint «Cares» no queda oberta només aquesta: ' + e.oberts);
@@ -322,7 +322,7 @@ console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename()
   await p.click('#iaCap-cares');
   await p.setViewportSize({ width: 1280, height: 800 }); await p.waitForTimeout(200);
   await p.click('#tab-adj');
-  console.log(`${problemes.length > abansIA ? '✗' : '✓'} els menús: les sis IA a la pestanya ✦ IA (una targeta oberta, un sol «On ho fas»), Endreça al Retalla, i a 320 px`);
+  console.log(`${problemes.length > abansIA ? '✗' : '✓'} els menús: les set IA a la pestanya ✦ IA (una targeta oberta, un sol «On ho fas»), Endreça al Retalla, i a 320 px`);
 }
 }
 await p.close();
@@ -1371,6 +1371,86 @@ await p.close();
     await obre('sepia'); await obreTargeta(q, 'color');
     if ((await q.locator('#colorInfo').innerText()).includes('ja té colors')) problemes.push('una foto en sèpia diu que ja té colors');
     console.log(`${problemes.length > abansCo ? '✗' : '✓'} posar color (pel processador): croma ${c1.toFixed(1)}, el cel blau (b ${cel[1].toFixed(1)}), la claredat igual (${dL.toFixed(2)}), «Suau» ${c2.toFixed(1)}, la segona vegada sense baixar res, desfer, i l'avís de les fotos que ja tenen colors (no amb la sèpia)`);
+    await q.close();
+  }
+  // ------------------------------------------------- soroll i borrós
+  // Una foto dibuixada aquí (degradats, cercles, ratlles i lletres): amb
+  // soroll, «Treu el soroll» l'ha d'acostar molt a la neta, «Suau» menys; amb
+  // una foto més petita que un tros, també; i, desenfocada, «Fes-la més
+  // nítida» l'ha d'acostar a la neta. La mida no canvia, desfer la torna, i la
+  // segona vegada no es torna a baixar res.
+  {
+    const abansN = problemes.length;
+    const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+    vigila(q, 'nitida');
+    let baixades = 0;
+    q.on('request', r => { if (/soroll\.onnx/.test(r.url())) baixades++; });
+    await q.goto(BASE);
+    await q.waitForTimeout(1500);
+    const fes = (w, h, tipus) => q.evaluate(([w, h, tipus]) => {
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d');
+      const g = x.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#c9a27a'); g.addColorStop(0.5, '#6d8fb0'); g.addColorStop(1, '#3c5a3a');
+      x.fillStyle = g; x.fillRect(0, 0, w, h);
+      for (let i = 0; i < 9; i++) { x.fillStyle = ['#e8d8b0', '#7a2e2e', '#2e4a7a', '#f2f2ee', '#222'][i % 5]; x.beginPath(); x.arc((i * 97) % w, (i * 61) % h + 30, 18 + (i * 7) % 30, 0, 7); x.fill(); }
+      x.fillStyle = '#111'; for (let i = 0; i < 12; i++) x.fillRect(20 + i * 9, h - 70, 3, 50);
+      x.font = 'bold 28px sans-serif'; x.fillStyle = '#fff'; x.fillText('Cambra', w * 0.45, h * 0.3);
+      const neta = x.getImageData(0, 0, w, h);
+      if (tipus === 'soroll') {
+        const d = x.getImageData(0, 0, w, h), p = d.data; let s = 11;
+        const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+        for (let i = 0; i < p.length; i += 4) for (let k = 0; k < 3; k++) {
+          const n = Math.sqrt(-2 * Math.log(rnd() + 1e-9)) * Math.cos(6.2832 * rnd()) * 20; p[i + k] += n; }
+        x.putImageData(d, 0, 0);
+      } else if (tipus === 'borros') {
+        const t = document.createElement('canvas'); t.width = w; t.height = h; t.getContext('2d').putImageData(neta, 0, 0);
+        x.filter = 'blur(1.6px)'; x.drawImage(t, 0, 0); x.filter = 'none';
+      }
+      window.__neta = [...neta.data];
+      return c.toDataURL('image/png');
+    }, [w, h, tipus]);
+    const obre = async (w, h, tipus) => { await q.setInputFiles('#file', { name: tipus + '.png', mimeType: 'image/png', buffer: Buffer.from((await fes(w, h, tipus)).split(',')[1], 'base64') }); await q.waitForTimeout(700); };
+    // diferència mitjana del que es veu amb la foto neta (de 0 a 255)
+    const dif = () => q.evaluate(() => { const v = document.querySelector('#view'), d = v.getContext('2d').getImageData(0, 0, v.width, v.height).data, n = window.__neta;
+      let s = 0, c = 0; for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) { s += Math.abs(d[i + k] - n[i + k]); c++; } return s / c; });
+    const fesho = async (que, forca) => {
+      await obreTargeta(q, 'nitida'); await q.click('#iaMode-mobil'); await q.click('#nitQ-' + que); await q.click('#nitF-' + forca);
+      await q.click('#nitGo');
+      await q.waitForTimeout(300);
+      await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 900000 });
+      await q.waitForTimeout(300);
+    };
+    await obre(420, 300, 'soroll');
+    const d0 = await dif();
+    await obreTargeta(q, 'nitida');
+    if (!(await q.locator('#nitInfo').innerText()).includes('MB')) problemes.push('«Soroll i borrós» no diu quant es baixa la primera vegada');
+    await fesho('soroll', 'fort');
+    const d1 = await dif();
+    if (!(d1 < d0 * 0.5)) problemes.push(`«Treu el soroll» no acosta prou la foto a la neta (de ${d0.toFixed(1)} a ${d1.toFixed(1)})`);
+    if (await q.locator('#stDims').innerText() !== '420 × 300 px') problemes.push('«Treu el soroll» canvia la mida de la foto: ' + await q.locator('#stDims').innerText());
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Treu el soroll')) problemes.push('«Treu el soroll» no surt a l\'historial');
+    if (await q.locator('#nitRes').isHidden()) problemes.push('després de treure el soroll no diu «✓ Soroll tret»');
+    const baixadesAbans = baixades;
+    await q.keyboard.press('Control+z'); await q.waitForTimeout(400);
+    if (Math.abs(await dif() - d0) > 0.3) problemes.push('desfer no torna la foto amb el soroll');
+    await fesho('soroll', 'suau');
+    const d2 = await dif();
+    if (!(d2 > d1 + 1 && d2 < d0 - 1)) problemes.push(`«Suau» no queda entre l'original i «Fort» (original ${d0.toFixed(1)}, fort ${d1.toFixed(1)}, suau ${d2.toFixed(1)})`);
+    if (baixades !== baixadesAbans) problemes.push('la segona vegada, «Treu el soroll» torna a baixar la IA');
+    // una foto més petita que un tros de la IA (256)
+    await obre(200, 150, 'soroll');
+    const p0 = await dif();
+    await fesho('soroll', 'fort');
+    const p1 = await dif();
+    if (!(p1 < p0 * 0.6) || await q.locator('#stDims').innerText() !== '200 × 150 px') problemes.push(`amb una foto més petita que un tros, el soroll no va bé (de ${p0.toFixed(1)} a ${p1.toFixed(1)}, ${await q.locator('#stDims').innerText()})`);
+    // borrosa
+    await obre(420, 300, 'borros');
+    const b0 = await dif();
+    await fesho('borros', 'fort');
+    const b1 = await dif();
+    if (!(b1 < b0 - 0.3)) problemes.push(`«Fes-la més nítida» no acosta la foto borrosa a la neta (de ${b0.toFixed(2)} a ${b1.toFixed(2)})`);
+    if (await q.locator('#stDims').innerText() !== '420 × 300 px') problemes.push('«Fes-la més nítida» canvia la mida de la foto');
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Fes-la més nítida')) problemes.push('«Fes-la més nítida» no surt a l\'historial');
+    console.log(`${problemes.length > abansN ? '✗' : '✓'} soroll i borrós (pel processador): el soroll de ${d0.toFixed(1)} a ${d1.toFixed(1)} (suau ${d2.toFixed(1)}), una foto petita de ${p0.toFixed(1)} a ${p1.toFixed(1)}, la borrosa de ${b0.toFixed(2)} a ${b1.toFixed(2)}, la mida igual, desfer, i la segona vegada sense baixar res`);
     await q.close();
   }
   servidor.close();

@@ -2704,6 +2704,11 @@ const IA={
   // «Troba les ratllades»: la xarxa de Microsoft («Bringing Old Photos Back to
   // Life») que marca les ratllades, els plecs i les taques clares d'una foto vella
   ratllades:{ fitxer:'models/ratllades.onnx', mb:71.8, sessio:null, motorReal:null, errorGPU:null },
+  // «Soroll i borrós»: el soroll el treu SCUNet (trossos fixos de 256, amb 16
+  // de context); el borrós, el model lleuger d'ampliar: amplia per 4 i cada
+  // tros es torna a la seva mida (a les proves fa més nítid que el Restormer).
+  nitida:{ fitxer:'models/soroll.onnx', mb:38.7, T:256, sessio:null, motorReal:null, sBorros:null,
+           que:'soroll', forca:1, fet:null },
   // «Posa color»: DDColor, que posa color a les fotos en blanc i negre. Fa
   // 237 MB i va en tres trossos. El mateix model als dos modes: al mòbil
   // treballa a 256 punts (més ràpid) i a l'ordinador a 384, on encerta més.
@@ -2738,7 +2743,7 @@ async function miraBaixats(){
   const c=await cauIA(); if(!c) return;
   // la primera versió del model lleuger, que la gràfica no sabia fer anar sencera
   try{ await c.delete(urlIA('models/realesr-general-x4v3.onnx')); }catch(e){}
-  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, IA.ratllades.fitxer, IA.cares.troba, ...IA.cares.arregla, ...IA.color.parts, IA.fons.models.mobil.fitxer, IA.fons.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
+  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, IA.ratllades.fitxer, IA.nitida.fitxer, IA.cares.troba, ...IA.cares.arregla, ...IA.color.parts, IA.fons.models.mobil.fitxer, IA.fons.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
   for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
 }
 /* Baixa un fitxer gros una sola vegada: després el treu de la memòria del
@@ -2828,24 +2833,29 @@ function quinNavegador(ua=navigator.userAgent){
    Els trossos fan sempre la mateixa mida, que la gràfica no hagi de tornar a
    preparar-se a cada un. El model sempre amplia per 4; per a ×2, cada tros es
    redueix a la meitat abans de posar-lo, amb el seu marge i tot. */
-async function ampliaImatge(src, sessio, f, T, cadaTros){
-  const W=src.width, H=src.height, P=IA.MARGE;
-  const tw=Math.min(T,W), th=Math.min(T,H), iw=tw+2*P, ih=th+2*P;
+/* opc.k: quant amplia el model (4 els d'ampliar, 1 el del soroll); opc.fix:
+   els trossos fan sempre T (el model del soroll té la mida fixa), i si la foto
+   és més petita es repeteix la vora; opc.marge: el context al voltant. */
+async function ampliaImatge(src, sessio, f, T, cadaTros, opc={}){
+  const k=opc.k||4, fix=!!opc.fix;
+  const W=src.width, H=src.height, P=opc.marge!=null ? opc.marge : IA.MARGE;
+  const tw=fix ? T : Math.min(T,W), th=fix ? T : Math.min(T,H), iw=tw+2*P, ih=th+2*P;
   const cols=Math.ceil(W/tw), files=Math.ceil(H/th), total=cols*files;
   const px=src.getContext('2d').getImageData(0,0,W,H).data;
   let alfa=false; for(let i=3;i<px.length;i+=4) if(px[i]<255){ alfa=true; break; }
   const out=mkCanvas(W*f,H*f), ox=out.getContext('2d');
-  const t4=mkCanvas(iw*4,ih*4), t4x=t4.getContext('2d');
-  const img=t4x.createImageData(iw*4,ih*4), d=img.data;
+  const t4=mkCanvas(iw*k,ih*k), t4x=t4.getContext('2d');
+  const img=t4x.createImageData(iw*k,ih*k), d=img.data;
   let t2=null, t2x=null;
-  if(f===2){ t2=mkCanvas(iw*2,ih*2); t2x=t2.getContext('2d'); t2x.imageSmoothingQuality='high'; }
+  if(f!==k){ t2=mkCanvas(iw*f,ih*f); t2x=t2.getContext('2d'); t2x.imageSmoothingQuality='high'; }
   let ta=null, tax=null;
-  if(alfa){ ta=mkCanvas(iw*4,ih*4); tax=ta.getContext('2d',{willReadFrequently:true}); tax.imageSmoothingQuality='high'; }
-  const nomE=sessio.inputNames[0], nomS=sessio.outputNames[0], pla=iw*ih, p4=pla*16;
+  if(alfa){ ta=mkCanvas(iw*k,ih*k); tax=ta.getContext('2d',{willReadFrequently:true}); tax.imageSmoothingQuality='high'; }
+  const nomE=sessio.inputNames[0], nomS=sessio.outputNames[0], pla=iw*ih, p4=pla*k*k;
   let n=0;
   for(let r=0;r<files;r++) for(let c=0;c<cols;c++){
     if(IA.atura) throw new Error('aturat');
-    const x0=Math.min(c*tw,W-tw), y0=Math.min(r*th,H-th);
+    const x0=Math.max(0,Math.min(c*tw,W-tw)), y0=Math.max(0,Math.min(r*th,H-th));
+    const cw=Math.min(tw,W-x0), ch=Math.min(th,H-y0);    // el que es queda (menys de T si la foto és petita)
     const e=new Float32Array(3*pla);   // un de nou cada vegada: el fil del motor se l'endú
     for(let y=0;y<ih;y++){
       const fila=clamp(y0-P+y,0,H-1)*W;
@@ -2861,16 +2871,16 @@ async function ampliaImatge(src, sessio, f, T, cadaTros){
     if(alfa){
       // la transparència no la toca el model: s'amplia a part, a la manera normal
       tax.clearRect(0,0,ta.width,ta.height);
-      tax.drawImage(src, x0-P, y0-P, iw, ih, 0, 0, iw*4, ih*4);
+      tax.drawImage(src, x0-P, y0-P, iw, ih, 0, 0, iw*k, ih*k);
       const a=tax.getImageData(0,0,ta.width,ta.height).data;
       for(let j=3;j<d.length;j+=4) d[j]=a[j];
     }
     t4x.putImageData(img,0,0);
-    const dx=x0*f, dy=y0*f, dw=tw*f, dh=th*f;
+    const dx=x0*f, dy=y0*f, dw=cw*f, dh=ch*f;
     ox.clearRect(dx,dy,dw,dh);
-    if(f===4) ox.drawImage(t4, 4*P,4*P,4*tw,4*th, dx,dy,dw,dh);
+    if(f===k) ox.drawImage(t4, k*P,k*P,k*cw,k*ch, dx,dy,dw,dh);
     else { t2x.clearRect(0,0,t2.width,t2.height); t2x.drawImage(t4,0,0,t2.width,t2.height);
-           ox.drawImage(t2, 2*P,2*P,2*tw,2*th, dx,dy,dw,dh); }
+           ox.drawImage(t2, f*P,f*P,f*cw,f*ch, dx,dy,dw,dh); }
     n++; await cadaTros(n,total);      // pot esperar una resposta (si trigarà molt)
   }
   return out;
@@ -3465,6 +3475,7 @@ async function fesTreu(){
 =================================================================== */
 const TARGETES=[
   ['ratllades','Ratllades i taques','Per a fotos velles: les troba soles i les esborra.'],
+  ['nitida','Soroll i borrós','Treu el gra i el soroll, o torna més nítida una foto desenfocada.'],
   ['esborra','Esborra coses','Pinta el que vulguis treure i la IA hi posa el que hi hauria al darrere.'],
   ['cares','Cares','Torna nítides les cares borroses o malmeses.'],
   ['color','Color','Posa color a les fotos en blanc i negre.'],
@@ -3524,6 +3535,28 @@ function construeixIA(){
   const ci=el('div','tiny'); ci.id='caresInfo';
   const crr=el('div','tiny'); crr.id='caresRes'; crr.hidden=true;
   cc.append(fc,cb,ci,crr);
+  // soroll i borrós
+  const cn=$('#iaCos-nitida');
+  cn.appendChild(el('div','tiny','Què li passa a la foto?'));
+  const qn=el('div','chips'); qn.id='nitQue'; qn.style.marginTop='6px';
+  [['soroll','Té soroll o gra'],['borros','Està borrosa']].forEach(([v,lab])=>{
+    const c=el('button','chip',lab); c.type='button'; c.id='nitQ-'+v;
+    c.onclick=()=>{ IA.nitida.que=v; estatNitida(); };
+    qn.appendChild(c);
+  });
+  const nd=el('div','tiny'); nd.id='nitDesc'; nd.style.marginTop='6px';
+  const fn=el('div','chips'); fn.id='nitForca'; fn.style.marginTop='8px';
+  [['1','Fort'],['0.7','Mitjà'],['0.45','Suau']].forEach(([v,lab])=>{
+    const c=el('button','chip',lab); c.type='button'; c.id='nitF-'+lab.toLowerCase().replace('à','a');
+    c.setAttribute('aria-pressed',+v===IA.nitida.forca?'true':'false');
+    c.onclick=()=>{ IA.nitida.forca=+v; fn.querySelectorAll('.chip').forEach(n=>n.setAttribute('aria-pressed',n===c?'true':'false')); };
+    fn.appendChild(c);
+  });
+  const nb=el('button','btn primary','✦ Treu el soroll'); nb.type='button'; nb.id='nitGo';
+  nb.style.cssText='width:100%;height:36px;justify-content:center;margin-top:8px'; nb.onclick=fesNitida;
+  const ni=el('div','tiny'); ni.id='nitInfo';
+  const nr=el('div','tiny'); nr.id='nitRes'; nr.hidden=true;
+  cn.append(qn,nd,fn,nb,ni,nr);
   // el color
   const co=$('#iaCos-color');
   co.appendChild(el('div','tiny','La IA mira la foto i hi posa els colors que solen tenir les coses: el cel, la pell, les plantes, la fusta. Només hi posa el color: el detall és el de la teva foto.'));
@@ -3553,7 +3586,7 @@ function pintaIA(){
     $('#iaTarg-'+k).classList.toggle('obert',obert);
     $('#iaCap-'+k).setAttribute('aria-expanded',obert?'true':'false');
   }
-  pintaAmplia(); pintaFons(); estatCares(); estatRatllades(); estatColor();
+  pintaAmplia(); pintaFons(); estatCares(); estatRatllades(); estatColor(); estatNitida();
 }
 // al mòbil, les opcions queden sota la foto: per pintar-hi, s'hi torna
 function veuFoto(){ if(innerWidth<=760) $('#stage').scrollIntoView({block:'start',behavior:'smooth'}); }
@@ -3739,6 +3772,117 @@ async function arreglaCares(){
     bloqueigPantalla=null;
     $('#vel').hidden=true;
     estatCares();
+  }
+}
+
+/* ===================================================================
+   16g. soroll i borrós
+   El soroll i el gra (de les fotos de nit, de les velles, de les de WhatsApp)
+   els treu SCUNet, per trossos de mida fixa. El borrós es fa amb el model
+   lleuger d'ampliar: amplia el tros per 4 (i en ampliar torna nítid el que
+   era tou) i el torna a la seva mida, així que la foto no canvia de mida.
+   La força barreja el resultat amb l'original.
+=================================================================== */
+function estatNitida(){
+  const b=$('#nitGo'), info=$('#nitInfo'); if(!b||!info) return;
+  const N=IA.nitida, soroll=N.que==='soroll';
+  for(const v of ['soroll','borros']) $('#nitQ-'+v).setAttribute('aria-pressed', v===N.que?'true':'false');
+  $('#nitDesc').textContent = soroll
+    ? 'Treu el gra, el soroll de les fotos fosques i els quadrets del JPEG, sense perdre el detall. Si queda massa llisa, prova «Suau».'
+    : 'Torna més nítida una foto una mica desenfocada o tova. Si està molt borrosa, el que s\'ha perdut no torna: s\'inventa una textura que s\'hi assembla.';
+  b.textContent = soroll ? '✦ Treu el soroll' : '✦ Fes-la més nítida';
+  b.disabled=IA.treballant || IA.motor==null || !baseCanvas;
+  const falta=[];
+  if(IA.motor && !IA.baixats[IA.motors[IA.motor].wasm] && IA.carregat!==IA.motor) falta.push(IA.motors[IA.motor].mb);
+  if(soroll){ if(!IA.baixats[N.fitxer] && !N.sessio) falta.push(N.mb); }
+  else if(!IA.baixats[IA.models.mobil.fitxer] && !N.sBorros) falta.push(IA.models.mobil.mb);
+  const suma=falta.reduce((a,b)=>a+b,0);
+  info.textContent=(suma ? 'La primera vegada es baixen '+mb(suma)+'.' : 'La IA ja és en aquest aparell.')+
+    ' Va per trossos: si trigarà més de '+minuts(IA.LLARG)+', abans t\'ho diu.';
+  const r=$('#nitRes');
+  if(r){ const f=N.fet; r.hidden=!(f && f.src===S.src); if(f && f.src===S.src) r.textContent=f.text; }
+}
+async function preparaSessioNitida(progres){
+  const N=IA.nitida;
+  if(N.que==='soroll'){
+    if(!N.sessio){
+      const b=await baixaIA(N.fitxer,(a,t)=>progres('la IA del soroll',a,t||N.mb*1048576));
+      progres('preparant el model',0,0);
+      const r=await creaSessio(b); N.sessio=r.sessio; N.motorReal=r.motorReal;
+    }
+    return N.sessio;
+  }
+  // el borrós: el model lleuger d'ampliar (si ja és obert per ampliar, el mateix)
+  if(IA.sessio && IA.sessioDe==='mobil'){ N.motorReal=IA.motorReal; return IA.sessio; }
+  if(!N.sBorros){
+    const md=IA.models.mobil;
+    const b=await baixaIA(md.fitxer,(a,t)=>progres('la IA',a,t||md.mb*1048576));
+    progres('preparant el model',0,0);
+    const r=await creaSessio(b); N.sBorros=r.sessio; N.motorBorros=r.motorReal;
+  }
+  N.motorReal=N.motorBorros;
+  return N.sBorros;
+}
+async function fesNitida(){
+  if(IA.treballant || !baseCanvas) return;
+  if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
+  cancelaEndreca(); if(cropOn){ endCrop(false); setTool('move'); } hideTextEdit();
+  const N=IA.nitida, soroll=N.que==='soroll', forca=N.forca, src=baseCanvas;
+  const que=soroll ? 'Traient el soroll' : 'Fent-la més nítida';
+  IA.treballant=true; IA.atura=false; estatNitida();
+  const t0=performance.now(); mantenEncesa();
+  try{
+    const progres=(q,a,t)=>{
+      if(IA.atura) throw new Error('aturat');
+      vel(t ? 'Baixant '+q+'…' : 'Preparant la IA…', t ? a/t : 0, t ? mb(a/1048576)+' de '+mb(t/1048576)+' · només la primera vegada' : 'Només la primera vegada.');
+    };
+    vel('Preparant…',0,'');
+    await preparaMotor(progres);
+    const sessio=await preparaSessioNitida(progres);
+    if(IA.atura) throw new Error('aturat');
+    let tInici=0, preguntat=false;
+    vel(que+'…',0,'Començant pel primer tros…');
+    const cadaTros=async (n,total)=>{
+      if(n===1) tInici=performance.now();
+      let detall='Tros '+n+' de '+total, queda=0;
+      if(n>=2){ queda=(performance.now()-tInici)/(n-1)*(total-n)/1000; detall+=' · queden uns '+minuts(queda); }
+      vel(que+'…', n/total, detall);
+      document.title=round(n/total*100)+'% · '+(soroll?'Soroll':'Nitidesa')+' · '+TITOL;
+      if(n>=2 && !preguntat && queda>IA.LLARG){
+        preguntat=true;
+        const t=performance.now();
+        if(!(await preguntaTemps(queda))) IA.atura=true;
+        tInici+=performance.now()-t;
+      }
+    };
+    const res = soroll
+      ? await ampliaImatge(src, sessio, 1, N.T-2*IA.MARGE, cadaTros, {k:1, fix:true})
+      : await ampliaImatge(src, sessio, 1, IA.models.mobil.tros[IA.motor], cadaTros);
+    if(IA.atura) throw new Error('aturat');
+    // la força: el resultat damunt de l'original, més o menys transparent
+    const out=mkCanvas(src.width,src.height), ox=out.getContext('2d');
+    ox.drawImage(src,0,0);
+    if(forca<1){ ox.globalAlpha=forca; ox.drawImage(res,0,0); ox.globalAlpha=1; }
+    else { ox.clearRect(0,0,out.width,out.height); ox.drawImage(res,0,0); }
+    S.src=out; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
+    buildBase(); scheduleRender();
+    push(soroll ? 'Treu el soroll' : 'Fes-la més nítida');
+    const temps=minuts((performance.now()-t0)/1000);
+    N.fet={ src:S.src, text:'✓ '+(soroll?'Soroll tret':'Més nítida')+' en '+temps+', '+(N.motorReal==='gpu'?'amb la gràfica':'amb el processador')+
+      '. Mantén premut «Abans» per comparar-la; si és massa, desfés-ho i prova «Suau».' };
+    say((soroll?'Soroll tret':'Més nítida')+' en '+temps+'.');
+    titolFet('✓ '+(soroll?'Soroll tret':'Més nítida')+' · '+TITOL);
+  }catch(e){
+    const msg=String(e&&e.message||e);
+    document.title=TITOL;
+    if(msg==='aturat') say('Aturat. La foto és com era.');
+    else { say('No s\'ha pogut fer: '+msg+'.'); console.warn('Soroll i borrós:',e); }
+  }finally{
+    IA.treballant=false; IA.atura=false;
+    try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
+    bloqueigPantalla=null;
+    $('#vel').hidden=true; $('#velPregunta').hidden=true; $('#velAtura').hidden=false;
+    estatNitida();
   }
 }
 

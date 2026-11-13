@@ -16,7 +16,7 @@ sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepci
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares), posa color, esborra coses, treu el fons i amplia fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares), treu el soroll, posa color, esborra coses, treu el fons i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -181,8 +181,8 @@ Mida · Historial**:
   els controls de sempre.
 - **✦ IA** (`construeixIA`, `pintaIA`): a dalt, **un sol «On ho fas»** per a
   totes (`IA.mode`), i una **targeta** per a cada IA, per l'ordre en què
-  s'arregla una foto vella (`TARGETES`): Ratllades i taques, Esborra coses,
-  Cares, Color, Fons i Amplia. **Només una d'oberta** (`IA.targeta`), que al mòbil
+  s'arregla una foto vella (`TARGETES`): Ratllades i taques, Soroll i borrós,
+  Esborra coses, Cares, Color, Fons i Amplia. **Només una d'oberta** (`IA.targeta`), que al mòbil
   no s'hagi de baixar tant; tocant-la oberta, es tanca. El Fons i l'Amplia
   es pinten dins de la seva targeta (`#pane-fons`, `#pane-amp`, que ara són
   dins), i diuen amb quin mode van.
@@ -293,6 +293,35 @@ malmeses quedin nítides. Dues xarxes, convertides per
 - Sense gràfica, al contenidor tres cares triguen uns 45 segons comptant la
   preparació. Es va comprovar amb fotos de prova del projecte GFPGAN (no són
   al repositori): les cares surten nítides i al seu lloc.
+
+## La Cambra Fosca: soroll i borrós
+
+L'usuari arregla fotos velles i ho va triar d'una llista. És la targeta
+**Soroll i borrós** de la pestanya ✦ IA (`fesNitida`), amb dues opcions:
+
+- **Té soroll o gra**: **SCUNet** (Apache 2.0, 18 milions de números, 39 MB
+  amb mitja precisió), la versió per a fotos de debò, que treu el soroll, el
+  gra i els quadrets del JPEG. `ia/conversio/fes_soroll.py` la munta peça a
+  peça amb **trossos fixos de 256** (les finestres de l'atenció, el
+  desplaçament i les màscares, calculats d'avançada): l'app la passa per
+  trossos de 224 amb 16 de context (`ampliaImatge` amb `k:1, fix:true`; si la
+  foto és més petita que un tros, es repeteix la vora). A les fotos de mostra
+  amb soroll fort, de 24 a 31-33 dB.
+- **Està borrosa**: **no hi ha model propi**. El model lleuger d'ampliar
+  amplia cada tros per 4 i el torna a la seva mida (`ampliaImatge` amb
+  `f:1`): en ampliar torna nítid el que era tou. Es va provar el Restormer de
+  desenfocament (MIT) i, amb fotos desenfocades a posta, el model lleuger les
+  acostava més a la nítida a totes les proves (amb un desenfocament suau,
+  +1,8 dB contra 0), i el Restormer de vegades s'hi inventava textures com
+  de pintura. NAFNet, que és el que fa servir més gent, només és a Google
+  Drive, que des del contenidor no s'hi arriba.
+- **Força**: Fort, Mitjà i Suau barregen el resultat amb l'original (100%,
+  70%, 45%), com a les cares.
+- **És lent**: SCUNet fa molts càlculs per punt. Al contenidor, sense
+  gràfica, un tros triga uns segons; una foto d'un megapíxel són uns 25
+  trossos. Per això fa servir la mateixa pregunta que ampliar: si trigarà més
+  de 3 minuts, ho diu i pregunta (`preguntaTemps`).
+- La foto nova passa a ser la foto i desfer la torna, com amb les altres IA.
 
 ## La Cambra Fosca: posar color
 
@@ -815,6 +844,14 @@ de debò i comprova:
   segueixen el fons i l'amplia; que «Pinta el que vols treure» posi la
   vareta; que Endreça i les cares ja no siguin a Ajustos i Endreça sigui al
   Retalla; i que a 320 px les targetes hi càpiguen;
+- **soroll i borrós** (també serveix el repositori ella mateixa): sobre una
+  foto dibuixada amb soroll, que «Treu el soroll» la deixi a menys de la
+  meitat de diferència amb la neta, que «Suau» quedi entre mig, que funcioni
+  amb una foto més petita que un tros, que desfer la torni i que la segona
+  vegada no es baixi res; i sobre la mateixa desenfocada, que «Fes-la més
+  nítida» l'acosti a la neta. La mida no ha de canviar. Es va comprovar que
+  falla sense els trossos fixos, sense la força o si el borrós no torna el
+  tros a la seva mida;
 - **posar color** (també serveix el repositori ella mateixa): sobre un
   paisatge dibuixat i passat a grisos, que hi posi color, que el cel quedi
   blau, que la claredat de cada punt sigui la d'abans, que surti a

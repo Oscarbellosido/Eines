@@ -10,7 +10,7 @@ estadístiques.
 
 | Eina | Què fa |
 |---|---|
-| [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text. Arregla soles les fotos fosques, cremades o de colors estranys, i les cares borroses, posa color a les fotos en blanc i negre, les endreça si són tortes, hi esborra coses pintant-les amb el dit (i troba soles les ratllades de les fotos velles), en treu el fons (o el difumina) i les amplia amb IA. Mantenint premut «Abans» es veu com era, i a la pestanya Mida es canvia la mida, també en mil·límetres per imprimir, i la resolució |
+| [La Cambra Fosca](https://oscarbellosido.github.io/Eines/cambra-fosca.html) | Retoca fotografies: llum, color, filtres, retall, pinzell, tampó de clonar i text. Arregla soles les fotos fosques, cremades o de colors estranys, i les cares borroses, en treu el soroll i el gra o les torna més nítides, posa color a les fotos en blanc i negre, les endreça si són tortes, hi esborra coses pintant-les amb el dit (i troba soles les ratllades de les fotos velles), en treu el fons (o el difumina) i les amplia amb IA. Mantenint premut «Abans» es veu com era, i a la pestanya Mida es canvia la mida, també en mil·límetres per imprimir, i la resolució |
 | [La Revisió](https://oscarbellosido.github.io/Eines/revisio.html) | Repassa la seguretat d'un mòbil Android en tretze comprovacions guiades |
 
 La Cambra Fosca **es pot instal·lar com una app**, amb la seva icona i sense
@@ -24,7 +24,7 @@ L'ampliació amb IA fa servir els models de
 coses, el model [MI-GAN](https://github.com/Picsart-AI-Research/MI-GAN) de
 Picsart AI Research (llicència MIT), i les ratllades les troba la xarxa de
 [Bringing Old Photos Back to Life](https://github.com/microsoft/Bringing-Old-Photos-Back-to-Life)
-de Microsoft (llicència MIT); les cares, [GFPGAN](https://github.com/TencentARC/GFPGAN) de Tencent ARC
+de Microsoft (llicència MIT); el soroll, [SCUNet](https://github.com/cszn/SCUNet) (Apache 2.0); les cares, [GFPGAN](https://github.com/TencentARC/GFPGAN) de Tencent ARC
 (Apache 2.0, amb part del codi de StyleGAN2 de NVIDIA, que només és per a ús no comercial)
 i el detector de cares de [facexlib](https://github.com/xinntao/facexlib) (MIT); el color,
 [DDColor](https://github.com/piddnad/DDColor) de DAMO Academy (Apache 2.0); treure el fons,

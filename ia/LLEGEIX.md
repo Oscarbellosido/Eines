@@ -2,7 +2,7 @@
 
 Aquesta carpeta és l'única excepció a la norma d'«un sol fitxer» de les Eines.
 La fa servir la pestanya **✦ IA** de La Cambra Fosca (les ratllades,
-esborrar coses, les cares, el color, el fons i ampliar), i només es baixa el que cal
+el soroll, esborrar coses, les cares, el color, el fons i ampliar), i només es baixa el que cal
 quan algú les fa servir. Res d'aquí no envia cap foto enlloc: el model corre dins
 del navegador.
 
@@ -80,6 +80,34 @@ pesos desats amb la meitat de precisió. El fitxer es parteix en dos trossos
 Entrades: RetinaFace, la foto en BGR menys (104, 117, 123), amb els costats
 múltiples de 32; GFPGAN, la cara alineada amb els cinc punts a la plantilla de
 512 de facexlib, en RGB de −1 a 1.
+
+### `models/soroll.onnx` — treure el soroll i el gra
+
+És **SCUNet**, de Kai Zhang i altres (ETH Zuric), https://github.com/cszn/SCUNet,
+amb llicència **Apache 2.0** (`models/LICENSE-SCUNET`): la versió per a fotos de
+debò, la que treu el soroll, el gra i els quadrets del JPEG sense saber de
+quin tipus són (`scunet_color_real_psnr`). 18 milions de números. El fitxer
+original és a les versions del projecte KAIR, del mateix autor:
+
+```
+fa78899ba2caec9d235a900e91d96c689da71c42029230c2028b00f09f809c2e  scunet_color_real_psnr.pth  (KAIR v1.0)
+```
+
+**Canvis respecte de l'original** (la llicència Apache demana dir-ho): la
+xarxa s'ha muntat en ONNX amb una mida fixa de 256 × 256, de manera que les
+finestres de l'atenció, el seu desplaçament i les màscares surten calculats
+d'avançada (el codi original els calcula a cada passada), la màscara amb
+−10.000 en lloc de −∞, i els pesos amb la meitat de precisió. L'app fa la foto
+per trossos de 256 amb 16 punts de context.
+
+Entrada i sortida: la foto en RGB de 0 a 1, d'1 × 3 × 256 × 256.
+
+**El borrós no té model propi**: es fa amb el model lleuger d'ampliar (el de
+dalt), que amplia el tros per 4 i el torna a la seva mida. Es va provar el
+**Restormer** de desenfocament (MIT, 26 milions de números) i, amb fotos de
+mostra desenfocades a posta, gairebé no hi guanyava res i de vegades s'hi
+inventava textures; el model lleuger, usat així, les acostava més a la foto
+nítida a totes les proves i no s'ha de baixar res més.
 
 ### `models/color.onnx.1`, `.2` i `.3` — posar color a les fotos en blanc i negre
 
@@ -200,6 +228,14 @@ peces que la gràfica sap fer anar.
 
 ```
 python conversio/fes_migan.py migan_traced.pt models/migan-512.onnx
+```
+
+El del soroll surt de `conversio/fes_soroll.py`, que llegeix el fitxer
+original (sense executar res) i munta la xarxa peça a peça, amb la mida de tros
+fixa:
+
+```
+python conversio/fes_soroll.py scunet_color_real_psnr.pth models/soroll.onnx 256
 ```
 
 El del color surt de `conversio/fes_color.py`, que parteix del
