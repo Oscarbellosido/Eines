@@ -809,7 +809,7 @@ await p.close();
     await q.goto(BASE);
     await q.waitForTimeout(1500);
     // una paret de maons amb un objecte vermell al davant; a escala «e»
-    const paret = e => q.evaluate(e => {
+    const paret = (e, col) => q.evaluate(([e, col]) => {
       const c = document.createElement('canvas'); c.width = 640 * e; c.height = 480 * e;
       const x = c.getContext('2d'); x.scale(e, e);
       const g = x.createLinearGradient(0, 0, 0, 200); g.addColorStop(0, '#5b8fd0'); g.addColorStop(1, '#a8c8e8');
@@ -818,11 +818,11 @@ await p.close();
       x.strokeStyle = '#6f6a62'; x.lineWidth = 2;
       for (let j = 200; j < 400; j += 20) for (let i = -40; i < 680; i += 40) x.strokeRect(i + ((j / 20) % 2) * 20, j, 40, 20);
       x.fillStyle = '#5a544c'; x.fillRect(0, 400, 640, 80);
-      x.fillStyle = '#d02a2a'; x.fillRect(280, 250, 70, 120);
+      x.fillStyle = col || '#d02a2a'; x.fillRect(280, 250, 70, 120);
       return c.toDataURL('image/png');
-    }, e);
-    const obreParet = async e => {
-      const dades = await paret(e);
+    }, [e, col]);
+    const obreParet = async (e, col) => {
+      const dades = await paret(e, col);
       await q.setInputFiles('#file', { name: 'paret.png', mimeType: 'image/png', buffer: Buffer.from(dades.split(',')[1], 'base64') });
       await q.waitForTimeout(800);
       return dades;
@@ -1029,7 +1029,49 @@ await p.close();
     await q.click(await q.locator('#treuFlotaGo').isVisible() ? '#treuFlotaGo' : '#treuGo');
     await acabaT();
     if (baixadesLama !== 2) problemes.push('la segona vegada, LaMa es torna a baixar');
-    console.log(`${problemes.length > abansT ? '✗' : '✓'} esborrar coses amb el dit (pel processador): pintar amb el dit, el vermell no es desa, netejar, la goma del vermell, zoom amb dos dits, el botó que sura, esborrar la paret de maons sense tocar la resta, abans i després, desfer i refer, una foto gran, i amb LaMa al mode Ordinador`);
+    // tocar l'objecte: la IA (MobileSAM) en troba el contorn i el posa de
+    // vermell; l'objecte sencer, i poc més. Després s'esborra com sempre.
+    // (L'objecte, aquí, és blau: el vermell de sobre s'hi veu.)
+    let baixadesSam = 0;
+    q.on('request', r => { if (/sam-(mira|toca)\.onnx/.test(r.url())) baixadesSam++; });
+    const originalS = await obreParet(1, '#2a5ad0');
+    await obreTargeta(q, 'esborra'); await q.click('#iaMode-mobil'); await q.click('#iaVesToca');
+    await q.waitForTimeout(900);
+    if (await q.getAttribute('#treuMode-toca', 'aria-pressed') !== 'true') problemes.push('«Toca el que vols treure» no posa l\'eina en mode de tocar');
+    if (!(await q.locator('#treuInfo').innerText()).includes('MB')) problemes.push('tocant l\'objecte, no diu quant es baixa la primera vegada');
+    await dit([[315, 310]]);
+    await q.waitForFunction(() => document.querySelector('#vel').hidden && !document.querySelector('#treuGo').disabled, null, { timeout: 300000 });
+    // quant de l'objecte (280-350 × 250-370) s'ha tornat vermellós, i quant de la paret del voltant
+    const vermell = await q.evaluate(async original => {
+      const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = original; });
+      const c = document.createElement('canvas'); c.width = 640; c.height = 480; const x = c.getContext('2d'); x.drawImage(i, 0, 0);
+      const o = x.getImageData(0, 0, 640, 480).data;
+      const v = document.querySelector('#view'), d = v.getContext('2d').getImageData(0, 0, 640, 480).data;
+      let dins = 0, nd = 0, fora = 0;
+      for (let y = 200; y < 420; y += 2) for (let xx = 220; xx < 410; xx += 2) {
+        const k = (y * 640 + xx) * 4, es = xx >= 282 && xx < 348 && y >= 252 && y < 368, roig = d[k] - o[k] > 30;
+        if (xx >= 278 && xx < 352 && y >= 248 && y < 372 && !es) continue;     // la vora mateixa no compta
+        if (es) { nd++; if (roig) dins++; } else if (roig) fora++;
+      }
+      return { dins: dins / nd, fora: fora / nd };
+    }, originalS);
+    if (vermell.dins < 0.95 || vermell.fora > 0.15) problemes.push(`tocant l'objecte, el contorn no és el de l'objecte (n'agafa el ${(vermell.dins * 100).toFixed(0)}% i de més el ${(vermell.fora * 100).toFixed(0)}%)`);
+    await q.click(await q.locator('#treuFlotaGo').isVisible() ? '#treuFlotaGo' : '#treuGo');
+    await acabaT();
+    const foratS = await mira([280, 250, 70, 120], originalS);
+    if (foratS.m[2] - foratS.m[0] > 25) problemes.push(`tocant l'objecte i esborrant, no se n'ha anat (${foratS.m.map(Math.round)})`);
+    for (const r of [[0, 0, 640, 200], [0, 200, 200, 280], [450, 200, 190, 280]]) {
+      const m = await mira(r, originalS);
+      if (m.max > 0) problemes.push(`tocant l'objecte i esborrant, ha canviat la foto lluny (${r}: ${m.max})`);
+    }
+    // una altra foto: un toc torna a mirar-la, però no torna a baixar res
+    await q.click('#btnUndo'); await q.waitForTimeout(400);
+    await q.click('#treuMode-toca');
+    await dit([[315, 310]]);
+    await q.waitForFunction(() => document.querySelector('#vel').hidden && !document.querySelector('#treuGo').disabled, null, { timeout: 300000 });
+    if (baixadesSam !== 2) problemes.push(`la IA de tocar s'havia de baixar una sola vegada (dos fitxers), i n'hi ha hagut ${baixadesSam}`);
+    if (await q.locator('#treuNeteja').isEnabled()) await q.click('#treuNeteja');
+    console.log(`${problemes.length > abansT ? '✗' : '✓'} esborrar coses amb el dit (pel processador): pintar amb el dit, el vermell no es desa, netejar, la goma del vermell, zoom amb dos dits, el botó que sura, esborrar la paret de maons sense tocar la resta, abans i després, desfer i refer, una foto gran, amb LaMa al mode Ordinador, i tocant l'objecte (${(vermell.dins * 100).toFixed(0)}% de l'objecte, ${(vermell.fora * 100).toFixed(0)}% de més)`);
     await ctx.close();
   }
 

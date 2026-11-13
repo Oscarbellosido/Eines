@@ -2,7 +2,7 @@
 
 Aquesta carpeta és l'única excepció a la norma d'«un sol fitxer» de les Eines.
 La fa servir la pestanya **✦ IA** de La Cambra Fosca (les ratllades,
-el soroll, esborrar coses, les cares, el color, el fons i ampliar), i només es baixa el que cal
+el soroll, esborrar coses (també tocant l'objecte), les cares, el color, el fons i ampliar), i només es baixa el que cal
 quan algú les fa servir. Res d'aquí no envia cap foto enlloc: el model corre dins
 del navegador.
 
@@ -69,6 +69,31 @@ amb la meitat de precisió, en dos trossos.
 
 Entrades: `foto` [1,3,512,512] de 0 a 1 i `mascara` [1,1,512,512], 1 on s'ha
 d'omplir. Sortida: la foto plena, de 0 a 1.
+
+### `models/sam-mira.onnx` i `models/sam-toca.onnx` — tocar l'objecte
+
+És **MobileSAM**, de Chaoning Zhang i altres (Kyung Hee University),
+https://github.com/ChaoningZhang/MobileSAM, amb llicència **Apache 2.0**
+(`models/LICENSE-MOBILESAM`): la versió petita del Segment Anything de Meta,
+que troba el contorn d'un objecte a partir d'un punt. 10 milions de números.
+Els pesos són al mateix repositori:
+
+```
+6dbb90523a35330fedd7f1d3dfc66f995213d81b29a5ca8108dbcdd4e37d6c2f  weights/mobile_sam.pt
+```
+
+**Canvis respecte de l'original** (la llicència Apache demana dir-ho): les dues
+xarxes (la que mira la foto, TinyViT, i la que dona el contorn) es munten
+peça a peça en ONNX; la normalització (BatchNorm) dins de les convolucions, el
+posicional de la imatge calculat d'avançada, el codificador dels punts dins
+del graf, i els pesos amb la meitat de precisió.
+
+- `sam-mira.onnx`: entrada [1,3,1024,1024], la foto amb el costat llarg de
+  1024, menys la mitjana i partida per la desviació (com SAM), amb zeros on
+  no arriba; sortida [1,256,64,64].
+- `sam-toca.onnx`: entrades `vist` (la sortida de l'altra), `punts` [1,N,2]
+  (en punts de la foto de 1024) i `tipus` [1,N] (1 = és d'aquí, 0 = no n'és,
+  −1 = res); sortides `mascares` [1,4,256,256] i `qualitat` [1,4].
 
 ### `models/cares-troba.onnx` i `models/cares-arregla.onnx.1` i `.2` — arreglar les cares
 
@@ -251,6 +276,12 @@ peces que la gràfica sap fer anar.
 
 ```
 python conversio/fes_migan.py migan_traced.pt models/migan-512.onnx
+```
+
+Els de tocar l'objecte surten de `conversio/fes_sam.py`:
+
+```
+python conversio/fes_sam.py mobile_sam.pt models
 ```
 
 LaMa surt de `conversio/fes_lama.py`, que en llegeix només els pesos (amb

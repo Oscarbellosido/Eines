@@ -642,6 +642,32 @@ estranya, LaMa refeia la vora de la tassa.
   només en llegeix els pesos, amb el lector de `fes_migan.py`, i munta la
   xarxa com al codi original.
 
+**Tocar l'objecte (MobileSAM).** L'usuari el va triar d'una llista: pintar
+el vermell amb el dit és el més pesat al mòbil. A l'eina d'esborrar hi ha un
+tercer mode, **«✦ Toca l'objecte»** (`S.mascToca`), i a la targeta, el botó
+gros **«✦ Toca el que vols treure»** (`#iaVesToca`); «Pinta el que vols
+treure» queda a sota.
+
+- **MobileSAM** (Apache 2.0, 10 milions de números, 24 MB amb mitja
+  precisió) són dues xarxes (`ia/conversio/fes_sam.py`): la que **mira la
+  foto** (`samMira`, la foto de 1024 normalitzada com SAM; uns segons, una
+  vegada per foto: `IA.sam.vistDe`) i la que, amb el punt tocat, **dona el
+  contorn** (`samContorn`, de seguida). En dona tres i es queda el que ella
+  creu millor (`qualitat`).
+- **El contorn es posa com a vermell**: una entrada `ras` amb `obj:true` i la
+  `caixa` que ocupa. Es repassa amb «Pinta vermell» i «Treu vermell» com
+  qualsevol altre, i cada toc n'afegeix un altre objecte. **No és cap
+  ratllada**: «Esborra-ho» el treu com un objecte (un tros al voltant de la
+  capsa, `treuAmbIA`), no per trossos de la foto sencera.
+- **El toc es mira en aixecar el dit**, i només si no s'ha mogut ni ha arribat
+  un segon dit (un zoom no és cap toc; `cancelaTraca` també el llença).
+- **El que ha vist es guarda com a números, no com a tensor** (`IA.sam.vist`)
+  i a cada toc se'n dona una còpia: sense gràfica, el motor treballa en un
+  fil a part i s'emporta el que se li passa. Al principi el segon toc fallava
+  (la prova ho va trobar).
+- A la prova, sobre la paret de maons amb un objecte blau, un toc n'agafa el
+  100% i res de més.
+
 **Com es va fer el model.** Picsart publica MI-GAN en PyTorch, i la versió que
 es podia baixar d'aquí és la «TorchScript» (`migan_traced.pt`), que porta el
 model escrit a dins en una mena de Python. `ia/conversio/fes_migan.py` el
@@ -927,7 +953,12 @@ de debò i comprova:
   màscara al revés, enganxant el tros sencer, sense el vermell a la pantalla i
   si canviar d'eina no el treu. Al mode Ordinador, el mateix amb LaMa
   (l'objecte fora, paret amb maons, la resta intacta, «· LaMa» a
-  l'historial, dos trossos baixats i la segona vegada cap). A més: la goma del vermell (treu on passa i
+  l'historial, dos trossos baixats i la segona vegada cap). Tocant
+  l'objecte (MobileSAM): que el botó de la targeta posi el mode, que digui
+  quant es baixa, que un toc agafi l'objecte blau sencer (95% o més) i poca
+  paret (15% com a molt), que «Esborra-ho» el tregui sense tocar la resta, i
+  que un altre toc, després de desfer, torni a anar sense baixar res (va
+  trobar que el segon toc fallava). A més: la goma del vermell (treu on passa i
   no enlloc més; si ho treu tot, no es fa res i es diu), el zoom amb dos dits
   sense que en quedi cap ratlla (amb el vermell i amb el pinzell), que el
   botó que sura surti sencer al mòbil i no a l'ordinador, i que mantenint
