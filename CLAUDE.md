@@ -194,6 +194,13 @@ i els aparells.
   comptador no es baixa) i l'app funciona igual.
 - **Els jocs no hi són**, encara que siguin a la mateixa adreça: el comptador
   només és on es posa.
+- **Els bloquejadors no deixen comptar**: el NetShield del Proton VPN, els
+  bloquejadors d'anuncis, Brave, el DNS privat amb AdGuard... L'usuari veia
+  0 visites (també a una altra web seva amb el mateix comptador) i era el
+  Proton VPN del mòbil. Per això la xifra sempre és una mica més baixa que la
+  real. Si algun dia s'hi vol comptar tothom, la manera és avisar el Worker
+  `eines-ia` (no és a cap llista de bloqueig), que només donaria el nombre de
+  visites al dia.
 - La prova fa veure que les pàgines són a la web de debò i mira que totes
   tres demanin el comptador amb el codi bo, i que obertes des d'aquí no el
   demanin.
