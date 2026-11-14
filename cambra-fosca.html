@@ -2750,14 +2750,17 @@ const IA={
   // treballa a 256 punts (més ràpid) i a l'ordinador a 384, on encerta més.
   color:{ parts:['models/color.onnx.1','models/color.onnx.2','models/color.onnx.3'], mb:236.7,
           N:{mobil:256, ordinador:384}, sessio:null, motorReal:null, forca:1, fet:null, teColor:null },
-  // «Treu el fons»: U²-Net petit al mòbil, IS-Net a l'ordinador (el mateix
+  // «Treu el fons»: U²-Net petit al mòbil, BiRefNet a l'ordinador (el mateix
   // mode que a l'Amplia). Diuen, per a cada punt, si és del davant (1) o del fons (0).
+  // BiRefNet és la versió de 512 punts (la de 1024 necessita uns 6 GB mentre
+  // treballa), amb els pesos en 8 bits i en tres trossos, com el del color.
   fons:{
     models:{
       mobil:{ fitxer:'models/u2netp.onnx', mb:4.4, N:320, mitjana:[0.485,0.456,0.406], desv:[0.229,0.224,0.225],
               desc:'Model petit. Va ràpid; les vores queden menys fines.' },
-      ordinador:{ fitxer:'models/isnet-fp16.onnx', mb:86.2, N:1024, mitjana:[0.5,0.5,0.5], desv:[1,1,1],
-              desc:'Model gran: vores més fines, també amb cabells. Més lent sense gràfica.' },
+      ordinador:{ parts:['models/birefnet-512-q8.onnx.1','models/birefnet-512-q8.onnx.2','models/birefnet-512-q8.onnx.3'],
+              mb:230.3, N:512, mitjana:[0.485,0.456,0.406], desv:[0.229,0.224,0.225], nom:'BiRefNet',
+              desc:'Model gran (BiRefNet): retalla bé els cabells i el pèl. Més lent sense gràfica.' },
     },
     sessio:null, sessioDe:null, motorReal:null, errorGPU:null,
     darrere:'transparent', color:'#ffffff', fet:null, error:null,
@@ -2786,7 +2789,9 @@ async function miraBaixats(){
   const c=await cauIA(); if(!c) return;
   // la primera versió del model lleuger, que la gràfica no sabia fer anar sencera
   try{ await c.delete(urlIA('models/realesr-general-x4v3.onnx')); }catch(e){}
-  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, ...IA.treu.lama.parts, IA.sam.mira, IA.sam.toca, IA.ratllades.fitxer, IA.nitida.fitxer, IA.cares.troba, ...IA.cares.arregla, ...IA.color.parts, IA.fons.models.mobil.fitxer, IA.fons.models.ordinador.fitxer, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
+  // l'IS-Net, que feia el fons al mode Ordinador abans del BiRefNet (86 MB)
+  try{ await c.delete(urlIA('models/isnet-fp16.onnx')); }catch(e){}
+  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, ...IA.treu.lama.parts, IA.sam.mira, IA.sam.toca, IA.ratllades.fitxer, IA.nitida.fitxer, IA.cares.troba, ...IA.cares.arregla, ...IA.color.parts, IA.fons.models.mobil.fitxer, ...IA.fons.models.ordinador.parts, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
   for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
 }
 /* Baixa un fitxer gros una sola vegada: després el treu de la memòria del
@@ -4235,7 +4240,7 @@ function pintaFons(){
     const ok=el('div','ia-fet'); ok.id='fonsFet'; ok.innerHTML='<b>✓ Fet.</b> '+F.fet.text; pane.appendChild(ok);
   }
   const g1=el('div','grp');
-  g1.appendChild(el('div','tiny','Deixa sol el que hi ha al davant (una persona, un animal, un objecte) i en treu el fons, o el difumina. Va millor quan el que hi ha al davant es distingeix bé. Amb el mode '+IA.models[IA.mode].nom+': '+md.desc.toLowerCase().replace(/\.$/,'')+' ('+mb(md.mb)+').'));
+  g1.appendChild(el('div','tiny','Deixa sol el que hi ha al davant (una persona, un animal, un objecte) i en treu el fons, o el difumina. Va millor quan el que hi ha al davant es distingeix bé. Amb el mode '+IA.models[IA.mode].nom+': '+md.desc[0].toLowerCase()+md.desc.slice(1).replace(/\.$/,'')+' ('+mb(md.mb)+').'));
   pane.appendChild(g1);
 
   const g3=el('div','grp'); g3.appendChild(el('h4',null,'Què hi poso al darrere'));
@@ -4293,7 +4298,15 @@ async function preparaSessioFons(progres){
   if(F.sessio && F.sessioDe===IA.mode) return F.sessio;
   if(F.sessio){ try{ await F.sessio.release(); }catch(e){} F.sessio=null; F.sessioDe=null; }
   const md=F.models[IA.mode];
-  const bytes=await baixaIA(md.fitxer, (a,t)=>progres('la IA',a,t||md.mb*1048576));
+  // el gran va en trossos (cap fitxer de més de 95 MB): es baixen i s'ajunten
+  const peces=[]; let fet=0;
+  for(const f of md.parts||[md.fitxer]){
+    peces.push(await baixaIA(f,(a,t)=>progres('la IA',fet+a,md.mb*1048576)));
+    fet+=peces[peces.length-1].length;
+  }
+  let bytes=peces[0];
+  if(peces.length>1){ bytes=new Uint8Array(fet); let o=0; for(const p of peces){ bytes.set(p,o); o+=p.length; } }
+  peces.length=0;
   progres('preparant el model',0,0);
   const r=await creaSessio(bytes);
   F.sessio=r.sessio; F.motorReal=r.motorReal; F.errorGPU=r.errorGPU; F.sessioDe=IA.mode;
@@ -4301,10 +4314,11 @@ async function preparaSessioFons(progres){
 }
 
 /* Què és del davant. El model mira la foto reduïda a 320 o 1024 punts de
-   costat i en treu un mapa (1 = davant, 0 = fons); el mapa es torna a fer de
+   costat (512 el BiRefNet) i en treu un mapa (1 = davant, 0 = fons); el mapa es torna a fer de
    la mida de la foto, amb les vores suaus. Es prepara com al projecte
    d'on surten els models (rembg): dividida pel punt més clar, i amb la
-   mitjana i la desviació de cada model. */
+   mitjana i la desviació de cada model. Al BiRefNet, la sigmoide ja és dins
+   del model (fes_birefnet.py), i després es fa com amb els altres. */
 async function alfaDelDavant(src, sessio, md){
   const N=md.N, W=src.width, H=src.height;
   const c=mkCanvas(N,N), x=c.getContext('2d',{willReadFrequently:true});

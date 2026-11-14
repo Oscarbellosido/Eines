@@ -591,8 +591,11 @@ await p.close();
   // aquelles peces van al processador i tornen, i amb gràfica i tot va lent.
   // El model lleuger en tenia 33 de PRelu. (La llista de les que sí que sap fer
   // és a docs/webgpu-operators.md del paquet onnxruntime-web.)
-  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus', 'migan-512', 'u2netp', 'isnet-fp16', 'ratllades', 'cares-troba']) {
-    const bytes = readFileSync(join(AQUI, 'ia/models', m + '.onnx'));
+  for (const m of ['realesr-general-x4v3-v2', 'realesrgan-x4plus', 'migan-512', 'u2netp', 'birefnet-512-q8', 'ratllades', 'cares-troba']) {
+    const f = join(AQUI, 'ia/models', m + '.onnx');
+    // els grossos van en trossos (.onnx.1, .onnx.2...): s'ajunten
+    const bytes = existsSync(f) ? readFileSync(f) : Buffer.concat([1, 2, 3, 4].map(n => f + '.' + n).filter(existsSync).map(t => readFileSync(t)));
+    if (!bytes.length) problemes.push(`no hi ha el model ${m}`);
     if (bytes.includes('PRelu')) problemes.push(`el model ${m} fa servir PRelu, que la gràfica no sap fer`);
   }
   // La línia de detalls diu el navegador. L'Edge també diu «Chrome/...» abans
@@ -1257,6 +1260,8 @@ await p.close();
     const abansF = problemes.length;
     const q = await navegador.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
     vigila(q, 'fons');
+    const demanats = [];
+    q.on('request', r => { const m = r.url().match(/birefnet[^/]*$/); if (m) demanats.push(m[0]); });
     await q.goto(BASE);
     await q.waitForTimeout(1500);
     const dades = await q.evaluate(() => {
@@ -1356,6 +1361,14 @@ await p.close();
     const e2 = encert(await punts());
     if (e2 < 0.97) problemes.push(`treient el fons (ordinador), no encerta el gerro: ${(e2 * 100).toFixed(1)}% dels punts`);
     if (!(await q.locator('#fonsFet').innerText()).includes('amb el processador')) problemes.push('després de treure el fons no diu amb què s\'ha fet');
+    // el gran és el BiRefNet, en tres trossos, i la targeta ho diu
+    if (demanats.sort().join() !== 'birefnet-512-q8.onnx.1,birefnet-512-q8.onnx.2,birefnet-512-q8.onnx.3') problemes.push('el model gran del fons no s\'ha baixat en els tres trossos del BiRefNet: ' + demanats);
+    if (!(await q.locator('#pane-fons').innerText()).includes('BiRefNet')) problemes.push('la targeta del fons no diu que el mode Ordinador fa servir BiRefNet');
+    // la segona vegada no torna a baixar res
+    await q.click('#btnUndo'); await q.waitForTimeout(300);
+    const nDemanats = demanats.length;
+    await fesho('ordinador', 'blanc');
+    if (demanats.length !== nDemanats) problemes.push('la segona vegada, el BiRefNet es torna a baixar');
     console.log(`${problemes.length > abansF ? '✗' : '✓'} treure el fons (pel processador): transparent (encerta el ${(e1 * 100).toFixed(1)}% amb el model petit i el ${(e2 * 100).toFixed(1)}% amb el gran), blanc, d'un color, difuminat sense aura, desar en JPG i PNG, i desfer`);
     await q.close();
   }

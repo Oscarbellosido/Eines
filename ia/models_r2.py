@@ -14,7 +14,7 @@ amb una clau que tingui «Workers R2 Storage: Edit» i «Account Settings: Read�
 Es comprova que cada fitxer pujat o baixat té la mateixa empremta (MD5) que
 el de l'altra banda.
 """
-import hashlib, json, os, sys, urllib.request
+import hashlib, json, os, sys, time, urllib.error, urllib.request
 
 API = 'https://api.cloudflare.com/client/v4'
 ESPAI = 'eines-models'
@@ -26,8 +26,15 @@ def crida(cami, metode='GET', cos=None, tipus='application/json'):
     if os.environ.get('CLOUDFLARE_API_TOKEN'):
         req.add_header('Authorization', 'Bearer ' + os.environ['CLOUDFLARE_API_TOKEN'])
     if cos is not None: req.add_header('Content-Type', tipus)
-    with urllib.request.urlopen(req, timeout=900) as r:
-        return r.read()
+    for intent in range(6):
+        try:
+            with urllib.request.urlopen(req, timeout=900) as r:
+                return r.read()
+        except urllib.error.HTTPError as e:
+            # Cloudflare de vegades diu «massa peticions» (429): s'espera i es torna a provar
+            if e.code != 429 or intent == 5: raise
+            print('Cloudflare demana esperar; es torna a provar d\'aquí a', 30 * (intent + 1), 'segons')
+            time.sleep(30 * (intent + 1))
 
 
 def compte():

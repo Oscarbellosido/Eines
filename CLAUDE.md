@@ -252,7 +252,8 @@ jocs): 10 GB gratis, i les baixades no es paguen mai.
   "compatibility_date":"2025-06-01","bindings":[{"type":"r2_bucket",
   "name":"MODELS","bucket_name":"eines-models"}]}`) i el fitxer.
 - **Què costa**: res mentre no es passi de 10 GB d'espai, 10 milions de
-  lectures al mes a R2 i 100.000 peticions al dia al Worker. Ara hi ha 823 MB.
+  lectures al mes a R2 i 100.000 peticions al dia al Worker. Ara hi ha 1,05 GB
+  (l'IS-Net, que ja no es fa servir, encara hi és: 86 MB).
 
 ## La Cambra Fosca: els menús
 
@@ -777,7 +778,31 @@ de la pestanya (`IA.mode`, compartit):
 | Mode | Model | Pes | Entrada |
 |---|---|---|---|
 | Mòbil | U²-Net petit (`u2netp`) | 4,4 MB | 320 × 320 |
-| Ordinador | IS-Net (`isnet-fp16`) | 86 MB | 1024 × 1024 |
+| Ordinador | BiRefNet (`birefnet-512-q8`, en tres trossos) | 230 MB | 512 × 512 |
+
+**Al mode Ordinador, BiRefNet** (MIT). L'usuari el va demanar per als
+cabells: l'IS-Net que hi havia abans (86 MB, 1024 × 1024) els tallava, i al
+pèl d'un gat s'hi menjava trossos. `ia/conversio/fes_birefnet.py` el prepara
+a partir de l'ONNX que publica el projecte.
+
+- **És la versió de 512 punts, no la de 1024.** La de 1024 necessita uns 6
+  GB de memòria mentre treballa (al contenidor no va ni amb tota la que hi
+  ha), i un navegador no en pot fer servir tants. La de 512 en fa servir
+  menys de 2, i a les fotos de mostra gairebé no es distingeix de la de 1024.
+  La de «matting», que és la que fan per als cabells, talla els cossos i no
+  sap fer objectes.
+- **Els pesos en 8 bits** (com el del color): de 930 MB a 230, i a la
+  memòria també 230. El 0,2% dels punts canvia de costat, tots a la vora.
+- **El model original no passa el resultat per la sigmoide**: dona números
+  d'uns −35 a 21. `fes_birefnet.py` l'hi afegeix al final, i a partir d'aquí
+  l'app el fa servir igual que els altres (`alfaDelDavant`).
+- **L'original porta peces que la gràfica no sap fer** (Mod i Sum, dins dels
+  milers de peces que només calculen mides). Es calcula d'avançada tot el que
+  no depèn de la foto (l'optimització «bàsica» d'onnxruntime) i les Sum es
+  tornen sumes de dues en dues.
+- Sense gràfica, al contenidor triga uns 5 segons amb quatre fils i uns 13
+  amb un. En obrir-se, l'app esborra l'IS-Net de la memòria del navegador
+  (`miraBaixats`), que ja no el fa servir.
 
 Coses que no s'han de desfer sense entendre-les:
 
@@ -803,7 +828,7 @@ Coses que no s'han de desfer sense entendre-les:
   a sota s'hi posa blanc (abans hi sortia negre) i el quadre de Desa ho avisa
   (`teTransparencia`). El ✓ Fet ja diu que per desar-la transparent cal PNG.
 - Sense gràfica, al contenidor el model petit triga uns 3 segons i el gran
-  uns 15.
+  (BiRefNet) uns 13 amb un sol fil.
 
 ## La Cambra Fosca: abans i després
 
@@ -1067,7 +1092,8 @@ pàgines amb un navegador de debò i comprova:
   vermell de la IA a la màscara o enganxant el tros sencer;
 - **treure el fons** (també serveix el repositori ella mateixa): sobre un
   gerro blau d'una foto feta a mida, que encerti el gerro (mirant un punt de
-  cada 6, fora de la vora) amb el model petit i amb el gran; transparent,
+  cada 6, fora de la vora) amb el model petit i amb el gran (que és el
+  BiRefNet, baixat en tres trossos, i la segona vegada no es torna a baixar); transparent,
   blanc i d'un color; que desant en JPG el fons surti blanc i ho avisi, i en
   PNG transparent; desfer; i que el difuminat difumini el fons, no toqui el
   gerro i no hi deixi aura. Es va comprovar que falla amb el mapa al revés,

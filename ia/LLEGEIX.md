@@ -217,14 +217,40 @@ precisió (75 MB). Entrada: la foto en grisos, de −1 a 1, amb el costat curt d
 projecte). Troba sobretot les ratllades clares, que són les típiques; les
 fosques, gairebé no.
 
-### `models/u2netp.onnx` i `models/isnet-fp16.onnx` — treure el fons
+### `models/u2netp.onnx` i `models/birefnet-512-q8.onnx.1..3` — treure el fons
 
 | Fitxer | Model | Projecte | Per a què |
 |---|---|---|---|
 | `u2netp.onnx` | U²-Net petit (4,4 MB) | https://github.com/xuebinqin/U-2-Net | el mode **Mòbil** |
-| `isnet-fp16.onnx` | IS-Net general (86 MB) | https://github.com/xuebinqin/DIS | el mode **Ordinador** |
+| `birefnet-512-q8.onnx.1..3` | BiRefNet general, 512 (230 MB) | https://github.com/ZhengPeng7/BiRefNet | el mode **Ordinador** |
+| ~~`isnet-fp16.onnx`~~ | IS-Net general (86 MB) | https://github.com/xuebinqin/DIS | el mode Ordinador fins al BiRefNet (encara és a R2, però l'app ja no el fa servir) |
 
-Tots dos són de Xuebin Qin i altres, amb llicència **Apache 2.0**: és a
+**BiRefNet** és de Peng Zheng i altres, amb llicència **MIT** (és a
+`models/LICENSE-BIREFNET`, tal com la publiquen). Retalla molt millor que
+l'IS-Net les vores fines: els cabells, el pèl d'un animal. L'original és l'ONNX
+que publica el mateix projecte a GitHub, la versió entrenada a 512 × 512:
+
+```
+18b64a270d3abe7d36e665500c3f24136bcaf7616771b4cb21c6e8c57fec7237  BiRefNet-general-resolution_512x512-fp16-epoch_216.onnx
+```
+
+(https://github.com/ZhengPeng7/BiRefNet/releases/download/v1/). La de 1024
+punts va una mica millor, però mentre treballa necessita uns 6 GB de memòria,
+i un navegador no en pot fer servir tants; la de 512, menys de 2. Comparades
+sobre fotos de mostra (un gat, una persona, una tassa), la de 512 i la de 1024
+gairebé no es distingeixen, i totes dues retallen el pèl del gat molt millor
+que l'IS-Net. La de «matting» (feta per als cabells) talla els cossos i no
+sap fer objectes: no serveix per a tot.
+
+`conversio/fes_birefnet.py` el prepara: calcula d'avançada les peces que només
+fan mides (hi havia Mod i Sum, que la gràfica no sap fer; les Sum es tornen
+sumes de dues en dues), hi afegeix la sigmoide al final (l'original dona el
+resultat sense passar-lo de 0 a 1), desa els pesos amb 8 bits (de 930 MB a
+230; comparat amb els pesos sencers, el 0,2% dels punts canvia de costat, tots
+a la vora) i el parteix en tres trossos. Entrada: la foto de 512 × 512, com la
+del U²-Net (mitjana i desviació d'ImageNet).
+
+L'U²-Net i l'IS-Net són de Xuebin Qin i altres, amb llicència **Apache 2.0**: és a
 `models/LICENSE-U2NET` i `models/LICENSE-ISNET`, tal com la publiquen. Els
 originals en format ONNX són els que publica el projecte rembg (Daniel Gatis,
 llicència MIT) a https://github.com/danielgatis/rembg/releases/tag/v0.0.0, amb
@@ -241,7 +267,7 @@ l'IS-Net els pesos es desen amb la meitat de precisió (float16) i es tornen a
 fer normals en carregar-lo, perquè el fitxer passi de 178 MB a 86 MB. El
 resultat canvia menys d'una mil·lèsima.
 
-L'entrada és la foto reduïda a 320 × 320 (U²-Net) o 1024 × 1024 (IS-Net),
+L'entrada és la foto reduïda a 320 × 320 (U²-Net), 512 × 512 (BiRefNet) o 1024 × 1024 (IS-Net),
 dividida pel punt més clar i amb la mitjana i la desviació de cada model, com
 fa rembg. La sortida diu, per a cada punt, si és del davant (1) o del fons (0).
 
