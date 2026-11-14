@@ -2687,6 +2687,10 @@ $('#btnHelp').onclick=()=>dialog('Dreceres de teclat',body=>{
 =================================================================== */
 const IA={
   DIR:'ia/',
+  // Els models no són a GitHub (GitHub Pages no deixa publicar més d'1 GB):
+  // són a Cloudflare R2 i els entrega el Worker «eines-ia» (ia/worker-models.js).
+  // Només els models: la foto no surt mai de l'aparell.
+  MODELS:'https://eines-ia.oscarbellosido.workers.dev/',
   CAU:'cambra-fosca-ia-1',
   MARGE:16,               // píxels de context al voltant de cada tros, que no es vegin les costures
   models:{
@@ -2758,6 +2762,13 @@ async function miraGPU(){
   }catch(e){ return false; }
 }
 const urlIA = cami => new URL(IA.DIR+cami, location.href).href;
+/* D'on es baixa cada fitxer. Els models, del Worker; el motor, del mateix web.
+   A les proves (la pàgina servida des de l'ordinador mateix), tot de la
+   carpeta local, que no surtin a internet. La memòria del navegador els desa
+   sempre amb el nom d'abans (urlIA): qui ja els tenia baixats de GitHub no
+   els torna a baixar. */
+const deLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol==='file:';
+const origenIA = cami => (cami.startsWith('models/') && !deLocal) ? IA.MODELS+cami.slice(7) : urlIA(cami);
 async function cauIA(){ try{ return self.caches ? await caches.open(IA.CAU) : null; }catch(e){ return null; } }
 async function miraBaixats(){
   const c=await cauIA(); if(!c) return;
@@ -2771,7 +2782,7 @@ async function miraBaixats(){
 async function baixaIA(cami, progres){
   const url=urlIA(cami), c=await cauIA();
   if(c){ const r=await c.match(url); if(r) return new Uint8Array(await r.arrayBuffer()); }
-  const r=await fetch(url);
+  const r=await fetch(origenIA(cami));
   if(!r.ok) throw new Error('no s\'ha pogut baixar '+cami.split('/').pop()+' ('+r.status+')');
   const total=+r.headers.get('content-length')||0;
   let buf;

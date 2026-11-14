@@ -1443,6 +1443,43 @@ await p.close();
     console.log(`${problemes.length > abansCo ? '✗' : '✓'} posar color (pel processador): croma ${c1.toFixed(1)}, el cel blau (b ${cel[1].toFixed(1)}), la claredat igual (${dL.toFixed(2)}), «Suau» ${c2.toFixed(1)}, la segona vegada sense baixar res, desfer, i l'avís de les fotos que ja tenen colors (no amb la sèpia)`);
     await q.close();
   }
+  // ------------------------------------- els models es baixen de Cloudflare
+  // A internet, els models no són a GitHub sinó a Cloudflare R2, i els
+  // entrega el Worker «eines-ia». Aquí es fa veure que la web és a internet
+  // (una adreça que no és l'ordinador mateix) i el Worker es fa amb les còpies
+  // locals: la IA del fons s'ha de baixar del Worker i no de GitHub, i
+  // funcionar. Res no surt a internet.
+  {
+    const abansW = problemes.length;
+    // (sense el programa de sense connexió: el navegador el buscaria a una adreça inventada)
+    const ctxW = await navegador.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' });
+    const q = await ctxW.newPage();
+    vigila(q, 'worker');
+    const demanats = [];
+    q.on('request', r => { if (/\.onnx/.test(r.url())) demanats.push(r.url()); });
+    const serveix = (route, f) => {
+      if (!existsSync(f) || statSync(f).isDirectory()) return route.fulfill({ status: 404, body: '' });
+      route.fulfill({ status: 200, body: readFileSync(f), headers: { 'content-type': TIPUS[extname(f)] || 'application/octet-stream', 'access-control-allow-origin': '*' } });
+    };
+    await q.route('https://eines.prova/**', route => {
+      const cami = decodeURIComponent(new URL(route.request().url()).pathname);
+      if (cami.startsWith('/ia/models/')) return route.fulfill({ status: 404, body: '' });     // a GitHub ja no hi són
+      serveix(route, join(AQUI, cami));
+    });
+    await q.route('https://eines-ia.oscarbellosido.workers.dev/**', route =>
+      serveix(route, join(AQUI, 'ia/models', decodeURIComponent(new URL(route.request().url()).pathname))));
+    await q.goto('https://eines.prova/cambra-fosca.html');
+    await q.waitForTimeout(1500);
+    await obreTargeta(q, 'fons'); await q.click('#iaMode-mobil'); await q.click('#fonsD-blanc'); await q.click('#fonsGo');
+    await q.waitForTimeout(300);
+    await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 });
+    if (!demanats.length || !demanats.every(u => u.startsWith('https://eines-ia.oscarbellosido.workers.dev/')))
+      problemes.push('a internet, els models no es baixen del Worker de Cloudflare: ' + demanats.join(', '));
+    if (!(await q.locator('.hitem span').allInnerTexts()).some(t => t.startsWith('Treu el fons'))) problemes.push('amb els models del Worker, treure el fons no ha funcionat: ' + await q.locator('#stMsg').innerText());
+    console.log(`${problemes.length > abansW ? '✗' : '✓'} els models, de Cloudflare: a internet es baixen del Worker (${demanats.length}) i no de GitHub, i funcionen`);
+    await ctxW.close();
+  }
+
   // ------------------------------------------------- soroll i borrós
   // Una foto dibuixada aquí (degradats, cercles, ratlles i lletres): amb
   // soroll, «Treu el soroll» l'ha d'acostar molt a la neta, «Suau» menys; amb

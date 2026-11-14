@@ -1,5 +1,12 @@
 # Els fitxers de la IA de La Cambra Fosca
 
+**Els models (`models/*.onnx`) ja no són al repositori**: són a Cloudflare R2
+(l'espai `eines-models`) i els entrega el Worker `eines-ia`
+(`worker-models.js`), perquè GitHub Pages no deixa publicar més d'1 GB.
+`models_r2.py` els hi puja i els en baixa (per a les proves). Les llicències
+continuen aquí, a `models/`. El que diu aquest fitxer de cada model (d'on
+surt, empremtes, canvis) continua valent.
+
 Aquesta carpeta és l'única excepció a la norma d'«un sol fitxer» de les Eines.
 La fa servir la pestanya **✦ IA** de La Cambra Fosca (les ratllades,
 el soroll, esborrar coses (també tocant l'objecte), les cares, el color, el fons i ampliar), i només es baixa el que cal

@@ -32,7 +32,7 @@ i el detector de cares de [facexlib](https://github.com/xinntao/facexlib) (MIT);
 (llicència Apache 2.0, en la versió del projecte [rembg](https://github.com/danielgatis/rembg));
 i tots, el motor
 [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) (llicència MIT).
-Tot és a `ia/`, amb les seves llicències; `ia/LLEGEIX.md` ho explica.
+El motor és a `ia/`, amb les llicències de tot; els models, a Cloudflare R2 (no hi passa cap foto: només es baixen d'allà). `ia/LLEGEIX.md` ho explica.
 
 ## Provar-les
 

@@ -3,7 +3,8 @@
 Eines petites que funcionen dins del navegador, en català i pensades per al
 mòbil. **Cada eina és un sol fitxer** HTML autocontingut, sense cap llibreria,
 sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepció
-és la carpeta `ia/`, que fan servir les IA de La Cambra Fosca (més avall).
+són les IA de La Cambra Fosca: el motor és a la carpeta `ia/` i els models, a
+**Cloudflare R2** (més avall, «Els models, a Cloudflare»).
 
 - Publicat a: https://oscarbellosido.github.io/Eines/
 - **El que hi posa qui la fa servir no surt mai del seu aparell.** No hi ha
@@ -25,7 +26,9 @@ sense cap servidor i sense cap dependència: s'obre i funciona. L'única excepci
 index.html            la portada, amb una fitxa per eina
 cambra-fosca.html     l'editor de fotografies
 revisio.html          la revisió de seguretat del mòbil
-ia/                   el motor i els models de la IA (vegeu ia/LLEGEIX.md)
+ia/                   el motor de la IA, com es fan els models i d'on surten (vegeu ia/LLEGEIX.md)
+ia/models_r2.py       puja i baixa els models de Cloudflare R2 (els models no van al repositori)
+ia/worker-models.js   el Worker de Cloudflare que els entrega
 cambra-fosca.webmanifest   la fitxa de la Cambra Fosca com a app (nom, icones, colors)
 cambra-fosca-sw.js         el que la fa anar sense connexió, un cop instal·lada
 icones/               les icones de l'app
@@ -168,6 +171,55 @@ i allà el navegador no deixa que una pàgina es baixi res ella mateixa: s'ha de
 demanar a la plataforma (`claude.use('downloads')`). Es prova primer la
 plataforma i, si no hi és, l'enllaç de tota la vida. **Si es toca una de les
 dues bandes, s'ha de comprovar l'altra.**
+
+## Els models, a Cloudflare
+
+Els models de la IA **no són al repositori ni a GitHub Pages**: amb totes les
+IA ja n'hi havia 870 MB, GitHub Pages no deixa publicar més d'1 GB per web
+(paguis o no) i hi posa un sostre d'unes 100 GB de baixades al mes. L'usuari
+va triar portar-los a **Cloudflare R2**, on ja té compte (el dels rècords dels
+jocs): 10 GB gratis, i les baixades no es paguen mai.
+
+- **L'espai es diu `eines-models`** i és a l'Europa de l'oest (el primer es va
+  crear sol a Amèrica del Nord; es va tornar a fer a posta, que les baixades
+  fossin més ràpides). Els noms són els mateixos fitxers, sense carpeta
+  (`lama-512.onnx.1`).
+- **Els entrega el Worker `eines-ia`** (`ia/worker-models.js`):
+  `https://eines-ia.oscarbellosido.workers.dev/<fitxer>`. Només llegeix (cap
+  manera de pujar ni d'esborrar res, i cap altre nom que el d'un model), no
+  apunta res de qui ho demana i porta `Access-Control-Allow-Origin: *`, que
+  la web els baixa des de github.io. **La foto no hi passa mai**: només els
+  models, com abans des de GitHub. 95 MB arriben en uns 4 segons.
+- **A l'app** (`IA.MODELS`, `origenIA`): els models es baixen del Worker, i
+  el motor (`ia/ort/`) continua al mateix web. **La memòria del navegador els
+  desa amb el nom d'abans** (`urlIA`), així que qui ja els tenia baixats de
+  GitHub no els torna a baixar.
+- **A les proves** (la pàgina servida des de l'ordinador mateix, `deLocal`),
+  els models es llegeixen de `ia/models/`, que no surtin a internet. Aquells
+  fitxers no van al repositori (`.gitignore`): en una còpia nova, abans de
+  provar, `python ia/models_r2.py baixa`. La prova fa veure que la web és a
+  internet i mira que els models es demanin al Worker.
+- **Per afegir o canviar un model**: es fa amb el seu script de
+  `ia/conversio/`, es deixa a `ia/models/` i `python ia/models_r2.py puja`
+  (només puja el que no hi és o ha canviat, i comprova l'empremta MD5 de
+  cada fitxer). Si es canvia un model que ja existia, s'ha de canviar també
+  el nom (com el `-v2` del lleuger), que la memòria dels navegadors no el
+  tornaria a baixar.
+- **La clau de Cloudflare** («eines-ia», amb Workers R2 Storage i Workers
+  Scripts per editar, i Account Settings per llegir) la va crear l'usuari i
+  **caduca als 30 dies** (14 de desembre del 2026). No és enlloc del codi: és
+  un secret de xarxa de l'entorn on es treballa, i el servidor intermediari
+  la posa sol a les peticions a `api.cloudflare.com`. Per pujar models
+  després que caduqui, l'usuari n'ha de fer una de nova (Mi perfil → API
+  Tokens → Create Token → Start from scratch → Account policy, amb aquells
+  tres permisos).
+- **Tornar a desplegar el Worker** (només si es toca `ia/worker-models.js`),
+  amb l'API: `PUT /accounts/<compte>/workers/scripts/eines-ia` amb un
+  formulari de dues parts, `metadata` (`{"main_module":"worker-models.js",
+  "compatibility_date":"2025-06-01","bindings":[{"type":"r2_bucket",
+  "name":"MODELS","bucket_name":"eines-models"}]}`) i el fitxer.
+- **Què costa**: res mentre no es passi de 10 GB d'espai, 10 milions de
+  lectures al mes a R2 i 100.000 peticions al dia al Worker. Ara hi ha 823 MB.
 
 ## La Cambra Fosca: els menús
 
@@ -381,8 +433,9 @@ De partida es tria el mode pel tipus de pantalla, però es pot canviar.
 
 **Per què és l'excepció a «un sol fitxer».** El motor (15 o 29 MB) i els
 models (5 o 67 MB) no poden anar dins de l'HTML: el farien inservible per a
-qui no amplia res, i tenen llicència pròpia. Van a `ia/`, del mateix web (cap
-altre servidor), i només es baixen la primera vegada que algú amplia. Després
+qui no amplia res, i tenen llicència pròpia. El motor va a `ia/`, del mateix
+web, i els models, a Cloudflare R2 (a dalt, «Els models, a Cloudflare»), i
+només es baixen la primera vegada que algú amplia. Després
 queden a la memòria del navegador (`caches`, `cambra-fosca-ia-1`), també
 sense connexió. `ia/LLEGEIX.md` diu d'on surt cada fitxer i amb quina
 llicència, i `ia/conversio/` té els scripts que fan els models: **els `.onnx`
@@ -852,8 +905,9 @@ Les mateixes que al repositori dels jocs, i ja ens han mossegat allà:
 ## Com es prova
 
 `node prova.mjs` (cal Playwright; al contenidor és a
-`/opt/node22/lib/node_modules/playwright`). Obre les pàgines amb un navegador
-de debò i comprova:
+`/opt/node22/lib/node_modules/playwright`). En una còpia nova del repositori,
+abans cal `python ia/models_r2.py baixa` (els models no hi són). Obre les
+pàgines amb un navegador de debò i comprova:
 
 - **la portada**: que no vessi a 320, 360, 390, 768 i 1280 px, que cada fitxa
   porti a un fitxer que existeix, que les captures es vegin i que no salti cap
@@ -903,6 +957,9 @@ de debò i comprova:
   nítida» l'acosti a la neta. La mida no ha de canviar. Es va comprovar que
   falla sense els trossos fixos, sense la força o si el borrós no torna el
   tros a la seva mida;
+- **els models, de Cloudflare**: fent veure que la web és a internet (i
+  amb els models de GitHub prohibits), que la IA del fons es baixi del
+  Worker i funcioni;
 - **posar color** (també serveix el repositori ella mateixa): sobre un
   paisatge dibuixat i passat a grisos, que hi posi color, que el cel quedi
   blau, que la claredat de cada punt sigui la d'abans, que surti a

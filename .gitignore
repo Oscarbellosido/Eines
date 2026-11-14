@@ -1,0 +1,5 @@
+# Els models de la IA no van al repositori: són a Cloudflare R2 (vegeu ia/models_r2.py).
+# A la carpeta hi poden ser per a les proves (python ia/models_r2.py baixa).
+ia/models/*.onnx
+ia/models/*.onnx.*
+__pycache__/
