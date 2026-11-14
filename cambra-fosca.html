@@ -492,6 +492,17 @@ input.mida-num{
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
+<script>
+/* Les visites, comptades amb Cloudflare Web Analytics: anònimes i sense
+   galetes (quina pàgina s'obre i amb quin tipus de navegador; mai res del que
+   s'hi fa). Només a la web de debò: les proves i les còpies no compten. */
+if(location.hostname==='oscarbellosido.github.io'){
+  const s=document.createElement('script'); s.defer=true;
+  s.src='https://static.cloudflareinsights.com/beacon.min.js';
+  s.setAttribute('data-cf-beacon','{"token": "51a8a2b170524eef90da17970c35d1a5"}');
+  document.head.appendChild(s);
+}
+</script>
 </head>
 <body>
 
@@ -2675,6 +2686,7 @@ $('#btnHelp').onclick=()=>dialog('Dreceres de teclat',body=>{
   body.appendChild(g);
   body.appendChild(el('div','tiny','Al mòbil, amb dos dits damunt la foto la pots acostar o allunyar i moure.'));
   body.appendChild(el('div','tiny','També pots arrossegar un fitxer sobre el llenç o enganxar una imatge del porta-retalls.'));
+  body.appendChild(el('div','tiny','Les fotos no surten mai del teu aparell. Només es compten les visites, de manera anònima i sense galetes.'));
   body.appendChild(el('div','tiny','Per tenir-la com una app, amb la seva icona i sense connexió: el botó INSTAL·LA de dalt, o al menú del navegador, «Instal·la l\'aplicació» o «Afegeix a la pantalla d\'inici».'));
 });
 

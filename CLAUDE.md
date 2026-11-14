@@ -8,8 +8,10 @@ són les IA de La Cambra Fosca: el motor és a la carpeta `ia/` i els models, a
 
 - Publicat a: https://oscarbellosido.github.io/Eines/
 - **El que hi posa qui la fa servir no surt mai del seu aparell.** No hi ha
-  servidor, ni enviaments, ni estadístiques. Si algun dia cal afegir res que
-  hagi de sortir a fora, s'ha de preguntar abans.
+  servidor ni enviaments. L'única cosa que surt és **el compte de visites**,
+  anònim i sense galetes (més avall, «Les visites»), que l'usuari va demanar.
+  Si algun dia cal afegir res més que hagi de sortir a fora, s'ha de preguntar
+  abans.
 - És el germà del repositori dels jocs (`Jocs`), amb les mateixes normes i les
   mateixes trampes ja apreses. Aquí no hi van jocs, i allà no hi van eines.
 
@@ -171,6 +173,30 @@ i allà el navegador no deixa que una pàgina es baixi res ella mateixa: s'ha de
 demanar a la plataforma (`claude.use('downloads')`). Es prova primer la
 plataforma i, si no hi és, l'enllaç de tota la vida. **Si es toca una de les
 dues bandes, s'ha de comprovar l'altra.**
+
+## Les visites
+
+L'usuari va voler saber quanta gent hi entra, i va triar **Cloudflare Web
+Analytics** entre tres maneres (les baixades del Worker, aquesta, o un
+comptador propi com el dels jocs): es veu al tauler de Cloudflare (Analytics
+& Logs → Web Analytics), amb les visites de cada dia, les pàgines, els països
+i els aparells.
+
+- **No fa servir galetes ni identifica ningú**, i per això no cal cap avís de
+  galetes. El que s'envia és quina pàgina s'obre i el tipus de navegador; mai
+  res del que s'hi fa, i les fotos menys que res. La portada, l'ajuda de la
+  Cambra Fosca i el resum de la Revisió ho diuen.
+- **Un trosset de codi al `<head>` de les tres pàgines** hi afegeix el
+  comptador (`static.cloudflareinsights.com/beacon.min.js`, amb el codi del
+  compte, que no és cap secret: és a la vista de tothom), **però només si la
+  pàgina és a `oscarbellosido.github.io`**: les proves, les còpies i qui
+  l'obri des d'un fitxer no compten. Sense connexió no compta (el
+  comptador no es baixa) i l'app funciona igual.
+- **Els jocs no hi són**, encara que siguin a la mateixa adreça: el comptador
+  només és on es posa.
+- La prova fa veure que les pàgines són a la web de debò i mira que totes
+  tres demanin el comptador amb el codi bo, i que obertes des d'aquí no el
+  demanin.
 
 ## Els models, a Cloudflare
 
@@ -860,7 +886,8 @@ el que cal arreglar, per ordre.
 - **El Chrome d'ara diu sempre «Android 10; K»**, sigui quina sigui la
   versió. La de debò es demana a part (`userAgentData`), i aquell 10 no es té
   en compte: si no, a tothom li sortiria que té un Android vell.
-- **Tot es desa en aquest mòbil i no s'envia res** (`revisio-actual`, i
+- **Tot es desa en aquest mòbil i no s'envia res** (només el compte de visites
+  de la pàgina, anònim: «Les visites») (`revisio-actual`, i
   `revisio-historial` amb la data i els tres números de cada revisió acabada,
   per comparar amb la del mes passat). L'única cosa que surt a fora és un
   enllaç a la revisió de seguretat de Google, que obre la persona tocant-lo, i
@@ -1046,6 +1073,10 @@ pàgines amb un navegador de debò i comprova:
   botó INSTAL·LA hi càpiga a 320 px. Es
   va comprovar que la prova falla amb una fitxa que l'obre com una pàgina
   normal, o sense la icona «maskable»;
+- **les visites**: fent veure que les pàgines són a la web de debò, que
+  totes tres demanin el comptador de Cloudflare amb el codi bo, i que
+  obertes des d'aquí no el demanin. Es va comprovar que falla si el compte
+  es fa a tot arreu;
 - **la Revisió**: que no vessi, i feta sencera amb el dit a 320 px: que el
   pedaç no deixi continuar sense data i jutgi bé una data bona i una de
   vella, que enrere torni on eres, que les tretze comprovacions arribin al

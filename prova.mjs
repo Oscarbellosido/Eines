@@ -1756,6 +1756,36 @@ await noVessa(navegador, 'revisio.html', async p => {
   await ctx.close();
 }
 
+// ------------------------------------------------------------ les visites
+// Es compten amb Cloudflare Web Analytics, però només a la web de debò: fent
+// veure que les pàgines són a oscarbellosido.github.io, cadascuna ha de
+// demanar el comptador amb el codi del compte; obertes des d'aquí (com a les
+// proves), cap. Res no surt a internet: el comptador es fa veure.
+{
+  const { readFileSync: llegeix } = await import('fs');
+  const ctx = await navegador.newContext({ serviceWorkers: 'block' });
+  const pg = await ctx.newPage();
+  const vistos = [];
+  await pg.route('https://static.cloudflareinsights.com/**', r => { vistos.push(r.request().url()); r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }); });
+  await pg.route('https://oscarbellosido.github.io/Eines/**', r => {
+    const f = resolve(AQUI, decodeURIComponent(new URL(r.request().url()).pathname.replace(/^\/Eines\//, '')) || 'index.html');
+    if (!existsSync(f)) return r.fulfill({ status: 404, body: '' });
+    r.fulfill({ status: 200, body: llegeix(f), contentType: f.endsWith('.html') ? 'text/html; charset=utf-8' : undefined });
+  });
+  const abansV = problemes.length;
+  for (const pag of ['index.html', 'cambra-fosca.html', 'revisio.html']) {
+    vistos.length = 0;
+    await pg.goto('https://oscarbellosido.github.io/Eines/' + pag); await pg.waitForTimeout(600);
+    const codi = await pg.evaluate(() => document.querySelector('script[data-cf-beacon]')?.getAttribute('data-cf-beacon') || '');
+    if (!vistos.length || !codi.includes('51a8a2b170524eef90da17970c35d1a5')) problemes.push(`a la web de debò, ${pag} no compta la visita (o no amb el codi del compte)`);
+    vistos.length = 0;
+    await pg.goto(fitxer(pag)); await pg.waitForTimeout(400);
+    if (vistos.length || await pg.evaluate(() => !!document.querySelector('script[data-cf-beacon]'))) problemes.push(`obert des d'aquí, ${pag} compta la visita (les proves no han de comptar)`);
+  }
+  console.log(`${problemes.length > abansV ? '✗' : '✓'} les visites: es compten només a la web de debò, a les tres pàgines`);
+  await ctx.close();
+}
+
 await navegador.close();
 
 // ------------------------------------------------------------------ el resum

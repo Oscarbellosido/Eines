@@ -145,6 +145,17 @@ ul.fets li::before{content:"✓ ";color:var(--be)}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
+<script>
+/* Les visites, comptades amb Cloudflare Web Analytics: anònimes i sense
+   galetes (quina pàgina s'obre i amb quin tipus de navegador; mai res del que
+   s'hi fa). Només a la web de debò: les proves i les còpies no compten. */
+if(location.hostname==='oscarbellosido.github.io'){
+  const s=document.createElement('script'); s.defer=true;
+  s.src='https://static.cloudflareinsights.com/beacon.min.js';
+  s.setAttribute('data-cf-beacon','{"token": "51a8a2b170524eef90da17970c35d1a5"}');
+  document.head.appendChild(s);
+}
+</script>
 </head>
 <body>
 <div id="wrap">
@@ -319,7 +330,8 @@ const PEDAC_BE = 3, PEDAC_MAL = 12;
 
 /* ===================================================================
    2. L'estat, i desar-lo
-   Tot es queda en aquest mòbil (localStorage). No s'envia res enlloc.
+   Tot es queda en aquest mòbil (localStorage). No s'envia res enlloc (només
+   es compta la visita a la pàgina, anònima: vegeu el <head>).
 =================================================================== */
 const CLAU = 'revisio-actual', CLAU_HIST = 'revisio-historial';
 let R = null;            // la revisió d'ara: {inici, pas, respostes:{id:'be'|'mal'|'dubte'}, pedac:{m,a}|null, fi}
@@ -445,7 +457,7 @@ function pintaInici(){
     h += '<h2>L\'última revisió</h2><p id="ultima" class="dim">' + dataLlarga(ultima.data) + ': ' +
       ultima.be + ' bé, ' + ultima.mal + ' per arreglar, ' + ultima.dubte + ' per mirar.</p>';
   }
-  h += '<p class="petit" style="margin-top:18px">Les teves respostes es desen només en aquest mòbil. No s\'envia res enlloc.</p>';
+  h += '<p class="petit" style="margin-top:18px">Les teves respostes es desen només en aquest mòbil i no s\'envien enlloc. Només es compta la visita, de manera anònima.</p>';
   cos.innerHTML = h;
 
   if(R && R.fi){

@@ -82,6 +82,17 @@ footer a{color:var(--fg-dim)}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
+<script>
+/* Les visites, comptades amb Cloudflare Web Analytics: anònimes i sense
+   galetes (quina pàgina s'obre i amb quin tipus de navegador; mai res del que
+   s'hi fa). Només a la web de debò: les proves i les còpies no compten. */
+if(location.hostname==='oscarbellosido.github.io'){
+  const s=document.createElement('script'); s.defer=true;
+  s.src='https://static.cloudflareinsights.com/beacon.min.js';
+  s.setAttribute('data-cf-beacon','{"token": "51a8a2b170524eef90da17970c35d1a5"}');
+  document.head.appendChild(s);
+}
+</script>
 </head>
 <body>
 
@@ -123,6 +134,7 @@ footer a{color:var(--fg-dim)}
 
 <footer><div class="full">
   <p>Tot en català i fet per anar bé al mòbil.</p>
+  <p>Es compten les visites, de manera anònima i sense galetes (Cloudflare Web Analytics): quantes n'hi ha, no qui ets ni què hi fas.</p>
   <p>Els jocs són a <a href="https://oscarbellosido.github.io/Jocs/">la seva col·lecció</a>.</p>
 </div></footer>
 
