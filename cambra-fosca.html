@@ -2729,10 +2729,15 @@ const IA={
          // forats grossos, però fa 99 MB (en dos trossos) i va més lenta
          lama:{ parts:['models/lama-512.onnx.1','models/lama-512.onnx.2'], mb:98.7, sessio:null, motorReal:null } },
   // «Arregla les cares»: RetinaFace (troba les cares i cinc punts de cada una)
-  // i GFPGAN v1.4 (les arregla posades dretes a 512 × 512). GFPGAN fa 167 MB i
-  // va en dos trossos, que GitHub no n'accepta de més de 100.
-  cares:{ troba:'models/cares-troba.onnx', arregla:['models/cares-arregla.onnx.1','models/cares-arregla.onnx.2'],
-          mbTroba:1.6, mbArregla:167.3, sTroba:null, sArregla:null, motorReal:null, forca:1, fet:null },
+  // i una de les dues que les arreglen posades dretes a 512 × 512:
+  // CodeFormer (91 MB, la de partida), que va millor amb les cares molt
+  // malmeses i té el control «més nítida ↔ més semblant» (semblanca, el seu
+  // «weight»), o GFPGAN v1.4 (167 MB), la d'abans. Totes dues van en trossos.
+  cares:{ troba:'models/cares-troba.onnx', mbTroba:1.6,
+          models:{ codeformer:{ parts:['models/codeformer-q8.onnx.1','models/codeformer-q8.onnx.2'], mb:90.8, nom:'CodeFormer' },
+                   gfpgan:{ parts:['models/cares-arregla.onnx.1','models/cares-arregla.onnx.2'], mb:167.3, nom:'GFPGAN' } },
+          quin:'codeformer', semblanca:0.5,
+          sTroba:null, sArregla:null, sArreglaDe:null, motorReal:null, forca:1, fet:null },
   // «Troba les ratllades»: la xarxa de Microsoft («Bringing Old Photos Back to
   // Life») que marca les ratllades, els plecs i les taques clares d'una foto vella
   ratllades:{ fitxer:'models/ratllades.onnx', mb:71.8, sessio:null, motorReal:null, errorGPU:null },
@@ -2791,7 +2796,7 @@ async function miraBaixats(){
   try{ await c.delete(urlIA('models/realesr-general-x4v3.onnx')); }catch(e){}
   // l'IS-Net, que feia el fons al mode Ordinador abans del BiRefNet (86 MB)
   try{ await c.delete(urlIA('models/isnet-fp16.onnx')); }catch(e){}
-  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, ...IA.treu.lama.parts, IA.sam.mira, IA.sam.toca, IA.ratllades.fitxer, IA.nitida.fitxer, IA.cares.troba, ...IA.cares.arregla, ...IA.color.parts, IA.fons.models.mobil.fitxer, ...IA.fons.models.ordinador.parts, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
+  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, ...IA.treu.lama.parts, IA.sam.mira, IA.sam.toca, IA.ratllades.fitxer, IA.nitida.fitxer, IA.cares.troba, ...IA.cares.models.codeformer.parts, ...IA.cares.models.gfpgan.parts, ...IA.color.parts, IA.fons.models.mobil.fitxer, ...IA.fons.models.ordinador.parts, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
   for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
 }
 /* Baixa un fitxer gros una sola vegada: després el treu de la memòria del
@@ -3617,19 +3622,20 @@ function construeixIA(){
   ce.append(et,eb);
   // les cares
   const cc=$('#iaCos-cares');
-  cc.appendChild(el('div','tiny','Troba les cares de la foto i les torna nítides, cadascuna al seu lloc.'));
-  const fc=el('div','chips'); fc.id='caresForca'; fc.style.marginTop='8px';
-  [['1','Fort'],['0.7','Mitjà'],['0.45','Suau']].forEach(([v,lab])=>{
-    const c=el('button','chip',lab); c.type='button'; c.id='caresF-'+lab.toLowerCase().replace('à','a');
-    c.setAttribute('aria-pressed',+v===IA.cares.forca?'true':'false');
-    c.onclick=()=>{ IA.cares.forca=+v; fc.querySelectorAll('.chip').forEach(n=>n.setAttribute('aria-pressed',n===c?'true':'false')); };
-    fc.appendChild(c);
+  cc.appendChild(el('div','tiny','Troba les cares de la foto i les torna nítides, cadascuna al seu lloc. Per a les persones que no es veuen bé d\'una foto vella o espatllada.'));
+  const qc=el('div','chips'); qc.id='caresQuin'; qc.style.marginTop='8px';
+  [['codeformer','CodeFormer'],['gfpgan','GFPGAN']].forEach(([v,lab])=>{
+    const c=el('button','chip',lab); c.type='button'; c.id='caresIA-'+v;
+    c.onclick=()=>{ IA.cares.quin=v; pintaOpcCares(); estatCares(); };
+    qc.appendChild(c);
   });
+  const oc=el('div'); oc.id='caresOpc';
   const cb=el('button','btn primary','✦ Arregla les cares'); cb.type='button'; cb.id='cares';
   cb.style.cssText='width:100%;height:36px;justify-content:center;margin-top:8px'; cb.onclick=arreglaCares;
   const ci=el('div','tiny'); ci.id='caresInfo';
   const crr=el('div','tiny'); crr.id='caresRes'; crr.hidden=true;
-  cc.append(fc,cb,ci,crr);
+  cc.append(qc,oc,cb,ci,crr);
+  pintaOpcCares();
   // soroll i borrós
   const cn=$('#iaCos-nitida');
   cn.appendChild(el('div','tiny','Què li passa a la foto?'));
@@ -3695,6 +3701,36 @@ function veuFoto(){ if(innerWidth<=760) $('#stage').scrollIntoView({block:'start
    esvaïda. És el que fa el projecte original (facexlib), sense el model que
    retalla la cara pel contorn: s'enganxa un quadrat amb les vores suaus.
 =================================================================== */
+/* Les opcions de la IA triada: a CodeFormer, el control «més nítida ↔ més
+   semblant» (el seu weight: 0 refà la cara amb el que la IA sap de cares, 1
+   fa més cas de la foto); a GFPGAN, la força (barreja amb l'original). */
+function pintaOpcCares(){
+  const oc=$('#caresOpc'); if(!oc) return;
+  const C=IA.cares, cf=C.quin==='codeformer';
+  document.querySelectorAll('#caresQuin .chip').forEach(n=>n.setAttribute('aria-pressed',n.id==='caresIA-'+C.quin?'true':'false'));
+  oc.textContent='';
+  const qd=el('div','tiny',cf ? 'CodeFormer: la millor per a cares molt borroses, petites o malmeses.' : 'GFPGAN: la d\'abans; va bé amb cares una mica borroses.');
+  qd.style.marginTop='6px'; oc.appendChild(qd);
+  if(cf){
+    const fila=el('div'); fila.style.cssText='display:flex;align-items:center;gap:8px;margin-top:8px';
+    const r=el('input'); r.type='range'; r.id='caresSemb'; r.min='0'; r.max='1'; r.step='0.05'; r.value=String(C.semblanca);
+    r.setAttribute('aria-label','Més nítida o més semblant a la foto');
+    r.style.cssText='flex:1;min-width:0';
+    r.oninput=()=>{ C.semblanca=+r.value; };
+    fila.append(el('span','tiny','Més nítida'), r, el('span','tiny','Més semblant'));
+    oc.appendChild(fila);
+    oc.appendChild(el('div','tiny','Cap a «nítida», la cara queda més clara però més inventada; cap a «semblant», s\'assembla més a la persona de debò.'));
+  } else {
+    const fc=el('div','chips'); fc.id='caresForca'; fc.style.marginTop='8px';
+    [['1','Fort'],['0.7','Mitjà'],['0.45','Suau']].forEach(([v,lab])=>{
+      const c=el('button','chip',lab); c.type='button'; c.id='caresF-'+lab.toLowerCase().replace('à','a');
+      c.setAttribute('aria-pressed',+v===C.forca?'true':'false');
+      c.onclick=()=>{ C.forca=+v; fc.querySelectorAll('.chip').forEach(n=>n.setAttribute('aria-pressed',n===c?'true':'false')); };
+      fc.appendChild(c);
+    });
+    oc.appendChild(fc);
+  }
+}
 const CARA_PLANTILLA=[[192.98138,239.94708],[318.90277,240.1936],[256.63416,314.01935],[201.26117,371.41043],[313.08905,371.15118]];
 function estatCares(){
   const b=$('#cares'), info=$('#caresInfo'); if(!b||!info) return;
@@ -3702,11 +3738,12 @@ function estatCares(){
   const C=IA.cares, falta=[];
   if(IA.motor && !IA.baixats[IA.motors[IA.motor].wasm] && IA.carregat!==IA.motor) falta.push(IA.motors[IA.motor].mb);
   if(!IA.baixats[C.troba] && !C.sTroba) falta.push(C.mbTroba);
-  if(!(C.arregla.every(f=>IA.baixats[f])) && !C.sArregla) falta.push(C.mbArregla);
+  const md=C.models[C.quin];
+  if(!(md.parts.every(f=>IA.baixats[f])) && !(C.sArregla && C.sArreglaDe===C.quin)) falta.push(md.mb);
   const suma=falta.reduce((a,b)=>a+b,0);
   let t=suma ? 'La primera vegada es baixen '+mb(suma)+'.' : 'La IA ja és en aquest aparell.';
-  if(IA.mode==='mobil') t+=' És una IA gran: va millor des de l\'ordinador, i al mòbil pot quedar-se sense memòria.';
-  info.textContent=t+' «Suau» barreja la cara arreglada amb l\'original, que quedi més natural.';
+  if(IA.mode==='mobil' && C.quin==='gfpgan') t+=' És una IA gran: va millor des de l\'ordinador, i al mòbil pot quedar-se sense memòria.';
+  info.textContent=t+(C.quin==='gfpgan'?' «Suau» barreja la cara arreglada amb l\'original, que quedi més natural.':'');
 }
 async function preparaSessioCares(progres){
   const C=IA.cares;
@@ -3714,18 +3751,21 @@ async function preparaSessioCares(progres){
     const b=await baixaIA(C.troba,(a,t)=>progres('la IA que troba les cares',a,t||C.mbTroba*1048576));
     C.sTroba=(await creaSessio(b)).sessio;
   }
+  if(C.sArregla && C.sArreglaDe!==C.quin){   // l'altra: fora, que no ocupi memòria
+    try{ await C.sArregla.release(); }catch(e){} C.sArregla=null; C.sArreglaDe=null;
+  }
   if(!C.sArregla){
-    // els dos trossos, un darrere l'altre, i ajuntats en un de sol
-    const parts=[]; let fet=0;
-    for(const f of C.arregla){
-      parts.push(await baixaIA(f,(a,t)=>progres('la IA de les cares',fet+a,C.mbArregla*1048576)));
+    // els trossos, un darrere l'altre, i ajuntats en un de sol
+    const md=C.models[C.quin], parts=[]; let fet=0;
+    for(const f of md.parts){
+      parts.push(await baixaIA(f,(a,t)=>progres('la IA de les cares ('+md.nom+')',fet+a,md.mb*1048576)));
       fet+=parts[parts.length-1].length;
     }
     const tot=new Uint8Array(fet); let o=0; for(const p of parts){ tot.set(p,o); o+=p.length; }
     parts.length=0;
     progres('preparant el model',0,0);
     const r=await creaSessio(tot);
-    C.sArregla=r.sessio; C.motorReal=r.motorReal;
+    C.sArregla=r.sessio; C.sArreglaDe=C.quin; C.motorReal=r.motorReal;
   }
 }
 
@@ -3793,7 +3833,7 @@ function mascaraCara(){
   }
   return MASCARA_CARA=m;
 }
-async function arreglaUnaCara(feina, cara, forca){
+async function arreglaUnaCara(feina, cara, forca, fidel){
   const T=semblanca(cara.punts, CARA_PLANTILLA);
   // la cara, dreta i a 512 (fora de la foto, el gris que hi posa el projecte)
   const fc=mkCanvas(512,512), fx=fc.getContext('2d',{willReadFrequently:true});
@@ -3805,7 +3845,10 @@ async function arreglaUnaCara(feina, cara, forca){
   const im=fx.getImageData(0,0,512,512), d=im.data, P=512*512, e=new Float32Array(3*P);
   for(let i=0,j=0;i<P;i++,j+=4){ e[i]=d[j]/127.5-1; e[P+i]=d[j+1]/127.5-1; e[2*P+i]=d[j+2]/127.5-1; }
   const s=IA.cares.sArregla;
-  const res=await s.run({[s.inputNames[0]]: new ort.Tensor('float32',e,[1,3,512,512])});
+  const entra={[s.inputNames[0]]: new ort.Tensor('float32',e,[1,3,512,512])};
+  // CodeFormer: el control «més nítida ↔ més semblant»
+  if(s.inputNames.includes('weight')) entra.weight=new ort.Tensor('float32',new Float32Array([fidel]),[]);
+  const res=await s.run(entra);
   const sortida=res[s.outputNames[0]], y=sortida.data, mk=mascaraCara();
   for(let i=0,j=0;i<P;i++,j+=4){
     d[j]=(clamp(y[i],-1,1)+1)*127.5; d[j+1]=(clamp(y[P+i],-1,1)+1)*127.5; d[j+2]=(clamp(y[2*P+i],-1,1)+1)*127.5;
@@ -3840,22 +3883,23 @@ async function arreglaCares(){
     vel('Buscant cares…',0,'');
     const cares=await trobaCares(baseCanvas);
     if(!cares.length){ say('No he trobat cap cara prou clara. Va millor amb cares de cara, no de perfil, i que no siguin molt petites.'); return; }
-    const feina=mkCanvas(baseCanvas.width,baseCanvas.height);
+    const feina=mkCanvas(baseCanvas.width,baseCanvas.height), cf=IA.cares.quin==='codeformer';
     feina.getContext('2d').drawImage(baseCanvas,0,0);
     for(let i=0;i<cares.length;i++){
       vel('Arreglant les cares…',i/cares.length,'Cara '+(i+1)+' de '+cares.length+(IA.cares.motorReal==='gpu'?' · amb la gràfica':' · amb el processador, pot trigar'));
       await new Promise(r=>setTimeout(r,20));
-      await arreglaUnaCara(feina, cares[i], IA.cares.forca);
+      await arreglaUnaCara(feina, cares[i], cf ? 1 : IA.cares.forca, IA.cares.semblanca);
       if(IA.atura) throw new Error('aturat');
     }
     // com quan s'esborra o s'amplia, la foto nova passa a ser la foto
     S.src=feina; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
     buildBase(); scheduleRender();
-    push('Arregla les cares ('+cares.length+')');
+    push('Arregla les cares ('+cares.length+(cf?' · CodeFormer':'')+')');
     const temps=minuts((performance.now()-t0)/1000);
     const r=$('#caresRes');
     if(r){ r.hidden=false; r.textContent='✓ '+(cares.length===1?'Una cara arreglada':cares.length+' cares arreglades')+' en '+temps+', '+(IA.cares.motorReal==='gpu'?'amb la gràfica':'amb el processador')+
-      '. Si queda massa perfecta, desfés-ho i prova «Suau».'; }
+      (cf ? '. Si queda massa inventada, desfés-ho i mou el control cap a «Més semblant»; si encara és borrosa, cap a «Més nítida».'
+          : '. Si queda massa perfecta, desfés-ho i prova «Suau».'); }
     say((cares.length===1?'Una cara arreglada':cares.length+' cares arreglades')+' en '+temps+'.');
   }catch(e){
     const msg=String(e&&e.message||e);

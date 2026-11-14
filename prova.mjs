@@ -1177,6 +1177,8 @@ await p.close();
     const abansC = problemes.length;
     const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
     vigila(q, 'cares');
+    const demanatsC = [];
+    q.on('request', r => { const m = r.url().match(/(codeformer|cares-arregla)[^/]*$/); if (m) demanatsC.push(m[0]); });
     await q.goto(BASE);
     await q.waitForTimeout(1500);
     const dibuix = await q.evaluate(() => {
@@ -1202,8 +1204,12 @@ await p.close();
     });
     const original = Buffer.from(dibuix.split(',')[1], 'base64');
     const obre = async () => { await q.setInputFiles('#file', { name: 'cara.png', mimeType: 'image/png', buffer: original }); await q.waitForTimeout(600); };
-    const arregla = async forca => {
-      await obreTargeta(q, 'cares'); await q.click('#caresF-' + forca); await q.click('#cares');
+    // ia: 'codeformer' (amb semb, de 0 a 1) o 'gfpgan' (amb la força)
+    const arregla = async (ia, opc) => {
+      await obreTargeta(q, 'cares'); await q.click('#caresIA-' + ia);
+      if (ia === 'gfpgan') await q.click('#caresF-' + opc);
+      else await q.evaluate(v => { const r = document.querySelector('#caresSemb'); r.value = String(v); r.dispatchEvent(new Event('input')); }, opc);
+      await q.click('#cares');
       await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 600000 });
       await q.waitForTimeout(300);
     };
@@ -1226,28 +1232,48 @@ await p.close();
 
     await obre();
     if (!(await q.locator('#caresInfo').innerText()).includes('MB')) problemes.push('el botó de les cares no diu quant es baixa la primera vegada');
-    await arregla('fort');
-    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Arregla les cares (1)')) problemes.push('arreglar les cares no surt a l\'historial amb 1 cara: ' + (await q.locator('.hitem span').allInnerTexts()).join(' · '));
+    // de partida, CodeFormer, amb el control al mig
+    await obreTargeta(q, 'cares');
+    if (await q.getAttribute('#caresIA-codeformer', 'aria-pressed') !== 'true' || !await q.locator('#caresSemb').isVisible()) problemes.push('a les cares, de partida no hi ha CodeFormer triat amb el seu control');
+    await arregla('codeformer', 0.5);
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Arregla les cares (1 · CodeFormer)')) problemes.push('arreglar les cares amb CodeFormer no surt a l\'historial amb 1 cara: ' + (await q.locator('.hitem span').allInnerTexts()).join(' · '));
+    if (demanatsC.sort().join() !== 'codeformer-q8.onnx.1,codeformer-q8.onnx.2') problemes.push('CodeFormer no s\'ha baixat en els seus dos trossos: ' + demanatsC);
     const cara = await mira([170, 150, 140, 170]), fora = await mira([540, 40, 160, 160]);
     if (!(cara.nit > cara.nit0 * 1.3)) problemes.push(`la cara arreglada no és més nítida (${cara.nit.toFixed(2)} contra ${cara.nit0.toFixed(2)})`);
     if (fora.max > 0) problemes.push(`arreglant la cara ha canviat el quadre de la paret, lluny de la cara (${fora.max})`);
     // els ulls continuen on eren (si la cara es tornés a un altre lloc, no hi serien)
     for (const ex of [200, 280]) { const v = await ull(ex, 207); if (v > 110) problemes.push(`després d'arreglar la cara, l'ull de ${ex},207 ja no hi és (lluminositat ${v.toFixed(0)})`); }
     if (!(await q.locator('#caresRes').innerText()).includes('amb el processador')) problemes.push('després d\'arreglar les cares no diu amb què s\'ha fet');
-    const difFort = cara.dif;
     await q.click('#btnUndo'); await q.waitForTimeout(300);
     if ((await mira([170, 150, 140, 170])).max > 0) problemes.push('desfer no torna la cara d\'abans');
-    await arregla('suau');
+    // «més semblant» ha de canviar la cara menys que «més nítida», i no s'ha de
+    // tornar a baixar res
+    await arregla('codeformer', 0);
+    const nitida = await mira([170, 150, 140, 170]);
+    await q.click('#btnUndo'); await q.waitForTimeout(300);
+    await arregla('codeformer', 1);
+    const semblant = await mira([170, 150, 140, 170]);
+    if (!(semblant.dif < nitida.dif * 0.85)) problemes.push(`a CodeFormer, «més semblant» canvia la cara tant com «més nítida» (${semblant.dif.toFixed(1)} contra ${nitida.dif.toFixed(1)})`);
+    if (demanatsC.length !== 2) problemes.push('CodeFormer s\'ha tornat a baixar: ' + demanatsC);
+    await q.click('#btnUndo'); await q.waitForTimeout(300);
+    // GFPGAN, la d'abans: «Suau» menys que «Fort»
+    await arregla('gfpgan', 'fort');
+    const fort = await mira([170, 150, 140, 170]);
+    if (!(fort.nit > fort.nit0 * 1.3)) problemes.push(`la cara arreglada amb GFPGAN no és més nítida (${fort.nit.toFixed(2)} contra ${fort.nit0.toFixed(2)})`);
+    if (!(await q.locator('.hitem span').allInnerTexts()).includes('Arregla les cares (1)')) problemes.push('arreglar les cares amb GFPGAN no surt a l\'historial');
+    const difFort = fort.dif;
+    await q.click('#btnUndo'); await q.waitForTimeout(300);
+    await arregla('gfpgan', 'suau');
     const suau = await mira([170, 150, 140, 170]);
     if (!(suau.dif < difFort * 0.75)) problemes.push(`«Suau» canvia la cara tant com «Fort» (${suau.dif.toFixed(1)} contra ${difFort.toFixed(1)})`);
     // una foto sense cares (la d'exemple): ho diu i no hi toca
     await q.setInputFiles('#file', { name: 'paisatge.png', mimeType: 'image/png', buffer: Buffer.from((await q.evaluate(() => { const c = document.createElement('canvas'); c.width = 400; c.height = 300;
       const x = c.getContext('2d'); const g = x.createLinearGradient(0, 0, 0, 300); g.addColorStop(0, '#5b8fd0'); g.addColorStop(1, '#3a5a2a'); x.fillStyle = g; x.fillRect(0, 0, 400, 300); return c.toDataURL('image/png'); })).split(',')[1], 'base64') });
     await q.waitForTimeout(500);
-    await arregla('fort');
+    await arregla('codeformer', 0.5);
     if (!(await q.locator('#stMsg').innerText()).includes('No he trobat cap cara') || (await q.locator('.hitem span').allInnerTexts()).length !== 1)
       problemes.push('en una foto sense cares, no diu que no n\'ha trobat cap o hi ha tocat');
-    console.log(`${problemes.length > abansC ? '✗' : '✓'} arreglar les cares (pel processador): troba la cara dibuixada, nitidesa de ${cara.nit0.toFixed(1)} a ${cara.nit.toFixed(1)}, els ulls al seu lloc, la resta igual, «Suau» menys que «Fort», sense cares ho diu, i desfer`);
+    console.log(`${problemes.length > abansC ? '✗' : '✓'} arreglar les cares (pel processador): troba la cara dibuixada, CodeFormer (nitidesa de ${cara.nit0.toFixed(1)} a ${cara.nit.toFixed(1)}; «semblant» canvia ${semblant.dif.toFixed(1)} i «nítida» ${nitida.dif.toFixed(1)}), GFPGAN («Suau» menys que «Fort»), els ulls al seu lloc, la resta igual, sense cares ho diu, i desfer`);
     await q.close();
   }
 

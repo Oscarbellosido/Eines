@@ -136,6 +136,43 @@ Entrades: RetinaFace, la foto en BGR menys (104, 117, 123), amb els costats
 múltiples de 32; GFPGAN, la cara alineada amb els cinc punts a la plantilla de
 512 de facexlib, en RGB de −1 a 1.
 
+### `models/codeformer-q8.onnx.1` i `.2` — les cares molt malmeses
+
+**CodeFormer** (Shangchen Zhou, Kelvin C. K. Chan, Chongyi Li i Chen Change
+Loy, S-Lab de la NTU de Singapur), https://github.com/sczhou/CodeFormer. És la
+IA de partida de la targeta «Cares»: va millor que GFPGAN amb les cares molt
+borroses, petites o malmeses, i té un control (`weight`, de 0 a 1) entre «més
+nítida» i «més semblant» a la foto.
+
+**La llicència és la S-Lab License 1.0** (`models/LICENSE-CODEFORMER`, tal com
+la publiquen): **només permet l'ús no comercial**, i qui redistribueix el
+model n'ha de portar l'avís de drets i la llicència. La Cambra Fosca és
+gratuïta i no comercial; si mai s'hagués de fer servir per a res de pagament,
+caldria demanar-ho als autors.
+
+El projecte només publica els pesos en PyTorch (`codeformer.pth`, v0.1.0).
+Es parteix de la conversió a ONNX que publica FaceFusion a GitHub, com amb el
+color:
+
+```
+21710e7ab61c82683576c428e9c1b6fe1ed419586b7b39e394c3449c294b550f  codeformer.onnx  (facefusion-assets, models-3.0.0)
+1009e537e0c2a07d4cabce6355f53cb66767cd4b4297ec7a4a64ca4b8a5684b7  codeformer.pth   (CodeFormer v0.1.0, per comparar)
+```
+
+Comparats amb el `codeformer.pth` del projecte, els 332 pesos que porten el
+mateix nom als dos fitxers són idèntics (la resta, l'exportació els canvia el
+nom).
+
+**Canvis** (`conversio/fes_codeformer.py`): es calcula d'avançada el que no
+depèn de la cara; la tria del codi del diccionari (TopK i ScatterElements, que
+la gràfica no sap fer) es fa amb ArgMax i Gather, que dona exactament el
+mateix; `weight` passa de double a float32; només es deixa la sortida de la
+cara; els pesos es desen amb 8 bits (de 377 MB a 91; la cara surt a 1 o 2
+nivells de 255 de diferència de l'original), i es parteix en dos trossos.
+
+Entrades: la cara alineada com la de GFPGAN (la mateixa plantilla), en RGB de
+−1 a 1, i `weight`; sortida, la cara de −1 a 1.
+
 ### `models/soroll.onnx` — treure el soroll i el gra
 
 És **SCUNet**, de Kai Zhang i altres (ETH Zuric), https://github.com/cszn/SCUNet,

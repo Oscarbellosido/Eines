@@ -19,7 +19,7 @@ són les IA de La Cambra Fosca: el motor és a la carpeta `ia/` i els models, a
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares), treu el soroll, posa color, esborra coses, treu el fons i amplia fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares, encara que estiguin molt malmeses), treu el soroll, posa color, esborra coses, treu el fons i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -252,7 +252,7 @@ jocs): 10 GB gratis, i les baixades no es paguen mai.
   "compatibility_date":"2025-06-01","bindings":[{"type":"r2_bucket",
   "name":"MODELS","bucket_name":"eines-models"}]}`) i el fitxer.
 - **Què costa**: res mentre no es passi de 10 GB d'espai, 10 milions de
-  lectures al mes a R2 i 100.000 peticions al dia al Worker. Ara hi ha 1,05 GB
+  lectures al mes a R2 i 100.000 peticions al dia al Worker. Ara hi ha 1,14 GB
   (l'IS-Net, que ja no es fa servir, encara hi és: 86 MB).
 
 ## La Cambra Fosca: els menús
@@ -379,6 +379,36 @@ malmeses quedin nítides. Dues xarxes, convertides per
 - Sense gràfica, al contenidor tres cares triguen uns 45 segons comptant la
   preparació. Es va comprovar amb fotos de prova del projecte GFPGAN (no són
   al repositori): les cares surten nítides i al seu lloc.
+
+**CodeFormer, per a les cares molt malmeses.** L'usuari va demanar una IA per
+a les persones que no es veuen bé d'una foto vella o espatllada, i va triar
+CodeFormer d'una llista. Ara és **la de partida** de la targeta «Cares», i
+GFPGAN queda com a segona opció (`IA.cares.quin`, dues fitxes, CodeFormer i
+GFPGAN). Troba i posa dretes les cares igual (la mateixa plantilla), i només
+canvia la xarxa que les arregla.
+
+- **Va millor amb les cares molt borroses, petites o malmeses**, i té un
+  control que GFPGAN no té: **«Més nítida ↔ Més semblant»** (`semblanca`, el
+  seu `weight`, de 0 a 1, 0,5 de partida). Cap a «nítida» refà la cara amb el
+  que sap de cares (més clara, més inventada); cap a «semblant» fa més cas de
+  la foto. Amb CodeFormer no hi ha «Fort / Mitjà / Suau»: el control ja en fa
+  la feina.
+- **91 MB amb els pesos en 8 bits** (`codeformer-q8`, dos trossos; el segon,
+  petit), tant per al mòbil com per a l'ordinador. A la memòria també 91. Al
+  contenidor, uns 3 segons per cara amb quatre fils.
+- **Es parteix de la conversió de FaceFusion** (els pesos són els del
+  projecte: s'han comparat). `ia/conversio/fes_codeformer.py` hi canvia les
+  dues peces que la gràfica no sap fer (TopK i ScatterElements, la tria del
+  codi del diccionari) per ArgMax i Gather, que donen el mateix, i el `weight`
+  de double a float32.
+- **Una sola IA de les cares a la memòria**: en canviar de CodeFormer a GFPGAN
+  (o al revés), la sessió de l'altra es deixa anar (`sArreglaDe`).
+- **La llicència és només per a ús no comercial** (S-Lab 1.0), com la part de
+  StyleGAN2 de GFPGAN: la web és gratuïta i no hi ha problema.
+- **Compte amb els noms**: `semblanca` ja era la funció que calcula el gir de
+  la cara; el paràmetre del control, a `arreglaUnaCara`, es diu `fidel`. Amb
+  el mateix nom, la funció quedava tapada i CodeFormer fallava (la prova ho
+  va trobar).
 
 ## La Cambra Fosca: soroll i borrós
 
@@ -988,9 +1018,13 @@ pàgines amb un navegador de debò i comprova:
   una cara dibuixada i borrosa (no es fa servir la foto de ningú; RetinaFace
   la veu segura al 99%), que la trobi i la torni més nítida, que els ulls
   continuïn on eren, que la resta de la foto no canviï, que desfer la torni,
-  que «Suau» la canviï menys que «Fort», i que en una foto sense cares ho
-  digui i no hi toqui. Es va comprovar que falla tornant la cara amb el gir
-  d'anada, sense la força o amb els cinc punts mal descodificats;
+  i que en una foto sense cares ho digui i no hi toqui. Amb CodeFormer (la de
+  partida): que es baixi en els seus dos trossos i surti a l'historial, que
+  «més semblant» canviï la cara menys que «més nítida» i que la segona vegada
+  no es baixi res; amb GFPGAN, que «Suau» la canviï menys que «Fort». Es va
+  comprovar que falla tornant la cara amb el gir d'anada, sense la força, amb
+  els cinc punts mal descodificats o si el control de CodeFormer no arriba a
+  la IA;
 - **la pestanya Mida**: que Desa ja no tingui la mida i digui on és; que la
   resolució sola no canviï els punts (i desfer la torni); que en mm la foto
   faci els que toca a 300 ppp, que posant 300 mm d'ample l'alt surti
