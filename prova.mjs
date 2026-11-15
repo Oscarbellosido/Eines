@@ -19,7 +19,7 @@ const MIDES = [320, 360, 390, 768, 1280];
 // Per provar només unes parts (la prova sencera triga uns 25 minuts):
 //   node prova.mjs cares fons
 // Les parts: retall, tampo, arregla, amplia, esborra, ratllades, cares, fons,
-// antiga, color, cloudflare, soroll, continua, app, revisio, visites. La portada i el bàsic de
+// antiga, baixades, color, cloudflare, soroll, extres, continua, app, revisio, visites. La portada i el bàsic de
 // la Cambra Fosca es proven sempre. Abans de desar un canvi, la sencera.
 const NOMES = process.argv.slice(2);
 const vol = n => !NOMES.length || NOMES.includes(n);
@@ -985,7 +985,7 @@ if (vol('arregla')) {
       const passosAbans = (await q.locator('.hitem span').allInnerTexts()).length;
       const b = await q.locator('#btnAbans').boundingBox(), x = b.x + b.width / 2, y = b.y + b.height / 2;
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
-      await q.waitForTimeout(250);
+      await q.waitForTimeout(500);       // (menys de 300 ms seria un toc, que posa la cortina)
       if ((await mira([290, 260, 50, 100])).m[0] < 180 || !await q.locator('#etAbans').isVisible()) problemes.push('mantenint premut «Abans» no es veu la foto com era');
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       await q.waitForTimeout(250);
@@ -1604,6 +1604,43 @@ if (vol('arregla')) {
     await q.close();
   }
 
+  // ------------------------------------- les IA baixades: quant ocupen, i esborrar-les
+  if (vol('baixades')) {
+    const abansB = problemes.length;
+    const q = await navegador.newPage({ viewport: { width: 320, height: 700 }, hasTouch: true, isMobile: true });
+    vigila(q, 'baixades');
+    const demanats = []; q.on('request', r => { if (/u2netp\.onnx/.test(r.url())) demanats.push(1); });
+    await q.goto(BASE); await q.waitForTimeout(1500);
+    await q.click('#tab-ia'); await q.waitForTimeout(300);
+    if (!await q.locator('#baixadesBuit').count()) problemes.push('sense cap IA baixada, la llista no diu que no n\'hi ha cap');
+    const fons = async () => { await obreTargeta(q, 'fons'); await q.click('#iaMode-mobil'); await q.click('#fonsD-blanc'); await q.click('#fonsGo');
+      await q.waitForFunction(() => !document.querySelector('#vel').hidden, null, { timeout: 5000 }).catch(() => {});
+      await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 }); await q.waitForTimeout(400); };
+    await fons();
+    const files = () => q.evaluate(() => [...document.querySelectorAll('#baixadesLlista .baixada')].map(f => f.firstChild.textContent));
+    const f1 = await files();
+    if (f1.join('|') !== 'El motor (amb el processador)|Fons · Mòbil') problemes.push('després de treure un fons, la llista de baixades no té el motor i la IA del fons: ' + f1.join('|'));
+    if (!/Ocupen 19 MB/.test(await q.locator('#baixadesTotal').innerText().catch(() => ''))) problemes.push('la llista de baixades no diu quant ocupen (19 MB): ' + await q.locator('#baixadesTotal').innerText().catch(() => ''));
+    { const r = await q.evaluate(() => { const g = document.querySelector('#iaBaixades').getBoundingClientRect(); return { sw: document.documentElement.scrollWidth, dins: [...document.querySelectorAll('#iaBaixades button')].every(b => { const x = b.getBoundingClientRect(); return x.left >= g.left - 0.5 && x.right <= g.right + 0.5; }) }; });
+      if (r.sw > 320 || !r.dins) problemes.push('a 320 px, la llista de baixades no hi cap: ' + JSON.stringify(r)); }
+    // s'esborra la del fons: surt de la llista, ja no és a la memòria del navegador, i la targeta torna a dir que es baixa
+    await q.locator('#baixadesLlista .baixada', { hasText: 'Fons' }).locator('button').click(); await q.waitForTimeout(500);
+    if ((await files()).join('|') !== 'El motor (amb el processador)') problemes.push('esborrant la IA del fons, no surt de la llista: ' + (await files()).join('|'));
+    if (await q.evaluate(async () => { for (const k of await caches.keys()) for (const r of await (await caches.open(k)).keys()) if (/u2netp/.test(r.url)) return true; return false; })) problemes.push('esborrant la IA del fons, es queda a la memòria del navegador');
+    // totes: demana dos tocs
+    await q.click('#baixadesTotes'); await q.waitForTimeout(300);
+    if (!(await q.locator('#baixadesTotes').innerText()).includes('Segur') || !(await files()).length) problemes.push('«Esborra-les totes» no pregunta abans');
+    await q.click('#baixadesTotes'); await q.waitForTimeout(500);
+    if (!await q.locator('#baixadesBuit').count()) problemes.push('«Esborra-les totes» (dos tocs) no les esborra');
+    // i tornant a obrir la pàgina i fent-la servir, es torna a baixar i a apuntar
+    // (sense tornar a obrir, encara és carregada i no cal baixar res)
+    await q.reload(); await q.waitForTimeout(1500); const n0 = demanats.length;
+    await fons();
+    if (demanats.length !== n0 + 1 || !(await files()).includes('Fons · Mòbil')) problemes.push('després d\'esborrar-la, la IA del fons no es torna a baixar o no torna a la llista');
+    console.log(`${problemes.length > abansB ? '✗' : '✓'} les IA baixades: la llista amb el que ocupen, esborrar-ne una, esborrar-les totes (dos tocs), tornar-la a baixar, i a 320 px`);
+    await q.close();
+  }
+
   // ------------------------------------- els models es baixen de Cloudflare
   // A internet, els models no són a GitHub sinó a Cloudflare R2, i els
   // entrega el Worker «eines-ia». Aquí es fa veure que la web és a internet
@@ -1722,6 +1759,95 @@ if (vol('arregla')) {
     await q.close();
   }
   servidor.close();
+}
+
+// ------------------------------- la Cambra Fosca: la cortina, compartir i les fotos enormes
+if (vol('extres')) {
+  const abansX = problemes.length;
+  // ---- la cortina d'abans i després: un toc a «Abans» la posa, i la ratlla s'arrossega
+  const q = await navegador.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+  vigila(q, 'extres');
+  await q.goto(fitxer('cambra-fosca.html'));
+  await q.waitForTimeout(1500);
+  const dades = await q.evaluate(() => { const c = document.createElement('canvas'); c.width = 800; c.height = 600; const x = c.getContext('2d');
+    x.fillStyle = '#2060c0'; x.fillRect(0, 0, 800, 600); return c.toDataURL('image/png'); });
+  const blava = Buffer.from(dades.split(',')[1], 'base64');
+  await q.setInputFiles('#file', { name: 'blava.png', mimeType: 'image/png', buffer: blava });
+  await q.waitForTimeout(600);
+  // en blanc i negre, que es vegi la diferència: abans blau, ara gris
+  await q.click('#tab-fil'); await q.waitForTimeout(500); await q.click('#fc-bn'); await q.waitForTimeout(500);
+  const punt = fx => q.evaluate(fx => { const v = document.querySelector('#view'); return [...v.getContext('2d').getImageData(Math.round(v.width * fx), Math.round(v.height / 2), 1, 1).data]; }, fx);
+  const esBlau = c => c[2] - c[0] > 60;
+  if (esBlau(await punt(0.25))) problemes.push('la prova de la cortina no pot començar: el filtre no ha tret el blau');
+  const passos0 = (await q.locator('.hitem span').allInnerTexts()).length;
+  await q.click('#btnAbans'); await q.waitForTimeout(400);
+  if (!await q.locator('#cortina').isVisible() || !await q.locator('#etAra').isVisible() || !await q.locator('#etAbans').isVisible()) problemes.push('un toc a «Abans» no posa la cortina amb els rètols ABANS i ARA');
+  if (!esBlau(await punt(0.25)) || esBlau(await punt(0.75))) problemes.push(`amb la cortina al mig, l'esquerra no és la foto d'abans o la dreta no és la d'ara (${await punt(0.25)} · ${await punt(0.75)})`);
+  // s'arrossega la ratlla cap a l'esquerra, fins a un quart
+  { const c = await q.locator('#cortina').boundingBox(), v = await q.locator('#view').boundingBox();
+    await q.mouse.move(c.x + c.width / 2, c.y + c.height / 2); await q.mouse.down();
+    await q.mouse.move(v.x + v.width * 0.25, c.y + c.height / 2, { steps: 8 }); await q.mouse.up(); await q.waitForTimeout(300); }
+  if (!esBlau(await punt(0.12)) || esBlau(await punt(0.40))) problemes.push(`arrossegant la ratlla fins a un quart, la cortina no s'ha mogut (${await punt(0.12)} · ${await punt(0.40)})`);
+  if ((await q.locator('.hitem span').allInnerTexts()).length !== passos0) problemes.push('la cortina ha apuntat alguna cosa a l\'historial');
+  // el fitxer desat no porta la cortina
+  { await q.click('#btnSave'); await q.waitForTimeout(300);
+    if (await q.locator('#expComparteix').count()) problemes.push('on el navegador no sap compartir, surt el botó «Comparteix»');
+    const [baixada] = await Promise.all([q.waitForEvent('download'), q.locator('.dlg footer .primary').click()]);
+    const png = (await import('fs')).readFileSync(await baixada.path()).toString('base64');
+    const c = await q.evaluate(async b => { const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = 'data:image/png;base64,' + b; });
+      const k = document.createElement('canvas'); k.width = i.width; k.height = i.height; const x = k.getContext('2d'); x.drawImage(i, 0, 0); return [...x.getImageData(40, 300, 1, 1).data]; }, png);
+    if (esBlau(c)) problemes.push('la cortina surt al fitxer desat'); await q.waitForTimeout(300); }
+  // un altre toc la treu
+  await q.click('#btnAbans'); await q.waitForTimeout(400);
+  if (await q.locator('#cortina').isVisible() || await q.locator('#etAra').isVisible() || esBlau(await punt(0.12))) problemes.push('un altre toc a «Abans» no treu la cortina');
+  // girada de costat ja no fa la mateixa forma: no es posa, i ho diu
+  await q.keyboard.press('c'); await q.waitForTimeout(300);
+  await q.locator('#opts button', { hasText: /90|Gira/ }).first().click(); await q.waitForTimeout(400);
+  await q.keyboard.press('v'); await q.waitForTimeout(200);
+  if ((await q.locator('#stDims').innerText()).startsWith('600')) {
+    await q.click('#btnAbans'); await q.waitForTimeout(400);
+    if (await q.locator('#cortina').isVisible() || !(await q.locator('#stMsg').innerText()).includes('mantén premut')) problemes.push('amb la foto girada de costat, la cortina es posa igualment o no diu què fer: ' + await q.locator('#stMsg').innerText());
+  } else problemes.push('la prova de la cortina no ha pogut girar la foto: ' + await q.locator('#stDims').innerText());
+  await q.close();
+
+  // ---- compartir: on el navegador en sap (aquí se'n fa veure), surt el botó i comparteix el fitxer
+  const ctxC = await navegador.newContext({ viewport: { width: 320, height: 700 }, hasTouch: true, isMobile: true });
+  await ctxC.addInitScript(() => { window.__compartit = []; navigator.canShare = d => !!(d && d.files && d.files.length);
+    navigator.share = async d => { window.__compartit.push(...d.files.map(f => ({ nom: f.name, tipus: f.type, mida: f.size }))); }; });
+  const c = await ctxC.newPage(); vigila(c, 'compartir');
+  await c.goto(fitxer('cambra-fosca.html')); await c.waitForTimeout(1500);
+  await c.setInputFiles('#file', { name: 'blava.png', mimeType: 'image/png', buffer: blava }); await c.waitForTimeout(600);
+  await c.click('#btnSave'); await c.waitForTimeout(300);
+  if (!await c.locator('#expComparteix').isVisible()) problemes.push('on el navegador sap compartir, no surt el botó «Comparteix»');
+  else {
+    const r = await c.evaluate(() => { const p = document.querySelector('.dlg footer').getBoundingClientRect(); return [...document.querySelectorAll('.dlg footer button')].every(b => { const x = b.getBoundingClientRect(); return x.left >= p.left - 0.5 && x.right <= p.right + 0.5 && x.height >= 28; }) && document.documentElement.scrollWidth <= 320; });
+    if (!r) problemes.push('a 320 px, els tres botons del quadre de Desa no hi caben');
+    await c.locator('.dlg .chip', { hasText: 'JPG' }).click();
+    await c.click('#expComparteix'); await c.waitForTimeout(1200);
+    const f = await c.evaluate(() => window.__compartit);
+    if (f.length !== 1 || f[0].nom !== 'blava-retocada.jpg' || f[0].tipus !== 'image/jpeg' || !(f[0].mida > 500)) problemes.push('«Comparteix» no ha compartit el fitxer que tocava: ' + JSON.stringify(f));
+    if (await c.locator('.dlg').count()) problemes.push('després de compartir, el quadre de Desa no es tanca');
+  }
+  // ---- les fotos enormes (aquí, un mòbil: el límit són 16 megapíxels)
+  const gran = Buffer.from((await c.evaluate(() => { const k = document.createElement('canvas'); k.width = 5000; k.height = 4000; const x = k.getContext('2d'); x.fillStyle = '#7a5'; x.fillRect(0, 0, 5000, 4000); return k.toDataURL('image/png'); })).split(',')[1], 'base64');
+  if (!await c.evaluate(() => matchMedia('(pointer:coarse)').matches)) problemes.push('la prova de les fotos enormes no fa veure bé un mòbil');
+  await c.setInputFiles('#file', { name: 'enorme.png', mimeType: 'image/png', buffer: gran }); await c.waitForTimeout(1500);
+  const t = await c.locator('#granText').innerText().catch(() => '');
+  if (!t.includes('5000 × 4000') || !t.includes('20 megapíxels') || !t.includes('4472 × 3578')) problemes.push('obrint una foto de 20 megapíxels al mòbil, no avisa ni diu a quina mida l\'obriria: ' + t);
+  if ((await c.locator('#stDims').innerText()).startsWith('5000')) problemes.push('la foto enorme s\'obre abans de preguntar');
+  { const r = await c.evaluate(() => { const g = document.querySelector('#granSencera'), o = document.querySelector('.dlg footer .primary'); if (!g || !o) return null; return { petit: g.getBoundingClientRect().height < o.getBoundingClientRect().height && parseFloat(getComputedStyle(g).fontSize) < parseFloat(getComputedStyle(o).fontSize) && !g.closest('footer'), cap: document.documentElement.scrollWidth <= 320 }; });
+    if (!r || !r.petit || !r.cap) problemes.push('al quadre de la foto enorme, «sencera igualment» no és el botó petit o no hi cap a 320 px: ' + JSON.stringify(r)); }
+  await c.locator('.dlg footer .primary').click(); await c.waitForTimeout(1500);
+  if (await c.locator('#stDims').innerText() !== '4472 × 3578 px') problemes.push('«Obre-la més petita» no la deixa a 16 megapíxels: ' + await c.locator('#stDims').innerText());
+  await c.setInputFiles('#file', { name: 'enorme.png', mimeType: 'image/png', buffer: gran }); await c.waitForTimeout(1500);
+  await c.click('#granSencera').catch(() => problemes.push('no hi ha el botó d\'obrir-la sencera')); await c.waitForTimeout(1500);
+  if (await c.locator('#stDims').innerText() !== '5000 × 4000 px') problemes.push('«Obre-la sencera igualment» no l\'obre sencera: ' + await c.locator('#stDims').innerText());
+  // una de normal (12 megapíxels) s'obre sense preguntar
+  const normal = Buffer.from((await c.evaluate(() => { const k = document.createElement('canvas'); k.width = 4000; k.height = 3000; const x = k.getContext('2d'); x.fillStyle = '#a75'; x.fillRect(0, 0, 4000, 3000); return k.toDataURL('image/png'); })).split(',')[1], 'base64');
+  await c.setInputFiles('#file', { name: 'normal.png', mimeType: 'image/png', buffer: normal }); await c.waitForTimeout(1500);
+  if (await c.locator('.dlg').count() || await c.locator('#stDims').innerText() !== '4000 × 3000 px') problemes.push('una foto de 12 megapíxels no s\'obre directament');
+  await ctxC.close();
+  console.log(`${problemes.length > abansX ? '✗' : '✓'} la cortina d'abans i després (un toc, arrossegar, no es desa, girada no), compartir (on se'n sap, a 320 px) i les fotos enormes (avisa, més petita, sencera, i les normals sense preguntar)`);
 }
 
 // ------------------------------- la Cambra Fosca: la feina es desa sola

@@ -383,6 +383,24 @@ select{
   background:rgba(0,0,0,.7);color:#fff;font:600 11px var(--font-mono);letter-spacing:.1em;
 }
 #etAbans[hidden]{display:none}
+/* la cortina d'abans i després: una ratlla que s'arrossega */
+#etAra{
+  position:absolute;right:8px;top:8px;z-index:5;padding:3px 8px;border-radius:5px;pointer-events:none;
+  background:rgba(0,0,0,.7);color:#fff;font:600 11px var(--font-mono);letter-spacing:.1em;
+}
+#etAra[hidden]{display:none}
+#cortina{
+  position:absolute;top:0;bottom:0;width:44px;margin-left:-22px;z-index:6;display:none;
+  touch-action:none;cursor:ew-resize;-webkit-user-select:none;user-select:none;
+}
+#cortina.on{display:block}
+#cortina::before{content:"";position:absolute;left:21px;top:0;bottom:0;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+#cortina i{
+  position:absolute;left:4px;top:50%;width:36px;height:36px;margin-top:-18px;border-radius:50%;
+  background:#fff;color:#1b1c1e;box-shadow:0 2px 10px rgba(0,0,0,.55);display:grid;place-items:center;
+  font:700 15px/1 var(--font-mono);font-style:normal;letter-spacing:-.05em;
+}
+#btnAbans.cortina{background:var(--accent-wash);color:var(--accent);border-color:rgba(240,163,60,.5)}
 
 /* «Esborra-ho», surant a sota de la pantalla del mòbil: allà les opcions de
    l'eina queden sota la foto, i després de pintar havies d'anar-les a buscar */
@@ -537,7 +555,7 @@ if(location.hostname==='oscarbellosido.github.io'){
       <button class="btn icon" id="btnRedo" title="Refés (Ctrl+Maj+Z)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 14 5-5-5-5"/><path d="M20 9h-9a6 6 0 0 0 0 12h5"/></svg>
       </button>
-      <button class="btn" id="btnAbans" type="button" aria-pressed="false" title="Mantén-lo premut per veure la foto com era (\)">
+      <button class="btn" id="btnAbans" type="button" aria-pressed="false" title="Un toc: una cortina per comparar. Mantenint-lo premut: la foto com era (\)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor"/></svg>
         <span class="lbl">Abans</span>
       </button>
@@ -576,6 +594,8 @@ if(location.hostname==='oscarbellosido.github.io'){
         <div id="cursor"></div>
         <div id="cloneSrc"></div>
         <div id="etAbans" hidden>ABANS</div>
+        <div id="etAra" hidden>ARA</div>
+        <div id="cortina" role="slider" aria-label="Cortina d'abans i després" aria-valuemin="0" aria-valuemax="100"><i>‹›</i></div>
         <div id="crop"><div id="cropBox">
           <i class="g v1"></i><i class="g v2"></i><i class="g h1"></i><i class="g h2"></i>
           <i class="h nw" data-h="nw"></i><i class="h n" data-h="n"></i><i class="h ne" data-h="ne"></i>
@@ -735,6 +755,7 @@ const S = {
   original:null,          // la foto tal com es va obrir, per al botó «Abans»
   ppp:300,                // la resolució: a quants punts per polzada s'imprimeix (pestanya Mida)
   abans:false,            // si ara es veu la d'abans
+  cortina:null,           // la cortina d'abans i després: on és la ratlla (de 0 a 1), o null si no n'hi ha
   mascGoma:false,         // «Esborra coses»: si el dit treu vermell en lloc de posar-ne
   mascara:[],             // «Esborra coses»: les ratlles vermelles, en coordenades de la base (no van a l'historial)
   history:[], hIndex:-1,
@@ -1243,7 +1264,7 @@ function pintaVista(){
   vctx.clearRect(0,0,w,h);
   if(S.abans && S.original){ pintaAbans(w,h); return; }
   vctx.drawImage(workCanvas,0,0);
-  if(!S.mascara.length) return;
+  if(!S.mascara.length){ pintaCortina(w,h); return; }
   if(!mascVista||mascVista.width!==w||mascVista.height!==h) mascVista=mkCanvas(w,h);
   const mx=mascVista.getContext('2d');
   mx.setTransform(1,0,0,1,0,0); mx.clearRect(0,0,w,h);
@@ -1252,6 +1273,50 @@ function pintaVista(){
   // primer opac i després tot junt mig transparent: on dues ratlles es
   // creuen no es fa més fosc
   vctx.save(); vctx.globalAlpha=0.5; vctx.drawImage(mascVista,0,0); vctx.restore();
+  pintaCortina(w,h);
+}
+/* La cortina d'abans i després: a l'esquerra de la ratlla, la foto com era
+   en obrir-la; a la dreta, com queda. Un toc a «Abans» la posa i la treu, i
+   la ratlla s'arrossega. Com «Abans», només canvia el que es veu. Només es
+   pot si la foto fa la mateixa forma que la del principi (ampliada o
+   reduïda, sí; retallada o girada de costat, no: no es poden posar una
+   sobre l'altra), i si la forma canvia mentre hi és, es treu sola. */
+function cortinaPot(){
+  const o=S.original;
+  return !!(o && baseCanvas && Math.abs(o.width/o.height - baseCanvas.width/baseCanvas.height) < 0.01);
+}
+function pintaCortina(w,h){
+  const c=$('#cortina');
+  if(S.cortina==null){ c.classList.remove('on'); return; }
+  if(!cortinaPot()){ posaCortina(false); say('La foto ha canviat de forma i la cortina s\'ha tret. Per veure com era, mantén premut «Abans».'); return; }
+  const x=round(w*S.cortina);
+  if(x>0){
+    vctx.save();
+    vctx.beginPath(); vctx.rect(0,0,x,h); vctx.clip();
+    vctx.clearRect(0,0,x,h);
+    vctx.imageSmoothingQuality='high';
+    vctx.drawImage(S.original,0,0,w,h);
+    vctx.restore();
+  }
+  c.style.left=(S.cortina*100)+'%'; c.classList.add('on');
+  c.setAttribute('aria-valuenow',String(round(S.cortina*100)));
+}
+function posaCortina(si){
+  S.cortina = si ? 0.5 : null;
+  $('#btnAbans').classList.toggle('cortina',si);
+  $('#etAbans').hidden=!si && !S.abans; $('#etAra').hidden=!si;
+  pintaVista();
+}
+{
+  const c=$('#cortina'); let agafada=false;
+  c.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); agafada=true; try{ c.setPointerCapture(e.pointerId); }catch(_){} });
+  c.addEventListener('pointermove',e=>{
+    if(!agafada || S.cortina==null) return;
+    e.stopPropagation();
+    const r=view.getBoundingClientRect();
+    S.cortina=clamp((e.clientX-r.left)/r.width,0,1); demanaVista();
+  });
+  ['pointerup','pointercancel','lostpointercapture'].forEach(t=>c.addEventListener(t,e=>{ agafada=false; e.stopPropagation(); }));
 }
 /* La foto tal com es va obrir, sense res: ni ajustos, ni pinzell, ni el que
    s'hi ha esborrat o ampliat. Si fa la mateixa forma que l'actual, queda
@@ -2341,7 +2406,8 @@ function mostraAbans(si){
   if(si===S.abans) return;
   S.abans=si;
   $('#btnAbans').setAttribute('aria-pressed',si?'true':'false');
-  $('#etAbans').hidden=!si;
+  $('#etAbans').hidden=!si && S.cortina==null;
+  $('#etAra').hidden=si || S.cortina==null;
   pintaVista();
 }
 {
@@ -2354,7 +2420,12 @@ function mostraAbans(si){
   const deixa=()=>{
     if(!S.abans) return;
     mostraAbans(false);
-    if(performance.now()-abansDes<300) say('Mantén premut «Abans» per veure la foto com era quan la vas obrir.');
+    // un toc curt: posa o treu la cortina
+    if(performance.now()-abansDes<300){
+      if(S.cortina!=null){ posaCortina(false); say('Cortina treta.'); }
+      else if(cortinaPot()){ posaCortina(true); say('Arrossega la ratlla: a l\'esquerra, com era; a la dreta, com queda. Un altre toc a «Abans» la treu; mantenint-lo premut, es veu sencera com era.'); }
+      else say('La foto està retallada o girada i no es poden posar de costat: mantén premut «Abans» per veure com era.');
+    }
   };
   ['pointerup','pointercancel','lostpointercapture'].forEach(t=>b.addEventListener(t,deixa));
   b.addEventListener('contextmenu',e=>e.preventDefault());
@@ -2396,14 +2467,41 @@ $('#stage').addEventListener('wheel',e=>{
 /* ===================================================================
    13. obrir imatges
 =================================================================== */
-function loadImage(src,name,isSample){
+/* Les fotos enormes. Alguns mòbils fan fotos de 50 a 200 megapíxels, i
+   obertes a mida sencera el deixen sense memòria (cada megapíxel són 4 MB, i
+   n'hi ha uns quants llenços). Per sobre de MAX_OBRE_MP s'avisa i s'ofereix
+   d'obrir-la més petita, que és el botó gros; obrir-la sencera queda a part
+   i petit, i ni s'ofereix si no es podria ni desar. */
+const MAX_OBRE_MP=(matchMedia('(pointer:coarse)').matches && Math.min(screen.width,screen.height)<820) ? 16 : 50;
+function loadImage(src,name,isSample,enAcabar){
   const img=new Image();
   img.onload=()=>{
-    const c=mkCanvas(img.naturalWidth,img.naturalHeight);
-    c.getContext('2d').drawImage(img,0,0);
-    adopt(c,name,isSample);
+    const W=img.naturalWidth, H=img.naturalHeight, mp=W*H/1e6;
+    const obreA=k=>{
+      const c=mkCanvas(Math.max(1,round(W*k)),Math.max(1,round(H*k))), cx=c.getContext('2d');
+      cx.imageSmoothingQuality='high'; cx.drawImage(img,0,0,c.width,c.height);
+      if(enAcabar) enAcabar();
+      adopt(c,name,isSample);
+      if(k<1) say('Oberta a '+c.width+' × '+c.height+' px (l\'original en feia '+W+' × '+H+').');
+    };
+    if(isSample || mp<=MAX_OBRE_MP){ obreA(1); return; }
+    const k=Math.sqrt(MAX_OBRE_MP/mp), w=round(W*k), h=round(H*k), cm=v=>round(v/300*2.54);
+    const potSencera = mp<=MAX_DESA_MP && Math.max(W,H)<=16384;
+    const dg=dialog('Aquesta foto és molt gran',body=>{
+      const t=el('div','tiny'); t.id='granText'; t.style.cssText='font-size:12.5px;line-height:1.5;color:var(--fg)';
+      t.textContent='Fa '+W+' × '+H+' px ('+round(mp)+' megapíxels). Per a aquest aparell és molt: podria anar a batzegades o quedar-se sense memòria. '+
+        'Oberta a '+w+' × '+h+' px ('+MAX_OBRE_MP+' megapíxels) anirà bé, i n\'hi ha de sobres per veure-la i per imprimir-la fins a '+cm(w)+' × '+cm(h)+' cm.';
+      body.appendChild(t);
+      if(potSencera){
+        const b=el('button','btn','Obre-la sencera igualment'); b.type='button'; b.id='granSencera';
+        // petit i com un enllaç: el gros és el d'obrir-la més petita
+        b.style.cssText='align-self:flex-start;height:auto;min-height:0;padding:4px 0;background:none;border:0;font-size:11.5px;color:var(--fg-dim);text-decoration:underline';
+        b.onclick=()=>{ dg.close(); obreA(1); };
+        body.appendChild(b);
+      }
+    }, close=>{ close(); obreA(k); }, 'Obre-la més petita');
   };
-  img.onerror=()=>say('No s\'ha pogut llegir aquesta imatge.');
+  img.onerror=()=>{ if(enAcabar) enAcabar(); say('No s\'ha pogut llegir aquesta imatge.'); };
   img.src=src;
 }
 function adopt(canvas,name,isSample){
@@ -2414,6 +2512,7 @@ function adopt(canvas,name,isSample){
   IA.factorTriat=false;
   S.src=canvas; S.original=canvas; S.name=name||'imatge.png'; S.sample=!!isSample;
   if(!isSample) $('#continua').hidden=true;
+  if(S.cortina!=null){ S.cortina=null; $('#btnAbans').classList.remove('cortina'); $('#etAra').hidden=true; $('#etAbans').hidden=true; }
   S.ppp=midaRecordada().ppp;
   S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
   S.adj=Object.assign({},ADJ_DEF); S.preset='cap';
@@ -2433,10 +2532,10 @@ function adopt(canvas,name,isSample){
 function openFile(f){
   if(!f) return;
   if(!/^image\//.test(f.type)){ say('Aquest fitxer no és una imatge.'); return; }
-  const r=new FileReader();
-  r.onload=()=>loadImage(r.result,f.name,false);
-  r.onerror=()=>say('No s\'ha pogut llegir el fitxer.');
-  r.readAsDataURL(f);
+  // (amb una adreça al fitxer, no llegint-lo sencer com a text: una foto de
+  // 30 MB eren 40 MB més de memòria)
+  const u=URL.createObjectURL(f);
+  loadImage(u,f.name,false,()=>URL.revokeObjectURL(u));
 }
 $('#file').onchange=e=>{ openFile(e.target.files[0]); e.target.value=''; };
 $('#btnOpen').onclick=()=>$('#file').click();
@@ -2507,7 +2606,7 @@ function saveDialog(){
   if(!baseCanvas) return;
   let fmt='png', quality=92, nameInput, pintaAvis=()=>{};
   const transparent=teTransparencia(baseCanvas);
-  dialog('Desa la imatge',body=>{
+  const dlg=dialog('Desa la imatge',body=>{
     const f1=el('div','field'); f1.appendChild(el('span',null,'Format'));
     const chips=el('div','chips');
     [['png','PNG'],['jpeg','JPG'],['webp','WEBP']].forEach(([v,lab])=>{
@@ -2545,19 +2644,39 @@ function saveDialog(){
     nameInput=document.createElement('input'); nameInput.type='text'; nameInput.id='expName';
     const updName=()=>{ nameInput.value=baseName()+'.'+(fmt==='jpeg'?'jpg':fmt); };
     updName(); f3.appendChild(nameInput); body.appendChild(f3);
+    // Compartir-la (WhatsApp, el correu, la galeria...) sense haver-la de
+    // desar i anar-la a buscar: només on el navegador en sap (sobretot als
+    // mòbils). El navegador només deixa compartir just després d'un toc, i
+    // preparar una foto grossa pot trigar més que això: llavors el fitxer es
+    // queda preparat i el botó demana un segon toc.
+    if(potCompartir()){
+      const peu=body.parentNode.querySelector('footer');
+      const sh=el('button','btn','Comparteix'); sh.type='button'; sh.id='expComparteix'; sh.style.marginRight='auto';
+      let llest=null;
+      sh.onclick=async()=>{
+        const clau=fmt+'|'+quality, nom=nameInput.value.trim()||baseName()+'.'+(fmt==='jpeg'?'jpg':fmt);
+        try{
+          if(!llest || llest.clau!==clau || llest.nom!==nom){
+            sh.disabled=true; sh.textContent='Preparant…';
+            const blob=await fesFitxer(fmt,quality);
+            llest={ clau, nom, fitxer:new File([blob],nom,{type:blob.type}) };
+            sh.disabled=false; sh.textContent='Comparteix';
+          }
+          await navigator.share({ files:[llest.fitxer] });
+          say('Compartida.'); dlg.close();
+        }catch(e){
+          sh.disabled=false;
+          const n=e&&e.name;
+          if(n==='AbortError'){ sh.textContent='Comparteix'; say('No s\'ha compartit.'); }
+          else if(n==='NotAllowedError' && llest){ sh.textContent='Ja està: toca per compartir'; say('La foto ja està preparada: torna a tocar el botó per compartir-la.'); }
+          else { sh.textContent='Comparteix'; say('No s\'ha pogut compartir. Desa-la i comparteix-la des de la galeria.'); console.warn('Comparteix:',e); }
+        }
+      };
+      peu.insertBefore(sh,peu.firstChild);
+    }
   }, (close,okBtn)=>{
     okBtn.disabled=true; okBtn.textContent='Preparant…';
-    const w=baseCanvas.width, h=baseCanvas.height;
-    const out=mkCanvas(w,h);
-    renderInto(out,w,h,S.adj);
-    // el JPG no sap què és transparent i hi posaria negre: a sota, blanc
-    if(fmt==='jpeg'){ const cx=out.getContext('2d'); cx.globalCompositeOperation='destination-over'; cx.fillStyle='#fff'; cx.fillRect(0,0,w,h); cx.globalCompositeOperation='source-over'; }
-    const mime='image/'+fmt;
-    out.toBlob(async blob=>{
-      if(!blob){ say('No s\'ha pogut generar el fitxer.'); okBtn.disabled=false; okBtn.textContent='Desa'; return; }
-      // el fitxer porta escrita la resolució: així el programa que l'imprimeix
-      // sap quants mil·límetres fa i no s'ho inventa
-      blob=await posaPPP(blob,S.ppp,fmt);
+    fesFitxer(fmt,quality).then(blob=>
       desaFitxer(blob, nameInput.value.trim()||baseName()+'.'+fmt)
         .then(r=>{ say(r.status==='saved'?'Imatge desada ('+(blob.size/1048576).toFixed(2)+' MB).':'Imatge lliurada.'); close(); })
         .catch(err=>{
@@ -2566,9 +2685,29 @@ function saveDialog(){
             : c==='rate_limited' ? 'Espera un moment i torna-ho a provar.'
             : 'No s\'ha pogut desar la imatge ('+(c||'error')+').');
           okBtn.disabled=false; okBtn.textContent='Desa';
-        });
-    }, mime, fmt==='png'?undefined:quality/100);
+        })
+    ).catch(()=>{ say('No s\'ha pogut generar el fitxer.'); okBtn.disabled=false; okBtn.textContent='Desa'; });
   },'Desa');
+}
+// La foto tal com es desa: a mida sencera, amb els ajustos i el que s'hi ha pintat
+function fesFitxer(fmt,quality){
+  return new Promise((ok,ko)=>{
+    const w=baseCanvas.width, h=baseCanvas.height;
+    const out=mkCanvas(w,h);
+    renderInto(out,w,h,S.adj);
+    // el JPG no sap què és transparent i hi posaria negre: a sota, blanc
+    if(fmt==='jpeg'){ const cx=out.getContext('2d'); cx.globalCompositeOperation='destination-over'; cx.fillStyle='#fff'; cx.fillRect(0,0,w,h); cx.globalCompositeOperation='source-over'; }
+    out.toBlob(async blob=>{
+      if(!blob){ ko(new Error('buit')); return; }
+      // el fitxer porta escrita la resolució: així el programa que l'imprimeix
+      // sap quants mil·límetres fa i no s'ho inventa
+      try{ ok(await posaPPP(blob,S.ppp,fmt)); }catch(e){ ko(e); }
+    }, 'image/'+fmt, fmt==='png'?undefined:quality/100);
+  });
+}
+function potCompartir(){
+  try{ return !!(navigator.share && navigator.canShare && navigator.canShare({ files:[new File([new Uint8Array(1)],'a.png',{type:'image/png'})] })); }
+  catch(e){ return false; }
 }
 const mmText=(w,h,ppp)=>{ const f=v=>String(Math.round(v/ppp*25.4*10)/10).replace('.',','); return f(w)+' × '+f(h)+' mm'; };
 
@@ -2960,7 +3099,7 @@ async function baixaIA(cami, progres){
     }
     buf=new Uint8Array(rebut); let o=0; for(const t of trossos){ buf.set(t,o); o+=t.length; }
   } else buf=new Uint8Array(await r.arrayBuffer());
-  if(c){ try{ await c.put(url, new Response(buf.slice(0), {headers:{'content-type':'application/octet-stream'}})); IA.baixats[cami]=true; }catch(e){} }
+  if(c){ try{ await c.put(url, new Response(buf.slice(0), {headers:{'content-type':'application/octet-stream'}})); IA.baixats[cami]=true; demanaGuardar(); pintaBaixades(); }catch(e){} }
   return buf;
 }
 /* Un model que va en trossos (cap fitxer de més de 95 MB): es baixen un
@@ -3921,6 +4060,81 @@ function construeixIA(){
   // el fons i l'amplia es pinten soles dins de la seva targeta
   const pf=el('div'); pf.id='pane-fons'; $('#iaCos-fons').appendChild(pf);
   const pa=el('div'); pa.id='pane-amp'; $('#iaCos-amp').appendChild(pa);
+  // a sota de tot: les IA que hi ha baixades en aquest aparell
+  const gb=el('div','grp'); gb.id='iaBaixades'; gb.style.marginTop='18px';
+  pane.appendChild(gb);
+}
+/* Les IA baixades. Totes juntes passen d'1 GB, i no hi havia manera de saber
+   quant ocupaven ni d'esborrar-ne cap. Aquí es veu cada una amb el que ocupa
+   i es pot esborrar (es tornarà a baixar el dia que es faci servir).
+   I es demana al navegador que les guardi (navigator.storage.persist): si
+   no, quan l'aparell es queda sense espai les pot llençar sense avisar. */
+const BAIXABLES=()=>[
+  ['El motor (amb la gràfica)',[IA.motors.gpu.wasm],IA.motors.gpu.mb],
+  ['El motor (amb el processador)',[IA.motors.cpu.wasm],IA.motors.cpu.mb],
+  ['Ratllades i taques',[IA.ratllades.fitxer],IA.ratllades.mb],
+  ['Soroll i gra',[IA.nitida.fitxer],IA.nitida.mb],
+  ['Esborra coses · Mòbil',[IA.treu.fitxer],IA.treu.mb],
+  ['Esborra coses · Ordinador',IA.treu.lama.parts,IA.treu.lama.mb],
+  ['Toca l\'objecte',[IA.sam.mira,IA.sam.toca],IA.sam.mb],
+  ['Cares · trobar-les',[IA.cares.troba],IA.cares.mbTroba],
+  ['Cares · CodeFormer',IA.cares.models.codeformer.parts,IA.cares.models.codeformer.mb],
+  ['Cares · GFPGAN',IA.cares.models.gfpgan.parts,IA.cares.models.gfpgan.mb],
+  ['Color',IA.color.parts,IA.color.mb],
+  ['Fons · Mòbil',[IA.fons.models.mobil.fitxer],IA.fons.models.mobil.mb],
+  ['Fons · Ordinador',IA.fons.models.ordinador.parts,IA.fons.models.ordinador.mb],
+  ['Amplia · Mòbil (i «Està borrosa»)',[IA.models.mobil.fitxer],IA.models.mobil.mb],
+  ['Amplia · Ordinador',[IA.models.ordinador.fitxer],IA.models.ordinador.mb],
+];
+IA.guardades=null;           // si el navegador ha dit que no les esborrarà
+let totesSegur=0;
+async function esborraBaixades(fitxers){
+  const c=await cauIA();
+  for(const f of fitxers){ try{ if(c) await c.delete(urlIA(f)); }catch(e){} IA.baixats[f]=false; }
+  pintaIA();
+}
+function pintaBaixades(){
+  const g=$('#iaBaixades'); if(!g) return;
+  g.textContent='';
+  g.appendChild(el('h4',null,'IA baixades en aquest aparell'));
+  const hi=BAIXABLES().filter(([n,fs])=>fs.some(f=>IA.baixats[f]));
+  if(!hi.length){ const b=el('div','tiny','Encara no n\'hi ha cap. Cada una es baixa la primera vegada que la fas servir.'); b.id='baixadesBuit'; g.appendChild(b); return; }
+  const total=hi.reduce((t,x)=>t+x[2],0);
+  const cap=el('div','tiny'); cap.id='baixadesTotal';
+  cap.textContent='Ocupen '+mb(total)+'. Si n\'esborres una, es tornarà a baixar el dia que la facis servir.'+
+    (IA.guardades===true ? ' El navegador les guardarà encara que l\'aparell vagi just d\'espai.'
+     : IA.guardades===false ? ' Si l\'aparell es queda sense espai, el navegador les pot esborrar sol; instal·lant la Cambra Fosca com una app, les guarda.' : '');
+  g.appendChild(cap);
+  const ll=el('div'); ll.id='baixadesLlista'; ll.style.cssText='display:flex;flex-direction:column;gap:4px;margin-top:8px';
+  for(const [nom,fs,m] of hi){
+    const f=el('div','baixada'); f.style.cssText='display:flex;align-items:center;gap:8px;font-size:12px';
+    const n=el('span',null,nom); n.style.cssText='flex:1;min-width:0';
+    const q=el('span','tiny',mb(m)); q.style.whiteSpace='nowrap';
+    const b=el('button','btn','Esborra'); b.type='button'; b.style.cssText='height:26px;min-height:26px;font-size:11px;padding:0 8px';
+    b.onclick=()=>{ if(IA.treballant) return; esborraBaixades(fs); say('«'+nom+'» esborrada d\'aquest aparell.'); };
+    f.append(n,q,b); ll.appendChild(f);
+  }
+  g.appendChild(ll);
+  // esborrar-les totes demana dos tocs, que tornar-les a baixar són moltes dades
+  const tb=el('button','btn','Esborra-les totes'); tb.type='button'; tb.id='baixadesTotes';
+  tb.style.cssText='margin-top:10px;height:28px;min-height:28px;font-size:11.5px';
+  const segur=Date.now()-totesSegur<4000;
+  if(segur){ tb.textContent='Segur? Torna-ho a tocar'; tb.style.borderColor='#e0705a'; tb.style.color='#e0705a'; }
+  tb.onclick=()=>{
+    if(IA.treballant) return;
+    if(Date.now()-totesSegur<4000){ totesSegur=0; esborraBaixades(hi.flatMap(x=>x[1])); say('Totes les IA esborrades d\'aquest aparell.'); }
+    else { totesSegur=Date.now(); pintaBaixades(); setTimeout(()=>{ if(totesSegur && Date.now()-totesSegur>=4000) pintaBaixades(); },4100); }
+  };
+  g.appendChild(tb);
+}
+// Que el navegador les guardi. Es demana després de la primera baixada (el
+// Firefox ho pregunta a la persona, i fora de context no s'entendria).
+function demanaGuardar(){
+  try{
+    if(!navigator.storage || !navigator.storage.persist || IA.guardarDemanat) return;
+    IA.guardarDemanat=true;
+    navigator.storage.persist().then(si=>{ IA.guardades=!!si; pintaBaixades(); }).catch(()=>{});
+  }catch(e){}
 }
 function pintaIA(){
   if(!$('#iaModes') && !$('#iaMode-mobil')) construeixIA();
@@ -3932,6 +4146,7 @@ function pintaIA(){
     $('#iaCap-'+k).setAttribute('aria-expanded',obert?'true':'false');
   }
   pintaAmplia(); pintaFons(); estatCares(); estatRatllades(); estatColor(); estatNitida(); estatTreu(); estatAntiga();
+  pintaBaixades();
 }
 // al mòbil, les opcions queden sota la foto: per pintar-hi, s'hi torna
 function veuFoto(){ if(innerWidth<=760) $('#stage').scrollIntoView({block:'start',behavior:'smooth'}); }
@@ -4892,7 +5107,9 @@ setTool('move');
 adopt(makeSample(),'exemple.png',true);
 requestAnimationFrame(()=>{ fitToStage(); drawThumbs(); });
 ofereixContinuar();
-miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats(); pintaIA(); estatTreu(); });
+miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats();
+  try{ if(navigator.storage && navigator.storage.persisted && await navigator.storage.persisted()) IA.guardades=true; }catch(e){}
+  pintaIA(); estatTreu(); });
 
 if(window.claude && typeof window.claude.use==='function'){
   window.claude.use('downloads').then(d=>{ downloads=d; }).catch(()=>{});

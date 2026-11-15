@@ -301,6 +301,62 @@ Descarta-la»**.
   avisar). Si el navegador no deixa desar, no es fa res i tot va igual.
 - L'ajuda ho diu, al costat de «les fotos no surten mai del teu aparell».
 
+## La Cambra Fosca: quatre coses més del repàs
+
+Sortien del mateix repàs del codi, i l'usuari va dir que es fessin:
+
+**Les fotos enormes** (`loadImage`, `MAX_OBRE_MP`: 16 megapíxels al mòbil, 50
+a l'ordinador). Alguns mòbils fan fotos de 50 a 200 megapíxels, i obertes a
+mida sencera el deixen sense memòria (cada megapíxel són 4 MB, i n'hi ha uns
+quants llenços). Per sobre del límit surt un quadre que diu quant fa, a quina
+mida s'obriria i fins a quants centímetres es podria imprimir; **«Obre-la més
+petita» és el botó gros**, i «Obre-la sencera igualment» és petit, com un
+enllaç i a part (i ni surt si no es podria ni desar, `MAX_DESA_MP`). Les
+fotos normals (12 megapíxels) s'obren sense preguntar. De pas, la foto es
+llegeix amb una adreça al fitxer (`createObjectURL`) i no sencera com a text.
+
+**Compartir** (`potCompartir`, `fesFitxer`, `#expComparteix`). Al quadre de
+Desa, on el navegador sap compartir fitxers (sobretot als mòbils), hi ha
+**«Comparteix»**, que obre el full de compartir del mòbil (WhatsApp, el
+correu, la galeria) amb la foto tal com es desaria, en el format triat.
+
+- **El navegador només deixa compartir just després d'un toc**, i preparar
+  una foto grossa pot trigar més que això. Llavors el fitxer es queda
+  preparat i el botó diu «Ja està: toca per compartir».
+- Desar i compartir fan servir el mateix fitxer (`fesFitxer`): si es toca
+  l'un, s'ha de mirar l'altre.
+- Al navegador de les proves (Linux) no existeix: la prova en fa veure un.
+
+**La cortina d'abans i després** (`pintaCortina`, `posaCortina`,
+`S.cortina`). **Un toc curt a «Abans»** (menys de 300 ms) posa una ratlla al
+mig de la foto: a l'esquerra, com era en obrir-la; a la dreta, com queda. La
+ratlla s'arrossega, i un altre toc la treu. Mantenir-lo premut segueix fent
+el de sempre (la foto sencera com era).
+
+- **Com «Abans», només canvia el que es veu**: no toca la foto, no va a
+  l'historial i no surt al fitxer desat.
+- **Només es pot si la foto fa la mateixa forma que la del principi**
+  (ampliada o reduïda, sí; retallada o girada de costat, no: no es poden
+  posar una sobre l'altra). Llavors ho diu, i si la forma canvia mentre hi
+  és, es treu sola.
+- El tirador fa 44 px d'ample per al dit i porta `touch-action:none`.
+
+**Les IA baixades** (`pintaBaixades`, `BAIXABLES`, `#iaBaixades`). Totes
+juntes passen d'1 GB i no hi havia manera de saber quant ocupaven ni
+d'esborrar-ne cap. A sota de tot de la pestanya ✦ IA hi ha la llista de les
+que hi ha en aquest aparell, amb el que ocupa cadascuna i un botó per
+esborrar-la (es torna a baixar el dia que es fa servir). **«Esborra-les
+totes» demana dos tocs**.
+
+- **Es demana al navegador que les guardi** (`navigator.storage.persist`,
+  després de la primera baixada): si no, quan l'aparell es queda sense espai
+  les pot llençar sense avisar. La llista diu si ho ha promès o no (el
+  Chrome ho concedeix sol, sobretot amb l'app instal·lada).
+- **Una IA nova s'ha d'afegir a `BAIXABLES`** (i a `miraBaixats`), que si no
+  no surt a la llista.
+- Esborrar-ne una no la treu de la memòria si ja és carregada: fins que no es
+  torna a obrir la pàgina, no cal tornar-la a baixar.
+
 ## La Cambra Fosca: la IA amb uns quants nuclis
 
 Sense gràfica (la majoria de mòbils i molts ordinadors), la IA anava amb un
@@ -986,6 +1042,8 @@ Coses que no s'han de desfer sense entendre-les:
 
 ## La Cambra Fosca: abans i després
 
+(Amb un toc curt, «Abans» posa la cortina: «Quatre coses més del repàs».)
+
 **Mantenint premut «Abans»** (a la barra de dalt, al costat de desfer; o la
 tecla `\`), es veu la foto **tal com es va obrir** (`S.original`): sense
 ajustos, ni pinzell, ni el que s'hi ha esborrat o ampliat. En deixar-lo
@@ -997,7 +1055,7 @@ anar, torna la retocada. A dalt a l'esquerra hi diu ABANS.
   sencera i centrada.
 - **Es fa mantenint premut, no amb un toc**, perquè el que interessa és
   comparar anant i tornant. El botó porta `touch-action:none` i no deixa
-  sortir el menú del dit llarg. Un toc curt diu a la ratlla de sota com va.
+  sortir el menú del dit llarg. Un toc curt posa la cortina.
 - `S.original` guarda la foto oberta encara que l'historial l'hagi llençat
   per memòria (és una foto més, no una per pas).
 
@@ -1122,8 +1180,9 @@ Les mateixes que al repositori dels jocs, i ja ens han mossegat allà:
 `node prova.mjs` (cal Playwright; al contenidor és a
 `/opt/node22/lib/node_modules/playwright`). **La sencera triga uns 25
 minuts; per provar només unes parts, `node prova.mjs cares fons`** (les parts:
-retall, tampo, arregla, amplia, esborra, ratllades, cares, fons, color,
-cloudflare, soroll, continua, app, revisio, visites; la portada i el bàsic de
+retall, tampo, arregla, amplia, esborra, ratllades, cares, fons, antiga,
+baixades, color, cloudflare, soroll, extres, continua, app, revisio,
+visites; la portada i el bàsic de
 la Cambra Fosca es proven sempre). Abans de desar un canvi, la sencera. En una còpia nova del repositori,
 abans cal `python ia/models_r2.py baixa` (els models no hi són). Obre les
 pàgines amb un navegador de debò i comprova:
@@ -1275,6 +1334,21 @@ pàgines amb un navegador de debò i comprova:
   la memòria només hi hagi l'última IA; que desfer tregui només l'últim pas;
   i que aturant-la al segon pas es quedi el primer i ho digui. Es va
   comprovar que falla si «Atura» no atura la resta;
+- **la cortina, compartir i les fotos enormes** (`extres`): que un toc a
+  «Abans» posi la cortina amb ABANS i ARA, que l'esquerra sigui la foto del
+  principi i la dreta la d'ara, que la ratlla s'arrossegui, que no vagi a
+  l'historial ni surti al fitxer desat, que un altre toc la tregui i que amb
+  la foto girada de costat no es posi i ho digui; que «Comparteix» només
+  surti on el navegador en sap, comparteixi el fitxer en el format triat i a
+  320 px els tres botons hi càpiguen; i, fent veure un mòbil, que una foto de
+  20 megapíxels avisi, s'obri a 16 amb el botó gros o sencera amb el petit, i
+  una de 12 s'obri sense preguntar. Es va comprovar que falla si la cortina
+  no pinta la foto d'abans o si no es fa més petita;
+- **les IA baixades** (`baixades`, també serveix el repositori ella mateixa):
+  que sense cap ho digui; que després de treure un fons hi hagi el motor i la
+  IA del fons amb el que ocupen; que esborrant-ne una surti de la llista i de
+  la memòria del navegador; que «Esborra-les totes» demani dos tocs; que
+  tornant a obrir la pàgina es torni a baixar; i que hi càpiga a 320 px;
 - **la feina es desa sola**: que la d'exemple no es desi; que amb una foto
   amb filtre, exposició, una pinzellada i la mida al 50%, en tornar a obrir
   la pàgina surti el rètol amb el nom i la mida, i que «Continua on eres» la
