@@ -16,6 +16,13 @@ const fitxer = n => 'file://' + resolve(AQUI, n);
 // una tauleta i un ordinador.
 const MIDES = [320, 360, 390, 768, 1280];
 
+// Per provar només unes parts (la prova sencera triga uns 25 minuts):
+//   node prova.mjs cares fons
+// Les parts: retall, tampo, arregla, amplia, esborra, ratllades, cares, fons,
+// antiga, color, cloudflare, soroll, continua, app, revisio, visites. La portada i el bàsic de
+// la Cambra Fosca es proven sempre. Abans de desar un canvi, la sencera.
+const NOMES = process.argv.slice(2);
+const vol = n => !NOMES.length || NOMES.includes(n);
 const problemes = [];
 const errors = [];
 // les eines d'IA són a la pestanya ✦ IA, cadascuna en una targeta: obre la que toca
@@ -290,7 +297,7 @@ console.log(`${desat ? '✓' : '✗'} desar: ${desat ? desat.suggestedFilename()
     modes: document.querySelectorAll('[id^="iaMode-"]').length,
     altres: document.querySelectorAll('[id^="fonsMode-"]').length }));
   let e = await est();
-  if (e.targetes.join() !== 'ratllades,nitida,esborra,cares,color,fons,amp') problemes.push('les targetes de la IA no són les set, per ordre: ' + e.targetes);
+  if (e.targetes.join() !== 'antiga,ratllades,nitida,esborra,cares,color,fons,amp') problemes.push('les targetes de la IA no són les set, per ordre: ' + e.targetes);
   if (e.modes !== 2 || e.altres) problemes.push(`no hi ha un sol «On ho fas» per a totes les IA (${e.modes} botons de mode, ${e.altres} del fons)`);
   await p.click('#iaCap-cares'); e = await est();
   if (e.oberts.join() !== 'cares') problemes.push('obrint «Cares» no queda oberta només aquesta: ' + e.oberts);
@@ -331,7 +338,7 @@ await p.close();
 // Al mòbil, arrossegant un tirador del marc amunt o avall, el navegador
 // s'emportava el gest per desplaçar la pàgina i el marc es quedava a mig camí
 // (ho va trobar l'usuari). Es prova amb un dit de debò, no amb el ratolí.
-{
+if (vol('retall')) {
   const abansDe = problemes.length;
   const { devices } = await import('/opt/node22/lib/node_modules/playwright/index.mjs');
   const ctx = await navegador.newContext({ ...devices['Pixel 7'] });
@@ -375,7 +382,7 @@ await p.close();
 // Ha de copiar el que hi ha a l'origen. Anava amb el signe girat i copiava de
 // l'altra banda: l'usuari fixava l'origen al sofà vermell i hi sortia el verd
 // del fons. Al mòbil, a més, no hi ha Alt: el primer toc fixa l'origen.
-{
+if (vol('tampo')) {
   const abansC = problemes.length;
   const ctx = await navegador.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const q = await ctx.newPage();
@@ -428,7 +435,7 @@ await p.close();
 // Es fa una foto «bona» (cel, paret grisa, un full blanc i objectes de color),
 // s'espatlla de les maneres típiques i es mira si «Arregla-la sola» l'acosta a
 // la bona; i que a la bona i a una posta de sol no els toqui el color.
-{
+if (vol('arregla')) {
   const abansDe = problemes.length;
   const p = await navegador.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
   vigila(p, 'arregla');
@@ -612,6 +619,7 @@ await p.close();
     ];
     for (const [ua, toca] of casos) if (quin(ua) !== toca) problemes.push(`la línia de detalls diu «${quin(ua)}» en lloc de «${toca}»`);
   }
+  if (vol('amplia')) {
   const p = await navegador.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
   vigila(p, 'amplia');
   await p.goto(BASE);
@@ -799,12 +807,13 @@ await p.close();
 
   console.log(`${problemes.length > abansDe ? '✗' : '✓'} ampliar amb IA (pel processador): lleuger ×4, gran ×4, a mida en mil·límetres (des de la pestanya Mida), límits, aturar, desfer i refer, i la segona vegada sense baixar res`);
   await p.close();
+  }
 
   // ----------------------------- esborrar coses amb el dit (MI-GAN)
   // Amb un mòbil simulat i el dit de debò: es pinta de vermell un objecte
   // d'una paret de maons i la IA l'ha de treure i continuar la paret, sense
   // tocar res de la resta de la foto. El vermell només va a la pantalla.
-  {
+  if (vol('esborra')) {
     const abansT = problemes.length;
     const ctx = await navegador.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, acceptDownloads: true });
     const q = await ctx.newPage();
@@ -1083,7 +1092,7 @@ await p.close();
   // sepia i gra) amb ratllades clares i un plec, que se sap on són: la IA les
   // ha de marcar, deixar el que hi ha la goma, i l'esborrador les ha de treure
   // sense tocar la resta.
-  {
+  if (vol('ratllades')) {
     const abansR = problemes.length;
     const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
     vigila(q, 'ratllades');
@@ -1147,6 +1156,10 @@ await p.close();
     if (c1.trobat < 0.7) problemes.push(`la IA de les ratllades només n'ha marcat el ${(c1.trobat * 100).toFixed(0)}%`);
     if (c1.demes > 0.0005) problemes.push(`la IA de les ratllades ha marcat de vermell el ${(c1.demes * 100).toFixed(1)}% de la foto on no n'hi ha`);
     if (await q.locator('#treuGo').isDisabled()) problemes.push('després de trobar les ratllades, «Esborra-ho» no es pot prémer');
+    // només una IA a la memòria: ara hi ha la de les ratllades, i en esborrar
+    // s'ha de deixar anar (abans s'hi quedaven totes, i al mòbil no hi cabien)
+    const vives = () => q.evaluate(() => document.documentElement.dataset.iaVives);
+    if (await vives() !== 'ratllades') problemes.push('després de buscar ratllades, a la memòria no hi ha només la seva IA: ' + await vives());
     // amb la goma es treu el vermell d'un tros de la primera ratllada: allà no s'ha d'esborrar
     await q.click('#treuMode-goma');
     await q.evaluate(() => { const r = document.querySelector('#opt-Mida'); r.value = 60; r.dispatchEvent(new Event('input')); });
@@ -1158,12 +1171,21 @@ await p.close();
     await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 600000 });
     await q.waitForTimeout(300);
     if (!(await q.locator('.hitem span').allInnerTexts()).some(t => t.startsWith('Esborra les ratllades (IA)'))) problemes.push('esborrar les ratllades no surt a l\'historial');
+    if (await vives() !== 'treu') problemes.push('en esborrar, la IA de les ratllades no s\'ha deixat anar de la memòria: ' + await vives());
     const c2 = await compara();
     if (!(c2.err < c1.errVella * 0.25)) problemes.push(`a les ratllades marcades, la foto no s'acosta prou a la neta (diferència ${c2.err.toFixed(1)}; abans ${c1.errVella.toFixed(1)})`);
     if (c2.canviFora > 0.5) problemes.push(`esborrant les ratllades, ha canviat la resta de la foto (${c2.canviFora.toFixed(2)} de mitjana)`);
     if (c2.zona < c2.zonaVella * 0.8) problemes.push(`on s'havia tret el vermell amb la goma, la ratllada s'ha esborrat igualment (diferència ${c2.zona.toFixed(1)} de ${c2.zonaVella.toFixed(1)})`);
     await q.click('#btnUndo'); await q.waitForTimeout(400);
     if ((await compara()).err < c1.errVella * 0.9) problemes.push('desfer no torna les ratllades');
+    // tornar a buscar-les: la IA es torna a preparar de la memòria del navegador, sense baixar res
+    { const baixats = []; const apunta = r => { if (/\.onnx/.test(r.url())) baixats.push(r.url()); }; q.on('request', apunta);
+      await obreTargeta(q, 'ratllades'); await q.click('#treuRatllades');
+      await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 600000 }); await q.waitForTimeout(300);
+      q.off('request', apunta);
+      if (await vives() !== 'ratllades') problemes.push('tornant a buscar ratllades, a la memòria no hi ha només la seva IA: ' + await vives());
+      if (baixats.length) problemes.push('tornant a buscar ratllades, la IA s\'ha tornat a baixar: ' + baixats);
+      if ((await compara()).trobat < 0.7) problemes.push('la segona vegada, la IA de les ratllades no les troba'); }
     console.log(`${problemes.length > abansR ? '✗' : '✓'} trobar i esborrar ratllades (pel processador): en marca el ${(c1.trobat * 100).toFixed(0)}% (i de més, el ${(c1.demes * 100).toFixed(2)}%), la goma les respecta, les marcades, de ${c1.errVella.toFixed(0)} a ${c2.err.toFixed(0)} de diferència amb la foto neta, i desfer`);
     await q.close();
   }
@@ -1173,7 +1195,7 @@ await p.close();
   // l'ha de trobar i tornar-la nítida, al seu lloc (els ulls on eren), sense
   // tocar la resta de la foto. «Suau» n'ha de canviar menys que «Fort». En una
   // foto sense cares, ho ha de dir. No es fa servir la foto de ningú.
-  {
+  if (vol('cares')) {
     const abansC = problemes.length;
     const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
     vigila(q, 'cares');
@@ -1282,7 +1304,7 @@ await p.close();
   // quins punts són el gerro. Transparent, blanc, d'un color i difuminat (sense
   // aura del color del gerro al voltant), desar en JPG i PNG, desfer, i el model
   // gran una vegada.
-  {
+  if (vol('fons')) {
     const abansF = problemes.length;
     const q = await navegador.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
     vigila(q, 'fons');
@@ -1404,7 +1426,7 @@ await p.close();
   // detall és el de la foto), que «Suau» faci els colors més apagats, que la
   // segona vegada no torni a baixar res, desfer, i que avisi si la foto ja té
   // colors (però no si és sèpia).
-  {
+  if (vol('color')) {
     const abansCo = problemes.length;
     const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
     vigila(q, 'color');
@@ -1482,13 +1504,113 @@ await p.close();
     console.log(`${problemes.length > abansCo ? '✗' : '✓'} posar color (pel processador): croma ${c1.toFixed(1)}, el cel blau (b ${cel[1].toFixed(1)}), la claredat igual (${dL.toFixed(2)}), «Suau» ${c2.toFixed(1)}, la segona vegada sense baixar res, desfer, i l'avís de les fotos que ja tenen colors (no amb la sèpia)`);
     await q.close();
   }
+  // ------------------------------------- restaurar una foto antiga, tot seguit
+  // Una foto vella feta aquí: descolorida, amb una cara dibuixada i borrosa,
+  // soroll i dues ratllades clares lluny de la cara. Amb els quatre passos
+  // triats, s'han de fer tots seguits, cadascun apuntat a l'Historial, dient
+  // per quin pas va, i al final només hi ha d'haver una IA a la memòria.
+  if (vol('antiga')) {
+    const abansA = problemes.length;
+    const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+    vigila(q, 'antiga');
+    await q.goto(BASE);
+    await q.waitForTimeout(1500);
+    const foto = await q.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 720; c.height = 480; const x = c.getContext('2d');
+      x.fillStyle = '#788ca0'; x.fillRect(0, 0, 720, 480);
+      x.fillStyle = '#5a7a4a'; x.fillRect(0, 380, 720, 100);
+      x.filter = 'blur(2px)';
+      const el = (cx, cy, rx, ry, col) => { x.fillStyle = col; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, 7); x.fill(); };
+      el(240, 195, 100, 135, '#462d1e'); el(150, 220, 15, 30, '#d7aa8c'); el(330, 220, 15, 30, '#d7aa8c'); el(240, 220, 80, 120, '#e1b496');
+      for (const ex of [200, 280]) { el(ex, 207, 22, 12, '#fafafa'); el(ex, 207, 9, 9, '#463228'); el(ex, 207, 4, 4, '#0a0a0a');
+        x.strokeStyle = '#3c281e'; x.lineWidth = 6; x.beginPath(); x.moveTo(ex - 25, 180); x.lineTo(ex + 22, 176); x.stroke(); }
+      x.fillStyle = '#cd9b7d'; x.beginPath(); x.moveTo(240, 215); x.lineTo(225, 265); x.lineTo(255, 265); x.fill();
+      el(240, 295, 35, 10, '#aa4646');
+      x.fillStyle = '#e1b496'; x.fillRect(180, 335, 120, 145); x.fillStyle = '#283c64'; x.fillRect(120, 400, 240, 80);
+      x.filter = 'none';
+      // amb els colors esvaïts i amb soroll (del tot en gris i ja sense soroll, la
+      // cara dibuixada és tan llisa que la IA no la veu com una cara)
+      const im = x.getImageData(0, 0, 720, 480), d = im.data; let s = 5;
+      for (let k = 0; k < d.length; k += 4) { s = (s * 1103515245 + 12345) >>> 0; const g = 0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2], r = ((s >>> 8) / 16777216 - 0.5) * 26;
+        for (let j = 0; j < 3; j++) d[k + j] = g + (d[k + j] - g) * 0.35 + r; }
+      x.putImageData(im, 0, 0);
+      // dues ratllades clares, lluny de la cara
+      x.lineCap = 'round';
+      const corba = (p0, p1, amp) => Array.from({ length: 50 }, (_, i) => [p0[0] + (p1[0] - p0[0]) * i / 49, p0[1] + (p1[1] - p0[1]) * i / 49 + amp * Math.sin(i / 49 * 3)]);
+      for (const [pts, gruix] of [[corba([470, 20], [690, 300], 14), 3], [corba([400, 330], [700, 460], 10), 3]]) {
+        x.strokeStyle = '#f7f4ee'; x.lineWidth = gruix; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke(); }
+      return c.toDataURL('image/png');
+    });
+    await q.setInputFiles('#file', { name: 'avis.png', mimeType: 'image/png', buffer: Buffer.from(foto.split(',')[1], 'base64') });
+    await q.waitForTimeout(600);
+    await obreTargeta(q, 'antiga');
+    // de partida: ratllades, soroll i cares, sense el color; i diu quant es baixa
+    const triats = () => q.evaluate(() => [...document.querySelectorAll('#antigaPassos .chip')].filter(c => c.getAttribute('aria-pressed') === 'true').map(c => c.id.slice(8)).join());
+    if (await triats() !== 'ratllades,soroll,cares') problemes.push('a «Restaura una foto antiga», de partida no hi ha ratllades, soroll i cares: ' + await triats());
+    if (!(await q.locator('#antigaInfo').innerText()).includes('MB')) problemes.push('«Restaura una foto antiga» no diu quant es baixa la primera vegada');
+    await q.click('#antigaP-color');
+    if (!(await q.locator('#antigaInfo').innerText()).includes('inventa')) problemes.push('triant el color, no diu que els colors són inventats');
+    // sense cap pas, no es pot prémer
+    for (const k of ['ratllades', 'soroll', 'cares', 'color']) await q.click('#antigaP-' + k);
+    if (!await q.locator('#antigaGo').isDisabled()) problemes.push('sense cap pas triat, «Restaura-la» es pot prémer');
+    for (const k of ['ratllades', 'soroll', 'cares', 'color']) await q.click('#antigaP-' + k);
+    // el que es veu del vel mentre treballa
+    await q.evaluate(() => { window.__passos = new Set(); new MutationObserver(() => { const m = document.querySelector('#velText').textContent.match(/^Pas \d de \d/); if (m) window.__passos.add(m[0]); })
+      .observe(document.querySelector('#velText'), { childList: true, characterData: true, subtree: true }); });
+    const color0 = await q.evaluate(() => { const v = document.querySelector('#view'), d = v.getContext('2d').getImageData(0, 0, v.width, v.height).data; let t = 0;
+      for (let k = 0; k < d.length; k += 4) t += Math.max(d[k], d[k + 1], d[k + 2]) - Math.min(d[k], d[k + 1], d[k + 2]); return t / (d.length / 4); });
+    const mira = () => q.evaluate(() => { const v = document.querySelector('#view'), x = v.getContext('2d'), e = v.width / 720;
+      const tros = (a, b, w, h) => x.getImageData(Math.round(a * e), Math.round(b * e), Math.round(w * e), Math.round(h * e));
+      // soroll: quant canvia d'un punt al del costat en un tros llis del fons
+      const f = tros(40, 30, 80, 80), fd = f.data; let sor = 0, n = 0;
+      for (let k = 0; k + 4 < fd.length; k += 4) { if ((k / 4) % f.width < f.width - 1) { sor += Math.abs(fd[k] - fd[k + 4]); n++; } }
+      // la ratllada de dalt a la dreta: el punt més clar d'un tros que travessa
+      const r = tros(540, 80, 80, 80).data; let clar = 0; for (let k = 0; k < r.length; k += 4) clar = Math.max(clar, Math.min(r[k], r[k + 1], r[k + 2]));
+      const t = tros(0, 0, 720, 480).data; let col = 0; for (let k = 0; k < t.length; k += 4) col += Math.max(t[k], t[k + 1], t[k + 2]) - Math.min(t[k], t[k + 1], t[k + 2]);
+      return { soroll: sor / n, clar, color: col / (t.length / 4) }; });
+    const m0 = await mira();
+    await q.click('#antigaGo');
+    await q.waitForFunction(() => !document.querySelector('#vel').hidden, null, { timeout: 10000 }).catch(() => {});
+    await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 1500000 });
+    await q.waitForTimeout(500);
+    const hist = await q.locator('.hitem span').allInnerTexts(), m1 = await mira();
+    const vol_ = ['Esborra les ratllades (IA)', 'Treu el soroll', 'Arregla les cares (1 · CodeFormer)', 'Posa color'];
+    if (hist.slice(1).map(t => t.replace(' · LaMa', '')).join('|') !== vol_.join('|')) problemes.push('restaurant la foto antiga, a l\'historial no hi ha els quatre passos per ordre: ' + hist.join(' · '));
+    const passos = await q.evaluate(() => [...window.__passos].sort().join());
+    if (passos !== 'Pas 1 de 4,Pas 2 de 4,Pas 3 de 4,Pas 4 de 4') problemes.push('mentre restaura, el vel no diu per quin pas va: ' + passos);
+    if (!(m1.soroll < m0.soroll * 0.5)) problemes.push(`restaurant la foto antiga, el soroll no ha baixat prou (${m0.soroll.toFixed(1)} → ${m1.soroll.toFixed(1)})`);
+    if (!(m1.clar < m0.clar - 40)) problemes.push(`restaurant la foto antiga, la ratllada encara hi és (el punt més clar, ${m0.clar} → ${m1.clar})`);
+    if (!(m1.color > m0.color + 4)) problemes.push(`restaurant la foto antiga, no hi ha posat color (${m0.color.toFixed(1)} → ${m1.color.toFixed(1)})`);
+    const resu = await q.locator('#antigaRes').innerText();
+    if (!resu.includes('✓ Restaurada') || !resu.includes('ratllades tretes, soroll tret, cares arreglades i color posat')) problemes.push('al final no diu què ha fet: ' + resu);
+    if (await q.evaluate(() => document.documentElement.dataset.iaVives) !== 'color') problemes.push('després de restaurar, a la memòria no hi ha només l\'última IA: ' + await q.evaluate(() => document.documentElement.dataset.iaVives));
+    if (await q.evaluate(() => document.querySelector('#wrap').dataset.tool) === 'treu') problemes.push('després de restaurar, l\'eina es queda a la d\'esborrar');
+    // desfer torna pas a pas
+    await q.click('#btnUndo'); await q.waitForTimeout(400);
+    if (!((await mira()).color < m1.color - 4)) problemes.push('desfer l\'últim pas de la restauració no treu el color');
+    // aturar-la a mig fer: es queda el que ja s'havia fet, i ho diu
+    await q.setInputFiles('#file', { name: 'avis.png', mimeType: 'image/png', buffer: Buffer.from(foto.split(',')[1], 'base64') });
+    await q.waitForTimeout(600);
+    await obreTargeta(q, 'antiga');
+    await q.click('#antigaGo');
+    await q.waitForFunction(() => /^Pas 2 de 4/.test(document.querySelector('#velText').textContent), null, { timeout: 600000 });
+    await q.click('#velAtura');
+    await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 600000 });
+    await q.waitForTimeout(400);
+    const hist2 = await q.locator('.hitem span').allInnerTexts();
+    if (hist2.length !== 2 || !hist2[1].startsWith('Esborra les ratllades')) problemes.push('aturant la restauració al segon pas, a l\'historial no hi ha només el primer: ' + hist2.join(' · '));
+    if (!(await q.locator('#antigaRes').innerText()).includes('aturada')) problemes.push('aturant la restauració, no diu que s\'ha aturat: ' + await q.locator('#antigaRes').innerText());
+    console.log(`${problemes.length > abansA ? '✗' : '✓'} restaurar una foto antiga (pel processador): els quatre passos seguits i apuntats (soroll de ${m0.soroll.toFixed(1)} a ${m1.soroll.toFixed(1)}, la ratllada de ${m0.clar} a ${m1.clar}, color de ${m0.color.toFixed(1)} a ${m1.color.toFixed(1)}), el pas al vel, una sola IA a la memòria, desfer i aturar`);
+    await q.close();
+  }
+
   // ------------------------------------- els models es baixen de Cloudflare
   // A internet, els models no són a GitHub sinó a Cloudflare R2, i els
   // entrega el Worker «eines-ia». Aquí es fa veure que la web és a internet
   // (una adreça que no és l'ordinador mateix) i el Worker es fa amb les còpies
   // locals: la IA del fons s'ha de baixar del Worker i no de GitHub, i
   // funcionar. Res no surt a internet.
-  {
+  if (vol('cloudflare')) {
     const abansW = problemes.length;
     // (sense el programa de sense connexió: el navegador el buscaria a una adreça inventada)
     const ctxW = await navegador.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' });
@@ -1525,7 +1647,7 @@ await p.close();
   // una foto més petita que un tros, també; i, desenfocada, «Fes-la més
   // nítida» l'ha d'acostar a la neta. La mida no canvia, desfer la torna, i la
   // segona vegada no es torna a baixar res.
-  {
+  if (vol('soroll')) {
     const abansN = problemes.length;
     const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
     vigila(q, 'nitida');
@@ -1602,11 +1724,95 @@ await p.close();
   servidor.close();
 }
 
+// ------------------------------- la Cambra Fosca: la feina es desa sola
+// Si la pàgina es tanca, abans es perdia tot. Ara la foto i el que s'hi ha fet
+// es desen en aquest aparell i, en tornar a obrir, s'ofereix de continuar.
+if (vol('continua')) {
+  const abansC = problemes.length;
+  const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+  vigila(q, 'continua');
+  await q.goto(fitxer('cambra-fosca.html'));
+  await q.waitForTimeout(1500);
+  const desada = () => q.evaluate(() => document.documentElement.dataset.feinaDesada || '');
+  const vista = () => q.evaluate(() => { const v = document.querySelector('#view'); return [v.width, v.height, ...v.getContext('2d').getImageData(0, 0, v.width, v.height).data.filter((_, i) => i % 97 === 0)]; });
+  const difer = (a, b) => a.length !== b.length ? 999 : a.reduce((t, v, i) => Math.max(t, Math.abs(v - b[i])), 0);
+  const espera = async (abans = '') => { await q.waitForFunction(a => (document.documentElement.dataset.feinaDesada || '') !== a, abans, { timeout: 20000 }).catch(() => {}); };
+  if (await q.locator('#continua').isVisible()) problemes.push('sense cap foto a mig fer, surt el rètol de continuar');
+  // la d'exemple no es desa
+  await q.click('#tab-fil'); await q.waitForTimeout(600); await q.click('#fc-cinema'); await q.waitForTimeout(1500);
+  if (await desada()) problemes.push('la foto d\'exemple s\'ha desat com a feina a mig fer');
+  // una foto: un filtre, l'exposició, una pinzellada i la mida al 50% (que canvia la foto mateixa)
+  const dades = await q.evaluate(() => { const c = document.createElement('canvas'); c.width = 800; c.height = 600; const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 800, 600); g.addColorStop(0, '#2a6fb0'); g.addColorStop(1, '#e0b060'); x.fillStyle = g; x.fillRect(0, 0, 800, 600);
+    x.fillStyle = '#b03030'; x.fillRect(100, 100, 200, 150); x.fillStyle = '#208040'; x.beginPath(); x.arc(560, 380, 120, 0, 7); x.fill(); return c.toDataURL('image/png'); });
+  await q.setInputFiles('#file', { name: 'avia.png', mimeType: 'image/png', buffer: Buffer.from(dades.split(',')[1], 'base64') });
+  await q.waitForTimeout(600);
+  await espera();
+  if (!await desada()) problemes.push('en obrir una foto, no es desa com a feina a mig fer');
+  await q.click('#tab-fil'); await q.waitForTimeout(600); await q.click('#fc-cinema'); await q.waitForTimeout(400);
+  await q.click('#tab-adj');
+  await q.evaluate(() => { const r = document.querySelector('#sl-exposure'); r.value = 30; r.dispatchEvent(new Event('input', { bubbles: true })); r.dispatchEvent(new Event('change', { bubbles: true })); });
+  await q.keyboard.press('b');
+  { const c = await q.locator('#view').boundingBox(); await q.mouse.move(c.x + 100, c.y + 100); await q.mouse.down();
+    for (let i = 0; i < 10; i++) await q.mouse.move(c.x + 100 + i * 20, c.y + 110 + Math.sin(i / 2) * 30); await q.mouse.up(); }
+  await q.keyboard.press('v');
+  await q.click('#tab-mida'); await q.waitForTimeout(300);
+  await q.locator('#pane-mida button', { hasText: '50%' }).click(); await q.click('#midaAplica'); await q.waitForTimeout(600);
+  let d0 = await desada(); await q.waitForTimeout(1600);
+  if (await desada() === d0) await espera(d0);
+  await q.waitForTimeout(400);
+  const abans = await vista(), midaAbans = await q.locator('#stDims').innerText();
+  if (!midaAbans.includes('400 × 300')) problemes.push('la foto de la prova de continuar no fa 400 × 300: ' + midaAbans);
+  // la pàgina es tanca i es torna a obrir
+  await q.reload(); await q.waitForTimeout(1500);
+  if (!await q.locator('#continua').isVisible()) problemes.push('en tornar a obrir la pàgina, no ofereix de continuar la foto a mig fer');
+  else {
+    const t = await q.locator('#continuaText').innerText();
+    if (!t.includes('avia.png') || !t.includes('400 × 300')) problemes.push('el rètol de continuar no diu quina foto és ni quant fa: ' + t);
+    await q.click('#continuaSi'); await q.waitForTimeout(1200);
+    if (await q.locator('#continua').isVisible()) problemes.push('després de continuar, el rètol no se\'n va');
+    if (await q.locator('#stDims').innerText() !== midaAbans) problemes.push(`continuant, la foto no fa el mateix (${await q.locator('#stDims').innerText()} i era ${midaAbans})`);
+    const dif = difer(abans, await vista());
+    if (dif > 3) problemes.push(`continuant, la foto no es veu com abans de tancar (diferència de ${dif} nivells: el filtre, l'exposició o la pinzellada no hi són)`);
+    if ((await q.locator('.hitem span').allInnerTexts()).join() !== 'Continua avia.png') problemes.push('continuant, l\'historial no comença amb «Continua avia.png»: ' + await q.locator('.hitem span').allInnerTexts());
+    if (await q.locator('#fileName').innerText() !== 'avia.png') problemes.push('continuant, el nom de la foto no és el d\'abans');
+    // «Abans» ensenya la del principi, de 800 × 600, no la reduïda
+    const o = await q.evaluate(async () => { const b = document.querySelector('#btnAbans'); const r = b.getBoundingClientRect();
+      b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: r.x + 5, clientY: r.y + 5, pointerId: 7 })); await new Promise(r => setTimeout(r, 300));
+      const v = document.querySelector('#view'), d = v.getContext('2d').getImageData(Math.round(v.width * 0.25), Math.round(v.height * 0.29), 1, 1).data;
+      b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7 })); return [...d]; });
+    if (!(o[0] > 150 && o[1] < 80 && o[2] < 80)) problemes.push('continuant, «Abans» no ensenya la foto del principi (el quadrat vermell sense el filtre): ' + o);
+    // continuar no l'esborra: un altre canvi es desa, i si es torna a tancar, hi és
+    d0 = await desada();
+    await q.click('#tab-fil'); await q.waitForTimeout(500); await q.click('#fc-cap'); await espera(d0); await q.waitForTimeout(300);
+    const senseFiltre = await vista();
+    await q.reload(); await q.waitForTimeout(1500);
+    if (!await q.locator('#continua').isVisible()) problemes.push('la segona vegada que es tanca, ja no ofereix de continuar');
+    else { await q.click('#continuaSi'); await q.waitForTimeout(1200);
+      if (difer(senseFiltre, await vista()) > 3) problemes.push('la segona vegada, no es continua des de l\'últim canvi'); }
+  }
+  // descartar-la: no torna a sortir
+  await q.reload(); await q.waitForTimeout(1500);
+  if (await q.locator('#continua').isVisible()) { await q.click('#continuaNo'); await q.waitForTimeout(500); }
+  else problemes.push('abans de descartar, el rètol de continuar no hi és');
+  await q.reload(); await q.waitForTimeout(1500);
+  if (await q.locator('#continua').isVisible()) problemes.push('després de descartar-la, la foto a mig fer torna a sortir');
+  // a 320 px el rètol hi cap
+  await q.setInputFiles('#file', { name: 'un-nom-de-foto-molt-llarg-de-les-vacances-de-l-estiu.png', mimeType: 'image/png', buffer: Buffer.from(dades.split(',')[1], 'base64') });
+  await q.waitForTimeout(600); await espera();
+  await q.setViewportSize({ width: 320, height: 640 }); await q.reload(); await q.waitForTimeout(1500);
+  { const r = await q.evaluate(() => { const c = document.querySelector('#continua').getBoundingClientRect(), b = [...document.querySelectorAll('#continua button')].map(x => x.getBoundingClientRect());
+      return { vis: !document.querySelector('#continua').hidden, esq: c.left, dre: c.right, sw: document.documentElement.scrollWidth, botons: b.every(x => x.left >= c.left && x.right <= c.right + 0.5 && x.height >= 28) }; });
+    if (!r.vis || r.esq < 0 || r.dre > 320 || r.sw > 320 || !r.botons) problemes.push('a 320 px, el rètol de continuar no hi cap: ' + JSON.stringify(r)); }
+  console.log(`${problemes.length > abansC ? '✗' : '✓'} la feina es desa sola: es continua on era (filtre, exposició, pinzellada i mida), «Abans», dues vegades, descartar, i a 320 px`);
+  await q.close();
+}
+
 // ------------------------------- la Cambra Fosca com a app que s'instal·la
 // Chrome mateix diu si es pot instal·lar (i per què no), el programa de sense
 // connexió només s'ha d'ocupar de la Cambra Fosca, i amb la xarxa tallada
 // l'editor s'ha d'obrir igual. Es serveix com a GitHub, a /Eines/.
-{
+if (vol('app')) {
   const { createServer } = await import('http');
   const { readFileSync, statSync } = await import('fs');
   const { extname, join } = await import('path');
@@ -1702,7 +1908,7 @@ await noVessa(navegador, 'revisio.html', async p => {
 
 // Es fa sencera amb el dit, al mòbil més estret, i a cada pantalla es mira que
 // els botons hi càpiguen i que no se'n talli el text.
-{
+if (vol('revisio')) {
   const ctx = await navegador.newContext({
     viewport: { width: 320, height: 600 }, hasTouch: true, isMobile: true,
     userAgent: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
@@ -1800,7 +2006,7 @@ await noVessa(navegador, 'revisio.html', async p => {
 // veure que les pàgines són a oscarbellosido.github.io, cadascuna ha de
 // demanar el comptador amb el codi del compte; obertes des d'aquí (com a les
 // proves), cap. Res no surt a internet: el comptador es fa veure.
-{
+if (vol('visites')) {
   const { readFileSync: llegeix } = await import('fs');
   const ctx = await navegador.newContext({ serviceWorkers: 'block' });
   const pg = await ctx.newPage();
@@ -1835,4 +2041,4 @@ if (problemes.length) {
   for (const x of problemes) console.log('  · ' + x);
   process.exit(1);
 }
-console.log('✓ tot bé');
+console.log(NOMES.length ? '✓ tot bé (només: ' + NOMES.join(', ') + ')' : '✓ tot bé');

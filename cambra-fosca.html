@@ -447,6 +447,16 @@ input.mida-num{
   color:var(--accent);font-weight:600;
 }
 #drop.on{display:grid}
+/* «Tens una foto a mig fer»: a dalt de la taula, en obrir */
+#continua{
+  position:absolute;left:10px;right:10px;top:10px;z-index:25;margin:0 auto;max-width:460px;
+  padding:11px 12px;border-radius:10px;background:var(--bg-2);border:1px solid var(--accent);
+  box-shadow:0 6px 24px rgba(0,0,0,.5);font-size:13px;line-height:1.45;color:var(--fg);
+}
+#continua b{color:var(--accent)}
+#continua .fila{display:flex;gap:8px;margin-top:9px;align-items:center}
+#continua .fila .primary{flex:1;justify-content:center;height:36px}
+#continua #continuaNo{height:30px;font-size:12px}
 
 /* ---------- pantalles estretes ---------- */
 @media (max-width:760px){
@@ -578,6 +588,13 @@ if(location.hostname==='oscarbellosido.github.io'){
         </div>
       </div>
       <div id="drop">Deixa anar la imatge aquí</div>
+      <div id="continua" hidden role="status">
+        <div id="continuaText"></div>
+        <div class="fila">
+          <button class="btn primary" id="continuaSi" type="button">Continua on eres</button>
+          <button class="btn" id="continuaNo" type="button">Descarta-la</button>
+        </div>
+      </div>
       <div id="vel" hidden><div role="status" aria-live="polite">
         <b id="velText">Ampliant…</b>
         <div class="barra-ia"><i id="velBarra"></i></div>
@@ -1322,6 +1339,7 @@ function push(label){
   S.hIndex=S.history.length-1;
   retallaHistorial();
   drawHistory(); syncButtons(); drawThumbs();
+  programaDesat();
 }
 /* Ampliar i esborrar amb IA fan una foto nova sencera, i l'historial guarda
    les d'abans per poder desfer. Amb una foto de 12 megapíxels, cada una són
@@ -1358,7 +1376,132 @@ function restore(i){
   if(geomChanged){ buildBase(); fitToStage(); } else { renderPaint(); scheduleRender(); }
   syncSliders(); drawHistory(); syncButtons(); markPreset();
   if($('#pane-mida').classList.contains('on')) pintaMidaFoto();
+  programaDesat();
 }
+/* ===================================================================
+   8b. la feina es desa sola
+   Si el mòbil tanca la pàgina (per memòria, o sense voler), abans es perdia
+   tot. Ara, uns moments després de cada canvi, la foto i el que s'hi ha fet
+   es desen en aquest aparell (IndexedDB; no surt enlloc), i en tornar a obrir
+   la pàgina s'ofereix «Continua on eres».
+   - Es desa la foto tal com és ara (S.src), la del principi (per a «Abans»)
+     i la llista del que s'hi ha fet: ajustos, filtre, girs, retall i
+     pinzellades. L'historial no: en continuar, comença de nou des d'aquí.
+   - La foto només es torna a desar quan canvia de debò (una IA, la mida):
+     moure un control només desa la llista, que no pesa res.
+   - Tot va en una sola operació: el que hi ha desat sempre lliga (potser és
+     d'un pas abans, però mai una foto amb els ajustos d'una altra).
+   - La d'exemple no es desa. Obrir una altra foto substitueix la desada.
+   - Si el navegador no deixa desar (finestra privada), no es fa res.
+=================================================================== */
+const FEINA={ bd:null, temps:null, fotoDe:null, origDe:null, desant:false, pendent:false, pausa:false };
+function obreBD(){
+  if(FEINA.bd) return Promise.resolve(FEINA.bd);
+  return new Promise((ok,ko)=>{
+    let r; try{ r=indexedDB.open('cambra-fosca',1); }catch(e){ return ko(e); }
+    r.onupgradeneeded=()=>r.result.createObjectStore('feina');
+    r.onsuccess=()=>{ FEINA.bd=r.result; ok(r.result); };
+    r.onerror=()=>ko(r.error); r.onblocked=()=>ko(new Error('ocupada'));
+  });
+}
+const demanaBD=q=>new Promise((ok,ko)=>{ q.onsuccess=()=>ok(q.result); q.onerror=()=>ko(q.error); });
+// la foto, a un fitxer: PNG (sense pèrdua); les molt grosses i sense
+// transparència, en JPG de qualitat alta, que un PNG de 60 megapíxels triga massa
+function fotoABlob(c){
+  const gros=c.width*c.height>24e6 && !teTransparencia(c);
+  return new Promise((ok,ko)=>c.toBlob(b=>b?ok(b):ko(new Error('no s\'ha pogut desar la foto')), gros?'image/jpeg':'image/png', 0.95));
+}
+function programaDesat(){
+  if(FEINA.pausa || S.sample || !S.src) return;
+  clearTimeout(FEINA.temps);
+  FEINA.temps=setTimeout(desaFeina,700);
+}
+async function desaFeina(){
+  clearTimeout(FEINA.temps); FEINA.temps=null;
+  if(FEINA.pausa || S.sample || !S.src || !self.indexedDB) return;
+  if(FEINA.desant){ FEINA.pendent=true; return; }
+  FEINA.desant=true;
+  try{
+    const src=S.src, orig=S.original||S.src;
+    const estat={ v:1, quan:Date.now(), nom:S.name, w:src.width, h:src.height, ppp:S.ppp,
+      rot:S.rot, flipH:S.flipH, flipV:S.flipV, crop:S.crop?Object.assign({},S.crop):null,
+      adj:Object.assign({},S.adj), preset:S.preset, origIgual:orig===src,
+      ops:S.ops.map(o=>Object.assign({},o,{pts:o.pts.slice(),src:o.src?o.src.slice():null})) };
+    const foto = FEINA.fotoDe===src ? null : await fotoABlob(src);
+    const original = (orig===src || FEINA.origDe===orig) ? null : await fotoABlob(orig);
+    const bd=await obreBD(), tx=bd.transaction('feina','readwrite'), st=tx.objectStore('feina');
+    st.put(estat,'estat');
+    if(foto) st.put(foto,'foto');
+    if(original) st.put(original,'original');
+    await new Promise((ok,ko)=>{ tx.oncomplete=ok; tx.onerror=tx.onabort=()=>ko(tx.error); });
+    FEINA.fotoDe=src; if(orig!==src) FEINA.origDe=orig;
+    document.documentElement.dataset.feinaDesada=String(estat.quan);
+  }catch(e){ console.warn('La feina no s\'ha pogut desar:',e); }
+  finally{
+    FEINA.desant=false;
+    if(FEINA.pendent){ FEINA.pendent=false; programaDesat(); }
+  }
+}
+async function llegeixFeina(){
+  if(!self.indexedDB) return null;
+  try{
+    const bd=await obreBD(), st=bd.transaction('feina').objectStore('feina');
+    const [estat,foto,original]=await Promise.all(['estat','foto','original'].map(k=>demanaBD(st.get(k))));
+    return estat && estat.v===1 && foto ? { estat, foto, original } : null;
+  }catch(e){ return null; }
+}
+async function esborraFeina(){
+  try{
+    const bd=await obreBD(), tx=bd.transaction('feina','readwrite');
+    tx.objectStore('feina').clear();
+    await new Promise((ok,ko)=>{ tx.oncomplete=ok; tx.onerror=tx.onabort=()=>ko(tx.error); });
+  }catch(e){}
+  FEINA.fotoDe=FEINA.origDe=null;
+  delete document.documentElement.dataset.feinaDesada;
+}
+function blobALlenc(b){
+  return new Promise((ok,ko)=>{
+    const u=URL.createObjectURL(b), i=new Image();
+    i.onload=()=>{ const c=mkCanvas(i.naturalWidth,i.naturalHeight); c.getContext('2d').drawImage(i,0,0); URL.revokeObjectURL(u); ok(c); };
+    i.onerror=()=>{ URL.revokeObjectURL(u); ko(new Error('la foto desada no es pot llegir')); };
+    i.src=u;
+  });
+}
+const faQuant=ms=>{
+  const m=Math.round((Date.now()-ms)/60000);
+  if(m<2) return 'ara mateix'; if(m<60) return 'fa '+m+' minuts';
+  const h=Math.round(m/60); if(h<24) return h===1?'fa una hora':'fa '+h+' hores';
+  const d=Math.round(h/24); return d===1?'ahir':'fa '+d+' dies';
+};
+// En obrir la pàgina: si hi ha una foto a mig fer, s'ofereix de continuar-la
+async function ofereixContinuar(){
+  const f=await llegeixFeina(); if(!f || !S.sample) return;
+  const e=f.estat;
+  $('#continuaText').innerHTML='Tens una foto a mig fer: <b></b> ('+e.w+' × '+e.h+' px, '+faQuant(e.quan)+').';
+  $('#continuaText').querySelector('b').textContent=e.nom;
+  $('#continua').hidden=false;
+  $('#continuaSi').onclick=async()=>{
+    $('#continuaSi').disabled=true;
+    try{
+      const src=await blobALlenc(f.foto), orig=f.original && !e.origIgual ? await blobALlenc(f.original) : src;
+      FEINA.pausa=true;                 // que obrir-la no la torni a desar a mitges
+      adopt(src,e.nom,false);
+      S.original=orig; S.ppp=e.ppp||300;
+      S.history=[{ label:'Continua '+e.nom, st:{ adj:Object.assign({},ADJ_DEF,e.adj), src, rot:e.rot||0, flipH:!!e.flipH, flipV:!!e.flipV,
+        crop:e.crop||null, preset:e.preset||'cap', ppp:e.ppp||300, ops:e.ops||[] } }];
+      S.hIndex=0;
+      S.rot=-1;                         // que restore() refaci la base segur
+      restore(0);
+      FEINA.pausa=false; FEINA.fotoDe=src; FEINA.origDe=orig===src?null:orig;
+      say('Continues on eres. L\'historial comença de nou des d\'aquí.');
+    }catch(err){ FEINA.pausa=false; say('No s\'ha pogut recuperar la foto desada.'); console.warn(err); }
+    $('#continua').hidden=true; $('#continuaSi').disabled=false;
+  };
+  $('#continuaNo').onclick=async()=>{ $('#continua').hidden=true; await esborraFeina(); say('Descartada. Obre una foto per començar.'); };
+}
+// si la pàgina s'amaga (el mòbil la pot tancar sense avisar), es desa de seguida
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden' && FEINA.temps) desaFeina(); });
+
 const undo=()=>{ if(!IA.treballant && S.hIndex>0) restore(S.hIndex-1); };
 const redo=()=>{ if(!IA.treballant && S.hIndex<S.history.length-1) restore(S.hIndex+1); };
 function drawHistory(){
@@ -2270,6 +2413,7 @@ function adopt(canvas,name,isSample){
   if($('#caresRes')) $('#caresRes').hidden=true;
   IA.factorTriat=false;
   S.src=canvas; S.original=canvas; S.name=name||'imatge.png'; S.sample=!!isSample;
+  if(!isSample) $('#continua').hidden=true;
   S.ppp=midaRecordada().ppp;
   S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
   S.adj=Object.assign({},ADJ_DEF); S.preset='cap';
@@ -2686,7 +2830,7 @@ $('#btnHelp').onclick=()=>dialog('Dreceres de teclat',body=>{
   body.appendChild(g);
   body.appendChild(el('div','tiny','Al mòbil, amb dos dits damunt la foto la pots acostar o allunyar i moure.'));
   body.appendChild(el('div','tiny','També pots arrossegar un fitxer sobre el llenç o enganxar una imatge del porta-retalls.'));
-  body.appendChild(el('div','tiny','Les fotos no surten mai del teu aparell. Només es compten les visites, de manera anònima i sense galetes.'));
+  body.appendChild(el('div','tiny','Les fotos no surten mai del teu aparell. La que tens a mig fer es desa sola en aquest aparell, per si la pàgina es tanca: en tornar-hi, pots continuar on eres. Només es compten les visites, de manera anònima i sense galetes.'));
   body.appendChild(el('div','tiny','Per tenir-la com una app, amb la seva icona i sense connexió: el botó INSTAL·LA de dalt, o al menú del navegador, «Instal·la l\'aplicació» o «Afegeix a la pantalla d\'inici».'));
 });
 
@@ -2819,6 +2963,56 @@ async function baixaIA(cami, progres){
   if(c){ try{ await c.put(url, new Response(buf.slice(0), {headers:{'content-type':'application/octet-stream'}})); IA.baixats[cami]=true; }catch(e){} }
   return buf;
 }
+/* Un model que va en trossos (cap fitxer de més de 95 MB): es baixen un
+   darrere l'altre i s'ajunten. Amb un de sol, el fitxer mateix. */
+async function baixaTrossos(fitxers, que, megues, progres){
+  const peces=[]; let fet=0;
+  for(const f of fitxers){
+    peces.push(await baixaIA(f,(a,t)=>progres(que,fet+a,megues*1048576)));
+    fet+=peces[peces.length-1].length;
+  }
+  if(peces.length===1) return peces[0];
+  const tot=new Uint8Array(fet); let o=0; for(const p of peces){ tot.set(p,o); o+=p.length; }
+  peces.length=0;
+  return tot;
+}
+/* Només una IA a la memòria. Cada IA carregada ocupa de 50 a 500 MB, i abans
+   s'hi quedaven totes fins que es tancava la pàgina: restaurant una foto vella
+   sencera (ratllades, soroll, cares, color, fons, ampliar) n'hi havia sis o
+   set alhora, més d'1 GB, i al mòbil el navegador podia tancar la pàgina i
+   s'hi perdia la feina. Ara, abans de preparar-ne una, les dels altres grups
+   es deixen anar; tornar-les a preparar només és llegir-les de la memòria del
+   navegador (segons), no tornar-les a baixar. Les de l'eina d'esborrar
+   (l'esborrador i «Toca l'objecte») van juntes, que es fan servir alternades.
+   Si el navegador no pot desar els models (sense memòria pròpia, en una
+   finestra privada), no es deixa anar res: s'haurien de tornar a baixar. */
+const LLOCS_IA=[   // [grup, on és, la clau, què més s'ha de buidar]
+  ['amplia',   ()=>IA,           'sessio',   'sessioDe'],
+  ['treu',     ()=>IA.treu,      'sessio'],
+  ['treu',     ()=>IA.treu.lama, 'sessio'],
+  ['treu',     ()=>IA.sam,       'sMira'],
+  ['treu',     ()=>IA.sam,       'sToca'],
+  ['ratllades',()=>IA.ratllades, 'sessio'],
+  ['nitida',   ()=>IA.nitida,    'sessio'],
+  ['nitida',   ()=>IA.nitida,    'sBorros'],
+  ['cares',    ()=>IA.cares,     'sTroba'],
+  ['cares',    ()=>IA.cares,     'sArregla', 'sArreglaDe'],
+  ['color',    ()=>IA.color,     'sessio'],
+  ['fons',     ()=>IA.fons,      'sessio',   'sessioDe'],
+];
+async function deixaAnar(on, clau, mes){
+  const ses=on[clau]; if(!ses) return;
+  on[clau]=null; if(mes) on[mes]=null;
+  try{ await ses.release(); }catch(e){}
+}
+function apuntaVives(){     // per a les proves i per a qui hagi de mirar què hi ha carregat
+  document.documentElement.dataset.iaVives=[...new Set(LLOCS_IA.filter(([g,on,clau])=>on()[clau]).map(l=>l[0]))].join(',');
+}
+async function nomesIA(grup){
+  if(await cauIA())
+    for(const [g,on,clau,mes] of LLOCS_IA) if(g!==grup) await deixaAnar(on(),clau,mes);
+  apuntaVives();
+}
 function carregaScript(src){
   return new Promise((ok,ko)=>{
     const sc=document.createElement('script'); sc.src=src;
@@ -2841,14 +3035,15 @@ async function preparaMotor(progres){
   IA.carregat=IA.motor;
 }
 async function preparaSessio(progres){
+  await nomesIA('amplia');
   if(IA.sessio && IA.sessioDe===IA.mode) return IA.sessio;
-  if(IA.sessio){ try{ await IA.sessio.release(); }catch(e){} IA.sessio=null; IA.sessioDe=null; }
+  await deixaAnar(IA,'sessio','sessioDe');
   const md=IA.models[IA.mode];
   const bytes=await baixaIA(md.fitxer, (a,t)=>progres('el model',a,t||md.mb*1048576));
   progres('preparant el model',0,0);
   const r=await creaSessio(bytes);
   IA.sessio=r.sessio; IA.motorReal=r.motorReal; IA.errorGPU=r.errorGPU;
-  IA.sessioDe=IA.mode;
+  IA.sessioDe=IA.mode; apuntaVives();
   return IA.sessio;
 }
 // Primer amb la gràfica sola, i només si no arrenca, amb el processador. Abans
@@ -3085,10 +3280,12 @@ function pintaAmplia(){
 }
 function vel(text, part, detall){
   $('#vel').hidden=false;
-  $('#velText').textContent=text;
+  $('#velText').textContent=(IA.cadena ? 'Pas '+IA.cadena.i+' de '+IA.cadena.n+' · ' : '')+text;
   $('#velBarra').style.width=round(clamp(part,0,1)*100)+'%';
   $('#velDetall').textContent=detall||'';
 }
+// (restaurant una foto antiga, entre un pas i el següent el vel es queda)
+function amagaVel(){ if(!IA.cadena) $('#vel').hidden=true; }
 $('#velAtura').onclick=()=>{ IA.atura=true; $('#velText').textContent='Aturant…'; };
 
 /* Si veu que trigarà més de 3 minuts (IA.LLARG), ho diu de seguida i
@@ -3098,16 +3295,18 @@ IA.LLARG=180;
 function preguntaTemps(queda){
   return new Promise(resol=>{
     const t=$('#velPreguntaText');
-    let h='Això trigarà <b>uns '+minuts(queda)+'</b>.';
+    let h=(IA.cadena?'Aquest pas':'Això')+' trigarà <b>uns '+minuts(queda)+'</b>.';
     if(IA.motor==='gpu' && IA.motorReal==='cpu') h+=' La gràfica no ha arrencat i va amb el processador.';
-    if(IA.mode==='ordinador')
+    if(IA.cadena) h+=' El pots saltar i es farà la resta.';
+    else if(IA.mode==='ordinador')
       h+=' El model gran fa unes 15 vegades més feina que el del mòbil. Si no et cal tanta qualitat, atura i tria <b>Mòbil</b>'+
          (hiCapEn('mobil',IA.factor)?'':', retallant primer el tros que vulguis')+'.';
     else h+=' Si vols que vagi més de pressa, atura i retalla primer el tros que vulguis.';
     h+=' Si continues, deixa aquesta pàgina oberta.';
     t.innerHTML=h;
     $('#velAtura').hidden=true; $('#velPregunta').hidden=false;
-    const acaba=si=>{ $('#velPregunta').hidden=true; $('#velAtura').hidden=false; resol(si); };
+    $('#velNo').textContent=IA.cadena ? 'Salta aquest pas' : 'Atura';
+    const acaba=si=>{ $('#velPregunta').hidden=true; $('#velAtura').hidden=false; if(!si && IA.cadena) IA.cadena.salta=true; resol(si); };
     $('#velSegueix').onclick=()=>acaba(true);
     $('#velNo').onclick=()=>acaba(false);
   });
@@ -3204,7 +3403,7 @@ async function fesAmplia(){
     say('Ampliada a '+out.width+' × '+out.height+' px en '+temps+'.');
     titolFet('✓ Ampliada · '+TITOL);
   }catch(e){
-    const msg=String(e&&e.message||e);
+    const msg=IA.ultimError=String(e&&e.message||e);
     document.title=TITOL;
     if(msg==='aturat') say('Ampliació aturada. La foto és com era.');
     else { IA.error=msg; say('No s\'ha pogut ampliar: '+msg+'.'); console.warn('Amplia:',e); }
@@ -3212,7 +3411,7 @@ async function fesAmplia(){
     IA.treballant=false; IA.atura=false;
     try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
     bloqueigPantalla=null;
-    $('#vel').hidden=true; $('#velPregunta').hidden=true; $('#velAtura').hidden=false;
+    amagaVel(); $('#velPregunta').hidden=true; $('#velAtura').hidden=false;
     pintaAmplia();
     if($('#pane-mida').classList.contains('on')) pintaMidaFoto();
   }
@@ -3261,29 +3460,26 @@ function estatRatllades(){
    sessió i quina és, que les dues volen l'entrada d'una altra manera. */
 async function preparaSessioTreu(progres){
   const t=IA.treu;
+  await nomesIA('treu');
   if(IA.mode==='ordinador'){
     const L=t.lama;
+    await deixaAnar(t,'sessio');          // l'altre esborrador, fora
     if(!L.sessio){
-      const parts=[]; let fet=0;
-      for(const f of L.parts){
-        parts.push(await baixaIA(f,(a,n)=>progres('la IA (LaMa)',fet+a,L.mb*1048576)));
-        fet+=parts[parts.length-1].length;
-      }
-      const tot=new Uint8Array(fet); let o=0; for(const p of parts){ tot.set(p,o); o+=p.length; }
-      parts.length=0;
+      const tot=await baixaTrossos(L.parts,'la IA (LaMa)',L.mb,progres);
       progres('preparant el model',0,0);
       const r=await creaSessio(tot); L.sessio=r.sessio; L.motorReal=r.motorReal;
     }
-    t.motorReal=L.motorReal;
+    t.motorReal=L.motorReal; apuntaVives();
     return { sessio:L.sessio, lama:true };
   }
+  await deixaAnar(t.lama,'sessio');
   if(!t.sessio){
     const bytes=await baixaIA(t.fitxer, (a,n)=>progres('la IA',a,n||t.mb*1048576));
     progres('preparant el model',0,0);
     const r=await creaSessio(bytes);
     t.sessio=r.sessio; t.migan=r.motorReal; t.errorGPU=r.errorGPU;
   }
-  t.motorReal=t.migan;
+  t.motorReal=t.migan; apuntaVives();
   return { sessio:t.sessio, lama:false };
 }
 /* Omple un tros de 512 × 512: d, els punts (RGBA); forat, 1 on s'ha
@@ -3440,11 +3636,12 @@ async function treuPerTrossos(src, sessio, cadaTros){
    a vermell, que es pot repassar abans d'esborrar. */
 async function preparaSessioRatllades(progres){
   const R=IA.ratllades;
+  await nomesIA('ratllades');
   if(R.sessio) return R.sessio;
   const bytes=await baixaIA(R.fitxer, (a,t)=>progres('la IA de les ratllades',a,t||R.mb*1048576));
   progres('preparant el model',0,0);
   const r=await creaSessio(bytes);
-  R.sessio=r.sessio; R.motorReal=r.motorReal; R.errorGPU=r.errorGPU;
+  R.sessio=r.sessio; R.motorReal=r.motorReal; R.errorGPU=r.errorGPU; apuntaVives();
   return R.sessio;
 }
 async function mapaRatllades(src, sessio){
@@ -3498,14 +3695,14 @@ async function trobaRatllades(){
     pintaVista(); veuFoto();
     say('Ratllades marcades de vermell. Repassa-ho: amb «Treu vermell» treus el que no ho sigui i pintes el que falti. Després, «Esborra-ho».');
   }catch(e){
-    const msg=String(e&&e.message||e);
+    const msg=IA.ultimError=String(e&&e.message||e);
     if(msg==='aturat') say('Aturat.');
     else { say('No s\'han pogut buscar les ratllades: '+msg+'.'); console.warn('Ratllades:',e); }
   }finally{
     IA.treballant=false; IA.atura=false;
     try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
     bloqueigPantalla=null;
-    $('#vel').hidden=true;
+    amagaVel();
     estatTreu();
   }
 }
@@ -3548,14 +3745,14 @@ async function fesTreu(){
     IA.treu.ultim={ temps, motor:IA.treu.motorReal };
     say('Esborrat en '+temps+'. Si no t\'agrada, desfés-ho; si en queda un tros, torna-hi.');
   }catch(e){
-    const msg=String(e&&e.message||e);
+    const msg=IA.ultimError=String(e&&e.message||e);
     if(msg==='aturat') say('Aturat. La foto és com era.');
     else { say('No s\'ha pogut esborrar: '+msg+'.'); console.warn('Esborra:',e); }
   }finally{
     IA.treballant=false; IA.atura=false;
     try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
     bloqueigPantalla=null;
-    $('#vel').hidden=true;
+    amagaVel();
     estatTreu();
   }
 }
@@ -3569,6 +3766,7 @@ async function fesTreu(){
    s'arregla una foto vella, i amb un sol «On ho fas» per a totes.
 =================================================================== */
 const TARGETES=[
+  ['antiga','Restaura una foto antiga','Tot seguit: ratllades, soroll, cares i, si vols, color.'],
   ['ratllades','Ratllades i taques','Per a fotos velles: les troba soles i les esborra.'],
   ['nitida','Soroll i borrós','Treu el gra i el soroll, o torna més nítida una foto desenfocada.'],
   ['esborra','Esborra coses','Toca o pinta el que vulguis treure i la IA hi posa el que hi hauria al darrere.'],
@@ -3601,6 +3799,20 @@ function construeixIA(){
     const cos=el('div','targeta-cos'); cos.id='iaCos-'+k; cos.hidden=true;
     t.append(cap,cos); pane.appendChild(t);
   }
+  // restaurar una foto antiga: els passos de sota, tots seguits
+  const ca=$('#iaCos-antiga');
+  ca.appendChild(el('div','tiny','Fa, un darrere l\'altre, els passos que triïs. Cada pas queda a l\'Historial: si un no t\'agrada, pots tornar al d\'abans.'));
+  const xpa=el('div','chips'); xpa.id='antigaPassos'; xpa.style.marginTop='8px';
+  for(const [k,nom] of PASSOS_ANTIGA){
+    const c=el('button','chip',nom); c.type='button'; c.id='antigaP-'+k;
+    c.onclick=()=>{ IA.antiga.passos[k]=!IA.antiga.passos[k]; estatAntiga(); };
+    xpa.appendChild(c);
+  }
+  const ab=el('button','btn primary','✦ Restaura-la'); ab.type='button'; ab.id='antigaGo';
+  ab.style.cssText='width:100%;height:36px;justify-content:center;margin-top:8px'; ab.onclick=restauraAntiga;
+  const ai=el('div','tiny'); ai.id='antigaInfo';
+  const ar=el('div','ia-fet'); ar.id='antigaRes'; ar.hidden=true; ar.style.margin='10px 0 0';
+  ca.append(xpa,ab,ai,ar);
   // ratllades: troba-les i repassa-les amb la vareta
   const cr=$('#iaCos-ratllades');
   cr.appendChild(el('div','tiny','Marca de vermell les ratllades, els plecs i les taques clares. Després les repasses (amb «Treu vermell» treus el que no ho sigui, i pintes el que falti) i prems «Esborra-ho».'));
@@ -3687,10 +3899,98 @@ function pintaIA(){
     $('#iaTarg-'+k).classList.toggle('obert',obert);
     $('#iaCap-'+k).setAttribute('aria-expanded',obert?'true':'false');
   }
-  pintaAmplia(); pintaFons(); estatCares(); estatRatllades(); estatColor(); estatNitida(); estatTreu();
+  pintaAmplia(); pintaFons(); estatCares(); estatRatllades(); estatColor(); estatNitida(); estatTreu(); estatAntiga();
 }
 // al mòbil, les opcions queden sota la foto: per pintar-hi, s'hi torna
 function veuFoto(){ if(innerWidth<=760) $('#stage').scrollIntoView({block:'start',behavior:'smooth'}); }
+
+/* ===================================================================
+   16i. restaurar una foto antiga, tot seguit
+   L'usuari arregla fotos velles, i fer-ho eren quatre targetes, una per una.
+   Aquí es trien els passos i es fan seguits, per l'ordre en què s'arregla
+   una foto: les ratllades (la IA les troba i l'esborrador les treu, sense
+   repassar-les), el soroll, les cares i, si es vol, el color.
+   - No hi ha res de nou per dins: es criden les mateixes funcions de cada
+     targeta, amb el que hi hagi triat (el mode, la IA de les cares i el seu
+     control, la força). Per això cada pas queda apuntat a l'Historial i es
+     pot tornar al d'abans.
+   - Mentre dura, IA.cadena diu per quin pas va: el vel hi posa «Pas 2 de 4»
+     i no s'amaga entre pas i pas.
+   - «Atura» ho atura tot (el que ja s'ha fet es queda). Si un pas ha de
+     trigar molt, la pregunta de sempre deixa saltar-lo i fer la resta.
+   - Si un pas falla o no troba res (cap ratllada, cap cara), es passa al
+     següent, i al final es diu què s'ha fet i què no.
+=================================================================== */
+const PASSOS_ANTIGA=[['ratllades','Ratllades i taques'],['soroll','Soroll i gra'],['cares','Cares'],['color','Color']];
+IA.antiga={ passos:{ ratllades:true, soroll:true, cares:true, color:false }, fet:null };
+IA.cadena=null; IA.ultimError=null;
+function estatAntiga(){
+  const b=$('#antigaGo'), info=$('#antigaInfo'); if(!b||!info) return;
+  const A=IA.antiga, P=A.passos;
+  for(const [k] of PASSOS_ANTIGA) $('#antigaP-'+k).setAttribute('aria-pressed',P[k]?'true':'false');
+  b.disabled=IA.treballant || IA.motor==null || !baseCanvas || !PASSOS_ANTIGA.some(([k])=>P[k]);
+  // quant falta baixar, de les IA dels passos triats
+  let falta=0; const hi=f=>!!IA.baixats[f];
+  if(IA.motor && !hi(IA.motors[IA.motor].wasm) && IA.carregat!==IA.motor) falta+=IA.motors[IA.motor].mb;
+  if(P.ratllades){
+    if(!hi(IA.ratllades.fitxer)) falta+=IA.ratllades.mb;
+    if(IA.mode==='ordinador'){ if(!IA.treu.lama.parts.every(hi)) falta+=IA.treu.lama.mb; }
+    else if(!hi(IA.treu.fitxer)) falta+=IA.treu.mb;
+  }
+  if(P.soroll && !hi(IA.nitida.fitxer)) falta+=IA.nitida.mb;
+  if(P.cares){ const C=IA.cares, md=C.models[C.quin]; if(!hi(C.troba)) falta+=C.mbTroba; if(!md.parts.every(hi)) falta+=md.mb; }
+  if(P.color && !IA.color.parts.every(hi)) falta+=IA.color.mb;
+  let t=falta ? 'La primera vegada es baixen '+mb(falta)+'. ' : '';
+  t+='Pot trigar uns quants minuts: deixa la pàgina oberta.';
+  if(P.color) t+=' Els colors se\'ls inventa la IA.';
+  info.textContent=t;
+  const r=$('#antigaRes');
+  if(r){ const f=A.fet; r.hidden=!(f && f.src===S.src); if(!r.hidden) r.innerHTML=f.text; }
+}
+async function restauraAntiga(){
+  if(IA.treballant || !baseCanvas) return;
+  if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
+  const A=IA.antiga, tria=PASSOS_ANTIGA.filter(([k])=>A.passos[k]).map(p=>p[0]);
+  if(!tria.length) return;
+  const t0=performance.now(), eina=S.tool, N=IA.nitida, queAbans=N.que;
+  const fets=[], res=[], errors=[]; let aturat=false;
+  IA.cadena={ i:0, n:tria.length, salta:false };
+  try{
+    for(const k of tria){
+      IA.cadena.i++; IA.cadena.salta=false; IA.ultimError=null;
+      const abans=S.src;
+      if(k==='ratllades'){ await trobaRatllades(); if(!IA.ultimError && hiHaVermell()) await fesTreu(); }
+      else if(k==='soroll'){ N.que='soroll'; await fesNitida(); }
+      else if(k==='cares') await arreglaCares();
+      else await posaColor();
+      const err=IA.ultimError;
+      if(err==='aturat' && !IA.cadena.salta){ aturat=true; break; }
+      if(S.src!==abans) fets.push(k);
+      else if(err==='aturat') res.push(k+':saltat');
+      else if(err){ res.push(k+':error'); errors.push(err); }
+      else res.push(k+':res');
+    }
+  }finally{
+    IA.cadena=null; N.que=queAbans; amagaVel();
+    $('#velPregunta').hidden=true; $('#velAtura').hidden=false;
+    if(hiHaVermell()) netejaVermell();
+    if(S.tool==='treu' && eina!=='treu') setTool(eina);
+  }
+  const nom={ ratllades:'ratllades tretes', soroll:'soroll tret', cares:'cares arreglades', color:'color posat' };
+  const noNom={ 'ratllades:res':'no hi he trobat ratllades', 'cares:res':'no hi he trobat cap cara prou clara', 'soroll:res':'el soroll no s\'ha tocat', 'color:res':'el color no s\'ha tocat' };
+  const llista=a=>a.length>1 ? a.slice(0,-1).join(', ')+' i '+a[a.length-1] : a[0]||'';
+  const temps=minuts((performance.now()-t0)/1000);
+  let t = fets.length ? '<b>✓ Restaurada</b> en '+temps+': '+llista(fets.map(k=>nom[k]))+'.' : '<b>No s\'hi ha canviat res.</b>';
+  const notes=res.map(r=>{ const [k,q]=r.split(':'); const n=PASSOS_ANTIGA.find(p=>p[0]===k)[1].toLowerCase();
+    return q==='saltat' ? 'has saltat «'+n+'»' : q==='error' ? '«'+n+'» ha fallat' : noNom[r]; });
+  if(aturat) notes.push('l\'has aturada abans d\'acabar');
+  if(notes.length){ const n=llista(notes); t+=' '+n[0].toUpperCase()+n.slice(1)+'.'; }
+  if(fets.length) t+=' Mantén premut «Abans» per comparar-la. Cada pas és a l\'Historial: si un no t\'agrada, torna al d\'abans.';
+  A.fet={ src:S.src, text:t };
+  if(fets.length) titolFet('✓ Restaurada · '+TITOL);
+  say(fets.length ? 'Restaurada en '+temps+'.' : (aturat ? 'Aturada. La foto és com era.' : 'No s\'hi ha canviat res.'));
+  pintaIA();
+}
 
 /* ===================================================================
    16d. arreglar les cares
@@ -3747,26 +4047,20 @@ function estatCares(){
 }
 async function preparaSessioCares(progres){
   const C=IA.cares;
+  await nomesIA('cares');
   if(!C.sTroba){
     const b=await baixaIA(C.troba,(a,t)=>progres('la IA que troba les cares',a,t||C.mbTroba*1048576));
     C.sTroba=(await creaSessio(b)).sessio;
   }
-  if(C.sArregla && C.sArreglaDe!==C.quin){   // l'altra: fora, que no ocupi memòria
-    try{ await C.sArregla.release(); }catch(e){} C.sArregla=null; C.sArreglaDe=null;
-  }
+  if(C.sArregla && C.sArreglaDe!==C.quin) await deixaAnar(C,'sArregla','sArreglaDe');   // l'altra, fora
   if(!C.sArregla){
-    // els trossos, un darrere l'altre, i ajuntats en un de sol
-    const md=C.models[C.quin], parts=[]; let fet=0;
-    for(const f of md.parts){
-      parts.push(await baixaIA(f,(a,t)=>progres('la IA de les cares ('+md.nom+')',fet+a,md.mb*1048576)));
-      fet+=parts[parts.length-1].length;
-    }
-    const tot=new Uint8Array(fet); let o=0; for(const p of parts){ tot.set(p,o); o+=p.length; }
-    parts.length=0;
+    const md=C.models[C.quin];
+    const tot=await baixaTrossos(md.parts,'la IA de les cares ('+md.nom+')',md.mb,progres);
     progres('preparant el model',0,0);
     const r=await creaSessio(tot);
     C.sArregla=r.sessio; C.sArreglaDe=C.quin; C.motorReal=r.motorReal;
   }
+  apuntaVives();
 }
 
 /* On són les cares: la foto, com a molt de 1.280 punts i amb els costats
@@ -3902,14 +4196,14 @@ async function arreglaCares(){
           : '. Si queda massa perfecta, desfés-ho i prova «Suau».'); }
     say((cares.length===1?'Una cara arreglada':cares.length+' cares arreglades')+' en '+temps+'.');
   }catch(e){
-    const msg=String(e&&e.message||e);
+    const msg=IA.ultimError=String(e&&e.message||e);
     if(msg==='aturat') say('Aturat. La foto és com era.');
     else { say('No s\'han pogut arreglar les cares: '+msg+'.'); console.warn('Cares:',e); }
   }finally{
     IA.treballant=false; IA.atura=false;
     try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
     bloqueigPantalla=null;
-    $('#vel').hidden=true;
+    amagaVel();
     estatCares();
   }
 }
@@ -3925,6 +4219,7 @@ async function arreglaCares(){
 const SAM_MITJANA=[123.675,116.28,103.53], SAM_DESV=[58.395,57.12,57.375];
 async function preparaSam(progres){
   const M=IA.sam;
+  await nomesIA('treu');
   if(!M.sMira){
     const b=await baixaIA(M.mira,(a,t)=>progres('la IA que mira la foto',a,t||13.4*1048576));
     M.sMira=(await creaSessio(b)).sessio;
@@ -3933,6 +4228,7 @@ async function preparaSam(progres){
     const b=await baixaIA(M.toca,(a,t)=>progres('la IA del contorn',a,t||10*1048576));
     M.sToca=(await creaSessio(b)).sessio;
   }
+  apuntaVives();
 }
 async function samMira(src){
   const M=IA.sam, W=src.width, H=src.height, k=1024/Math.max(W,H);
@@ -4008,7 +4304,7 @@ async function seleccionaObjecte(x,y){
     say('No s\'ha pogut trobar l\'objecte: '+String(e&&e.message||e)+'.'); console.warn('Toca:',e);
   }finally{
     IA.treballant=false;
-    if(vel_) $('#vel').hidden=true;
+    if(vel_) amagaVel();
     estatTreu();
   }
 }
@@ -4043,20 +4339,22 @@ function estatNitida(){
 async function preparaSessioNitida(progres){
   const N=IA.nitida;
   if(N.que==='soroll'){
+    await nomesIA('nitida');
     if(!N.sessio){
       const b=await baixaIA(N.fitxer,(a,t)=>progres('la IA del soroll',a,t||N.mb*1048576));
       progres('preparant el model',0,0);
-      const r=await creaSessio(b); N.sessio=r.sessio; N.motorReal=r.motorReal;
+      const r=await creaSessio(b); N.sessio=r.sessio; N.motorReal=r.motorReal; apuntaVives();
     }
     return N.sessio;
   }
   // el borrós: el model lleuger d'ampliar (si ja és obert per ampliar, el mateix)
-  if(IA.sessio && IA.sessioDe==='mobil'){ N.motorReal=IA.motorReal; return IA.sessio; }
+  if(IA.sessio && IA.sessioDe==='mobil'){ await nomesIA('amplia'); N.motorReal=IA.motorReal; return IA.sessio; }
+  await nomesIA('nitida');
   if(!N.sBorros){
     const md=IA.models.mobil;
     const b=await baixaIA(md.fitxer,(a,t)=>progres('la IA',a,t||md.mb*1048576));
     progres('preparant el model',0,0);
-    const r=await creaSessio(b); N.sBorros=r.sessio; N.motorBorros=r.motorReal;
+    const r=await creaSessio(b); N.sBorros=r.sessio; N.motorBorros=r.motorReal; apuntaVives();
   }
   N.motorReal=N.motorBorros;
   return N.sBorros;
@@ -4111,7 +4409,7 @@ async function fesNitida(){
     say((soroll?'Soroll tret':'Més nítida')+' en '+temps+'.');
     titolFet('✓ '+(soroll?'Soroll tret':'Més nítida')+' · '+TITOL);
   }catch(e){
-    const msg=String(e&&e.message||e);
+    const msg=IA.ultimError=String(e&&e.message||e);
     document.title=TITOL;
     if(msg==='aturat') say('Aturat. La foto és com era.');
     else { say('No s\'ha pogut fer: '+msg+'.'); console.warn('Soroll i borrós:',e); }
@@ -4119,7 +4417,7 @@ async function fesNitida(){
     IA.treballant=false; IA.atura=false;
     try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
     bloqueigPantalla=null;
-    $('#vel').hidden=true; $('#velPregunta').hidden=true; $('#velAtura').hidden=false;
+    amagaVel(); $('#velPregunta').hidden=true; $('#velAtura').hidden=false;
     estatNitida();
   }
 }
@@ -4186,17 +4484,12 @@ function estatColor(){
 }
 async function preparaSessioColor(progres){
   const C=IA.color;
+  await nomesIA('color');
   if(C.sessio) return;
-  const parts=[]; let fet=0;
-  for(const f of C.parts){
-    parts.push(await baixaIA(f,(a,t)=>progres('la IA del color',fet+a,C.mb*1048576)));
-    fet+=parts[parts.length-1].length;
-  }
-  const tot=new Uint8Array(fet); let o=0; for(const p of parts){ tot.set(p,o); o+=p.length; }
-  parts.length=0;
+  const tot=await baixaTrossos(C.parts,'la IA del color',C.mb,progres);
   progres('preparant el model',0,0);
   const r=await creaSessio(tot);
-  C.sessio=r.sessio; C.motorReal=r.motorReal;
+  C.sessio=r.sessio; C.motorReal=r.motorReal; apuntaVives();
 }
 /* El color de tota la foto: la foto en grisos a N × N, pel model, i el que en
    surt (a i b) es fa gran fins a la mida de la foto i s'hi ajunta la seva L. */
@@ -4256,14 +4549,14 @@ async function posaColor(){
       '. Es pot retocar amb la temperatura i la saturació, a Ajustos. Si és massa viu, desfés-ho i prova «Suau».' };
     say('Color posat en '+temps+'.');
   }catch(e){
-    const msg=String(e&&e.message||e);
+    const msg=IA.ultimError=String(e&&e.message||e);
     if(msg==='aturat') say('Aturat. La foto és com era.');
     else { say('No s\'ha pogut posar color: '+msg+'.'); console.warn('Color:',e); }
   }finally{
     IA.treballant=false; IA.atura=false;
     try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
     bloqueigPantalla=null;
-    $('#vel').hidden=true;
+    amagaVel();
     estatColor();
   }
 }
@@ -4321,7 +4614,7 @@ function pintaFons(){
   else {
     const falta=[], mot=IA.motors[IA.motor];
     if(!IA.baixats[mot.wasm] && IA.carregat!==IA.motor) falta.push(mot.mb);
-    if(!IA.baixats[md.fitxer] && !(F.sessio && F.sessioDe===IA.mode)) falta.push(md.mb);
+    if(!(md.parts||[md.fitxer]).every(f=>IA.baixats[f]) && !(F.sessio && F.sessioDe===IA.mode)) falta.push(md.mb);
     const suma=falta.reduce((a,b)=>a+b,0);
     linia(suma ? 'La primera vegada es baixen '+mb(suma)+'. Després queden desats en aquest navegador, també sense connexió.'
                : 'La IA ja és en aquest navegador: no cal baixar res.');
@@ -4339,21 +4632,15 @@ function pintaFons(){
 
 async function preparaSessioFons(progres){
   const F=IA.fons;
+  await nomesIA('fons');
   if(F.sessio && F.sessioDe===IA.mode) return F.sessio;
-  if(F.sessio){ try{ await F.sessio.release(); }catch(e){} F.sessio=null; F.sessioDe=null; }
+  await deixaAnar(F,'sessio','sessioDe');
   const md=F.models[IA.mode];
-  // el gran va en trossos (cap fitxer de més de 95 MB): es baixen i s'ajunten
-  const peces=[]; let fet=0;
-  for(const f of md.parts||[md.fitxer]){
-    peces.push(await baixaIA(f,(a,t)=>progres('la IA',fet+a,md.mb*1048576)));
-    fet+=peces[peces.length-1].length;
-  }
-  let bytes=peces[0];
-  if(peces.length>1){ bytes=new Uint8Array(fet); let o=0; for(const p of peces){ bytes.set(p,o); o+=p.length; } }
-  peces.length=0;
+  // el gran va en trossos (cap fitxer de més de 95 MB)
+  const bytes=await baixaTrossos(md.parts||[md.fitxer],'la IA',md.mb,progres);
   progres('preparant el model',0,0);
   const r=await creaSessio(bytes);
-  F.sessio=r.sessio; F.motorReal=r.motorReal; F.errorGPU=r.errorGPU; F.sessioDe=IA.mode;
+  F.sessio=r.sessio; F.motorReal=r.motorReal; F.errorGPU=r.errorGPU; F.sessioDe=IA.mode; apuntaVives();
   return F.sessio;
 }
 
@@ -4485,14 +4772,14 @@ async function fesFons(){
       (darrere==='transparent'?' Per desar-la transparent, en <b>PNG</b>.':'') };
     say((darrere==='difuminat'?'Fons difuminat':'Fons tret')+' en '+temps+'. Si no t\'agrada, desfés-ho.');
   }catch(e){
-    const msg=String(e&&e.message||e);
+    const msg=IA.ultimError=String(e&&e.message||e);
     if(msg==='aturat') say('Aturat. La foto és com era.');
     else { F.error=msg; say('No s\'ha pogut treure el fons: '+msg+'.'); console.warn('Fons:',e); }
   }finally{
     IA.treballant=false; IA.atura=false;
     try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
     bloqueigPantalla=null;
-    $('#vel').hidden=true;
+    amagaVel();
     pintaFons();
   }
 }
@@ -4572,6 +4859,7 @@ buildFilters();
 setTool('move');
 adopt(makeSample(),'exemple.png',true);
 requestAnimationFrame(()=>{ fitToStage(); drawThumbs(); });
+ofereixContinuar();
 miraGPU().then(async g=>{ IA.motor=g?'gpu':'cpu'; await miraBaixats(); pintaIA(); estatTreu(); });
 
 if(window.claude && typeof window.claude.use==='function'){

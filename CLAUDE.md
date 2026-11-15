@@ -255,6 +255,86 @@ jocs): 10 GB gratis, i les baixades no es paguen mai.
   lectures al mes a R2 i 100.000 peticions al dia al Worker. Ara hi ha 1,14 GB
   (l'IS-Net, que ja no es fa servir, encara hi és: 86 MB).
 
+## La Cambra Fosca: que no es perdi la feina
+
+Repassant el codi es van trobar dues coses que podien fer perdre la feina al
+mòbil, i l'usuari va dir que s'arreglessin:
+
+**Només una IA a la memòria** (`nomesIA`, `LLOCS_IA`). Cada IA carregada
+ocupa de 50 a 500 MB, i s'hi quedaven totes fins que es tancava la pàgina:
+restaurant una foto vella sencera n'hi havia sis o set alhora, més d'1 GB, i
+al mòbil el navegador pot tancar la pàgina de cop.
+
+- **Abans de preparar-ne una, les dels altres grups es deixen anar.** Els
+  grups: amplia, treu (l'esborrador **i** «Toca l'objecte», que es fan servir
+  alternats), ratllades, nitida, cares, color i fons. Dins d'un grup tampoc
+  n'hi ha dues de grosses: MI-GAN o LaMa, CodeFormer o GFPGAN.
+- **Tornar-la a preparar no és tornar-la a baixar**: es llegeix de la memòria
+  del navegador (segons). Per això, si el navegador no pot desar els models
+  (una finestra privada), no es deixa anar res.
+- **Una IA nova s'ha d'apuntar a `LLOCS_IA`** i cridar `nomesIA('grup')` en
+  preparar-se. Els models en trossos es baixen amb `baixaTrossos` (abans el
+  mateix tros de codi era copiat quatre vegades).
+- `document.documentElement.dataset.iaVives` diu quins grups hi ha carregats
+  (per a la prova; el codi és tancat dins d'una funció i des de fora no es
+  veu res més).
+
+**La feina es desa sola** (`desaFeina`, `ofereixContinuar`, `FEINA`). Si la
+pàgina es tancava, es perdia tot. Ara, uns moments després de cada canvi
+(cada pas de l'historial, i desfer i refer), es desa en aquest aparell
+(IndexedDB, `cambra-fosca` → `feina`; no surt enlloc) i, en tornar a obrir,
+surt a dalt de la taula **«Tens una foto a mig fer: … Continua on eres /
+Descarta-la»**.
+
+- **Es desa** la foto tal com és ara (`S.src`), la del principi (per a
+  «Abans») i la llista del que s'hi ha fet (ajustos, filtre, girs, retall,
+  pinzellades, resolució). **L'historial no**: en continuar comença de nou
+  amb «Continua nom.jpg», i ho diu.
+- **La foto només es torna a desar quan canvia de debò** (una IA, la mida):
+  moure un control només desa la llista. En PNG; les de més de 24 megapíxels
+  sense transparència, en JPG al 95%, que un PNG tan gros triga massa.
+- **Tot va en una sola operació**: el que hi ha desat sempre lliga (potser
+  d'un pas abans, mai una foto amb els ajustos d'una altra).
+- **La d'exemple no es desa.** Obrir una altra foto substitueix la desada, i
+  continuar no l'esborra (si es torna a tancar, hi torna a ser).
+- Si la pàgina s'amaga, es desa de seguida (el mòbil la pot tancar sense
+  avisar). Si el navegador no deixa desar, no es fa res i tot va igual.
+- L'ajuda ho diu, al costat de «les fotos no surten mai del teu aparell».
+
+## La Cambra Fosca: restaurar una foto antiga, tot seguit
+
+L'usuari arregla fotos velles, i fer-ho eren quatre targetes, una per una. A
+dalt de tot de la pestanya ✦ IA hi ha la targeta **Restaura una foto antiga**
+(`restauraAntiga`): es trien els passos (`PASSOS_ANTIGA`: Ratllades i taques,
+Soroll i gra, Cares i Color; de partida, tots menys el color, que la IA se
+l'inventa) i **✦ Restaura-la** els fa seguits, per l'ordre en què s'arregla
+una foto.
+
+- **No hi ha res de nou per dins**: es criden les mateixes funcions de cada
+  targeta (`trobaRatllades` i `fesTreu`, `fesNitida`, `arreglaCares`,
+  `posaColor`), amb el que hi hagi triat (el mode Mòbil / Ordinador, la IA de
+  les cares i el seu control, la força). Per això **cada pas queda apuntat a
+  l'Historial** i es pot tornar al d'abans, i es desa sol pel camí.
+- **Les ratllades s'esborren sense repassar-les** (a la targeta de les
+  ratllades es marquen de vermell i es repassen; aquí no). Si la IA n'ha
+  marcat alguna que no ho era, es desfà aquell pas.
+- **`IA.cadena`** diu per quin pas va: el vel hi posa «Pas 2 de 4 · » i no
+  s'amaga entre pas i pas (`amagaVel`). **`IA.ultimError`** és el que ha
+  passat a l'últim pas (cada funció l'apunta quan falla o s'atura).
+- **«Atura» ho atura tot**; el que ja s'havia fet es queda. Si un pas ha de
+  trigar més de 3 minuts, la pregunta de sempre diu **«Salta aquest pas»** en
+  lloc d'«Atura», i es fa la resta.
+- **Si un pas falla o no troba res** (cap ratllada, cap cara), es passa al
+  següent, i al final es diu què s'ha fet i què no («✓ Restaurada en 2 min:
+  ratllades tretes i soroll tret. No hi he trobat cap cara prou clara.»).
+- Diu quant es baixa la primera vegada, sumant les IA dels passos triats.
+- Com que només hi ha una IA a la memòria, cada pas torna a preparar la seva
+  (uns segons). Al contenidor, sense gràfica, una foto de 720 × 480 amb els
+  quatre passos triga uns 2 minuts i mig.
+- **A la prova, la cara dibuixada ha de tenir una mica de color**: del tot en
+  gris i ja sense soroll és tan llisa que RetinaFace no la veu com una cara
+  (amb fotos de debò no passa).
+
 ## La Cambra Fosca: els menús
 
 L'usuari va trobar els menús embolicats quan ja hi havia cinc IA: les cares
@@ -267,7 +347,8 @@ Mida · Historial**:
   els controls de sempre.
 - **✦ IA** (`construeixIA`, `pintaIA`): a dalt, **un sol «On ho fas»** per a
   totes (`IA.mode`), i una **targeta** per a cada IA, per l'ordre en què
-  s'arregla una foto vella (`TARGETES`): Ratllades i taques, Soroll i borrós,
+  s'arregla una foto vella (`TARGETES`): Restaura una foto antiga (tots els
+  passos seguits), Ratllades i taques, Soroll i borrós,
   Esborra coses, Cares, Color, Fons i Amplia. **Només una d'oberta** (`IA.targeta`), que al mòbil
   no s'hagi de baixar tant; tocant-la oberta, es tanca. El Fons i l'Amplia
   es pinten dins de la seva targeta (`#pane-fons`, `#pane-amp`, que ara són
@@ -994,7 +1075,11 @@ Les mateixes que al repositori dels jocs, i ja ens han mossegat allà:
 ## Com es prova
 
 `node prova.mjs` (cal Playwright; al contenidor és a
-`/opt/node22/lib/node_modules/playwright`). En una còpia nova del repositori,
+`/opt/node22/lib/node_modules/playwright`). **La sencera triga uns 25
+minuts; per provar només unes parts, `node prova.mjs cares fons`** (les parts:
+retall, tampo, arregla, amplia, esborra, ratllades, cares, fons, color,
+cloudflare, soroll, continua, app, revisio, visites; la portada i el bàsic de
+la Cambra Fosca es proven sempre). Abans de desar un canvi, la sencera. En una còpia nova del repositori,
 abans cal `python ia/models_r2.py baixa` (els models no hi són). Obre les
 pàgines amb un navegador de debò i comprova:
 
@@ -1121,7 +1206,10 @@ pàgines amb un navegador de debò i comprova:
   ratllades clares i un plec, que la IA en marqui almenys el 70% i no marqui
   res on no n'hi ha (menys del 0,05%); que la goma en protegeixi un tros (que
   no s'esborra); que a les marcades la foto s'acosti a la neta (a menys d'un
-  quart de la diferència d'abans) sense tocar la resta; i desfer. Es va
+  quart de la diferència d'abans) sense tocar la resta; i desfer. També que
+  només hi hagi una IA a la memòria: la de les ratllades després de buscar,
+  només la d'esborrar després d'esborrar, i que tornar a buscar no baixi res
+  (falla si les IA no es deixen anar). Es va
   comprovar que falla amb la foto mal preparada per a la IA, sense dibuixar el
   vermell de la IA a la màscara o enganxant el tros sencer;
 - **treure el fons** (també serveix el repositori ella mateixa): sobre un
@@ -1132,6 +1220,24 @@ pàgines amb un navegador de debò i comprova:
   PNG transparent; desfer; i que el difuminat difumini el fons, no toqui el
   gerro i no hi deixi aura. Es va comprovar que falla amb el mapa al revés,
   difuminant amb el gerro inclòs, sense difuminar o amb el JPG sense blanc;
+- **restaurar una foto antiga** (també serveix el repositori ella mateixa):
+  sobre una foto descolorida feta a mida, amb una cara dibuixada, soroll i
+  dues ratllades, que de partida hi hagi ratllades, soroll i cares triats;
+  que digui quant es baixa; que sense cap pas no es pugui prémer; que amb els
+  quatre passos quedin tots quatre a l'historial per ordre, el vel digui «Pas
+  1 de 4» fins a «Pas 4 de 4», el soroll baixi a menys de la meitat, la
+  ratllada ja no hi sigui i hi hagi color; que al final digui què ha fet i a
+  la memòria només hi hagi l'última IA; que desfer tregui només l'últim pas;
+  i que aturant-la al segon pas es quedi el primer i ho digui. Es va
+  comprovar que falla si «Atura» no atura la resta;
+- **la feina es desa sola**: que la d'exemple no es desi; que amb una foto
+  amb filtre, exposició, una pinzellada i la mida al 50%, en tornar a obrir
+  la pàgina surti el rètol amb el nom i la mida, i que «Continua on eres» la
+  deixi igual que abans de tancar (i «Abans» ensenyi la del principi); que un
+  altre canvi i tornar a tancar també es recuperi; que «Descarta-la» no la
+  torni a oferir; i que el rètol hi càpiga a 320 px. Es va comprovar que
+  falla si no es recuperen les pinzellades o si la foto desada no és la
+  d'ara;
 - **com a app**: la fitxa (que s'obri sola, que comenci a la Cambra Fosca,
   que l'abast no agafi tota la carpeta, el nom i els colors, i que les icones
   hi siguin i facin la mida que diuen, amb una de «maskable»), que el programa
