@@ -4814,6 +4814,9 @@ function mirantFoto(src){
   if(llarg<1200){ factor = llarg<600 && midaResultat(4).mp<=IA.models[IA.mode].maxMP ? 4 : 2; if(midaResultat(factor).mp>IA.models[IA.mode].maxMP) factor=0; }
   return { bn, soroll, croma, antiga, llarg, factor };
 }
+// IMPORTANT: tot el que s'afegeixi per arreglar fotos ha d'entrar aquí (si li
+// toca, i només quan calgui). La llista del que s'ha de tocar és a CLAUDE.md,
+// «Com s'afegeix una IA (o qualsevol cosa nova que arregli fotos)».
 async function arreglaTota(){
   if(IA.treballant || !baseCanvas) return;
   if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }

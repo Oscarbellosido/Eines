@@ -50,6 +50,30 @@ prova.mjs             la prova: la portada i totes les eines
 4. La seva part a `prova.mjs`.
 5. Una línia a la taula d'aquí dalt.
 
+## Com s'afegeix una IA (o qualsevol cosa nova que arregli fotos) a la Cambra Fosca
+
+L'usuari ho va demanar: **«Arregla-la» (`arreglaTota`) ha de tenir en compte
+tot el que s'hi afegeixi**. Cada vegada que s'afegeix una IA o una eina que
+arregla fotos, s'ha de decidir si «Arregla-la» l'ha de fer servir i quan, i
+deixar-ho fet. La llista:
+
+1. **Decidir si li toca**: si serveix per arreglar fotos (no per fer-hi coses
+   a mà, com esborrar un objecte o enganxar una imatge), «Arregla-la» l'ha
+   de fer servir, però **només quan calgui**: la foto s'ha de mirar abans
+   (a `mirantFoto`) i, si no li cal, no s'ha de fer ni baixar. Si es decideix
+   que no li toca, s'apunta el perquè a la secció «Arreglar-la tota, sola».
+2. **El pas**: el nom a `corrPassos` (que cridi la funció de la seva
+   targeta), a `NOM_PAS` (què s'ha fet: «soroll tret») i a `TITOL_PAS`, i el
+   lloc que li toca dins del pla d'`arreglaTota` (l'ordre en què s'arregla
+   una foto). Si no es fa, què se'n diu a `noCal` o amb `IA.notaPas`.
+3. **El que es baixa**: sumar-lo a l'estimació d'`estatAntiga` («com a molt
+   N MB»), i també a `BAIXABLES`, `miraBaixats` i `LLOCS_IA` (`nomesIA`).
+4. **Si també ho ha de poder triar a mà**, a `PASSOS_ANTIGA` («Tria tu els
+   passos»).
+5. **La prova** (`auto`): que entri al pla quan toca, que no hi entri quan no
+   toca (i no baixi res), i que surti a l'historial.
+6. La secció «Arreglar-la tota, sola» d'aquí, amb quan es fa i per què.
+
 **Cada eina porta un enllaç de tornada a la portada** (`a.back`, «← EINES»), a
 l'esquerra de la barra de dalt. A les pantalles estretes es queda només amb la
 fletxa.
@@ -492,6 +516,11 @@ què («No li calia treure el soroll (no en té gaire)»).
 - **Més gran**: si el costat llarg fa menys de 1.200 punts (×4 per sota de
   600, si hi cap), amb el mode Mòbil / Ordinador triat.
 - `document.documentElement.dataset.autoPla` diu el pla (per a la prova).
+- **Tot el que s'afegeixi per arreglar fotos ha d'entrar aquí** (si li toca, i
+  només quan calgui): la llista és a dalt de tot, «Com s'afegeix una IA».
+  Ara **no** hi entren, a posta: esborrar coses i tocar l'objecte (s'ha de
+  dir què es vol treure), el fons (és un canvi, no un arreglo), redreçar la
+  foto de paper (cal marcar les cantonades) i enganxar una imatge.
 
 **Tria tu els passos** (`restauraAntiga`, a sota, tancat de partida): es
 trien els passos (`PASSOS_ANTIGA`: Ratllades i taques, Soroll i gra, Cares i
