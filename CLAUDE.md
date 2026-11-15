@@ -495,8 +495,16 @@ què («No li calia treure el soroll (no en té gaire)»).
   foto sembla vella** (en blanc i negre o sèpia, `fotoTeColor`; amb soroll;
   o amb els colors esvaïts, `cromaFoto` < 14). **En una foto d'avui la IA
   s'inventa ratllades** (a la prova, les ratlles negres d'una persiana i un
-  quadre blanc) i les esborrava: per això no s'hi busquen. Si se'n troben
-  moltíssimes (més del 6% de la foto), deu ser la textura: no s'esborren.
+  quadre blanc) i les esborrava: per això no s'hi busquen. Només si gairebé
+  tota la foto en surt plena (més del 40%), deu ser la textura i no
+  s'esborren. **Aquest límit era del 6% i va fallar amb la primera foto de
+  debò de l'usuari**: una foto sèpia de dos nens, tota esquerdada, on la IA
+  marcava bé les esquerdes (el 20% de la foto) i no se n'esborrava cap; només
+  s'arreglaven les cares, amb les esquerdes a sobre.
+- **Dues passades de ratllades** (a «Tria tu els passos» també): amb aquella
+  foto, després de la primera en quedava un 5%, de les fines, que la IA
+  troba un cop treta la resta. La segona només es fa si en troba més del
+  0,3%.
 - **Soroll**: si `sorollFoto` dona 2,8 o més. És el mètode d'Immerkær (el
   filtre de 3 × 3 que només deixa el soroll) als punts del 40% més llis,
   sobre un tros del mig **a mida sencera** (reduint-la, el soroll es perd).
@@ -506,7 +514,13 @@ què («No li calia treure el soroll (no en té gaire)»).
   que les arregla només es baixa i es fa servir si alguna ho necessita**
   (`caraCal`): petita (ulls a menys de 70 punts), borrosa (vores fluixes a
   128 × 128, menys de 7; una cara nítida en fa uns 12) o de foto vella. Una
-  cara gran i nítida es queda com és. `preparaSessioCares(progres, true)`
+  cara gran i nítida es queda com és. **En una foto en blanc i negre o
+  sèpia, la cara arreglada es queda del to de la foto** (a `arreglaUnaCara`,
+  `toFoto`): CodeFormer la tornava de colors (ulls blaus, llavis rosats) i
+  quedava com un pegat a la foto de l'usuari. Es queda la claredat de la
+  cara arreglada amb el to mitjà de la cara d'abans (un de sol, que les
+  ratllades blanques no hi facin taques). Val també per a la targeta Cares.
+  `preparaSessioCares(progres, true)`
   només prepara la que les troba (també a la targeta Cares: si no n'hi ha
   cap, ja no es baixa la grossa).
 - **Color**: només si és en blanc i negre **i** s'ha marcat «Posa-hi color si
@@ -1331,8 +1345,10 @@ pàgines amb un navegador de debò i comprova:
   i que en una foto sense cares ho digui i no hi toqui. Amb CodeFormer (la de
   partida): que es baixi en els seus dos trossos i surti a l'historial, que
   «més semblant» canviï la cara menys que «més nítida» i que la segona vegada
-  no es baixi res; amb GFPGAN, que «Suau» la canviï menys que «Fort». Es va
-  comprovar que falla tornant la cara amb el gir d'anada, sense la força, amb
+  no es baixi res; amb GFPGAN, que «Suau» la canviï menys que «Fort»; i en
+  una foto en sèpia, que la cara arreglada es quedi del to de la foto (el to
+  varia menys de 4°; de colors, 7,7°). Es va comprovar que falla tornant la
+  cara amb el gir d'anada, sense el to de la foto, sense la força, amb
   els cinc punts mal descodificats o si el control de CodeFormer no arriba a
   la IA;
 - **la pestanya Mida**: que Desa ja no tingui la mida i digui on és; que la
@@ -1452,8 +1468,11 @@ pàgines amb un navegador de debò i comprova:
   (descolorida, amb soroll, dues ratllades i una cara borrosa, de 720 punts)
   passi per ratllades, soroll, cares, llum i ×2 (1.440 × 960), i ho digui;
   que en blanc i negre el color només entri al pla si s'ha marcat; aturar; i
-  a 320 px. Es va comprovar que falla si les ratllades es busquen a
-  qualsevol foto o si la IA de les cares es baixa sense cap cara;
+  a 320 px. I una foto de mentida molt esquerdada (la IA en marca el 12%),
+  amb esquerdes corbes i irregulars (rectes i regulars, la IA no les
+  reconeix), on s'han d'esborrar en dues passades. Es va comprovar que falla
+  si les ratllades es busquen a qualsevol foto, si la IA de les cares es
+  baixa sense cap cara o amb el límit d'abans (6%);
 - **restaurar una foto antiga** («Tria tu els passos»; també serveix el repositori ella mateixa):
   sobre una foto descolorida feta a mida, amb una cara dibuixada, soroll i
   dues ratllades, que de partida hi hagi ratllades, soroll i cares triats;

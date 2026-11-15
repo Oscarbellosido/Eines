@@ -4681,11 +4681,19 @@ async function corrPassos(passos){
       IA.cadena.i++; IA.cadena.salta=false; IA.ultimError=null; IA.notaPas=null;
       const abans=S.history[S.hIndex];
       if(k==='ratllades'){
-        await trobaRatllades();
-        const m=S.mascara.find(x=>x.ras && !x.obj);
-        // si n'hi ha moltíssimes, deu ser la textura de la foto: no s'esborra
-        if(m && m.part>0.06 && IA.auto){ netejaVermell(); IA.notaPas='n\'he trobat massa per estar segura que ho siguin: si en té, repassa-les a la targeta «Ratllades i taques»'; }
-        else if(!IA.ultimError && hiHaVermell()) await fesTreu();
+        // Dues passades: amb una foto molt esquerdada (la d'una foto de
+        // l'usuari en tenia el 20%), després de la primera encara en quedava
+        // un 5%, de les fines, que la IA troba un cop treta la resta.
+        for(let passada=1;passada<=2;passada++){
+          await trobaRatllades();
+          if(IA.ultimError) break;
+          const m=S.mascara.find(x=>x.ras && !x.obj);
+          // si gairebé tota la foto en surt plena, deu ser la textura: no s'esborra
+          if(m && m.part>0.4 && IA.auto){ netejaVermell(); IA.notaPas='n\'he trobat massa per estar segura que ho siguin: si en té, repassa-les a la targeta «Ratllades i taques»'; break; }
+          if(!hiHaVermell() || (passada===2 && m && m.part<0.003)){ if(hiHaVermell()) netejaVermell(); break; }
+          await fesTreu();
+          if(IA.ultimError) break;
+        }
       }
       else if(k==='soroll'){ N.que='soroll'; await fesNitida(); }
       else if(k==='cares') await arreglaCares();
@@ -4984,7 +4992,7 @@ function mascaraCara(){
   }
   return MASCARA_CARA=m;
 }
-async function arreglaUnaCara(feina, cara, forca, fidel){
+async function arreglaUnaCara(feina, cara, forca, fidel, toFoto){
   const T=semblanca(cara.punts, CARA_PLANTILLA);
   // la cara, dreta i a 512 (fora de la foto, el gris que hi posa el projecte)
   const fc=mkCanvas(512,512), fx=fc.getContext('2d',{willReadFrequently:true});
@@ -5001,8 +5009,26 @@ async function arreglaUnaCara(feina, cara, forca, fidel){
   if(s.inputNames.includes('weight')) entra.weight=new ort.Tensor('float32',new Float32Array([fidel]),[]);
   const res=await s.run(entra);
   const sortida=res[s.outputNames[0]], y=sortida.data, mk=mascaraCara();
+  // En una foto en blanc i negre o sèpia, la IA torna la cara de colors (ulls
+  // blaus, llavis rosats) i quedava com un pegat: l'usuari ho va veure amb una
+  // foto seva. Llavors es queda només la claredat de la cara arreglada, amb el
+  // to de la foto (la mitjana del color de la cara d'abans: una sola, que les
+  // ratllades blanques no hi facin taques).
+  let ta=0, tb=0;
+  if(toFoto){
+    const f=t=>t>0.008856 ? Math.cbrt(t) : 7.787*t+16/116; let pes=0;
+    for(let i=0,j=0;i<P;i+=7,j+=28){
+      const w=mk[i]; if(w<0.5) continue;
+      const r=LAB.lin[d[j]], g=LAB.lin[d[j+1]], b=LAB.lin[d[j+2]];
+      const fy=f(0.212671*r+0.715160*g+0.072169*b);
+      ta+=500*(f((0.412453*r+0.357580*g+0.180423*b)/LAB.Xn)-fy); tb+=200*(fy-f((0.019334*r+0.119193*g+0.950227*b)/LAB.Zn)); pes++;
+    }
+    if(pes){ ta/=pes; tb/=pes; }
+  }
   for(let i=0,j=0;i<P;i++,j+=4){
-    d[j]=(clamp(y[i],-1,1)+1)*127.5; d[j+1]=(clamp(y[P+i],-1,1)+1)*127.5; d[j+2]=(clamp(y[2*P+i],-1,1)+1)*127.5;
+    const r=(clamp(y[i],-1,1)+1)*127.5, g=(clamp(y[P+i],-1,1)+1)*127.5, b=(clamp(y[2*P+i],-1,1)+1)*127.5;
+    if(toFoto) labARgb(labL(r|0,g|0,b|0),ta,tb,d,j);
+    else { d[j]=r; d[j+1]=g; d[j+2]=b; }
     d[j+3]=mk[i]*forca*255;
   }
   if(sortida.dispose) sortida.dispose();
@@ -5043,12 +5069,12 @@ async function arreglaCares(){
     IA.cares.ultimes=cares.length;
     await preparaSessioCares(progres);
     if(IA.atura) throw new Error('aturat');
-    const feina=mkCanvas(baseCanvas.width,baseCanvas.height), cf=IA.cares.quin==='codeformer';
+    const feina=mkCanvas(baseCanvas.width,baseCanvas.height), cf=IA.cares.quin==='codeformer', senseColor=!fotoTeColor();
     feina.getContext('2d').drawImage(baseCanvas,0,0);
     for(let i=0;i<cares.length;i++){
       vel('Arreglant les cares…',i/cares.length,'Cara '+(i+1)+' de '+cares.length+(IA.cares.motorReal==='gpu'?' · amb la gràfica':' · amb el processador, pot trigar'));
       await new Promise(r=>setTimeout(r,20));
-      await arreglaUnaCara(feina, cares[i], cf ? 1 : IA.cares.forca, IA.cares.semblanca);
+      await arreglaUnaCara(feina, cares[i], cf ? 1 : IA.cares.forca, IA.cares.semblanca, senseColor);
       if(IA.atura) throw new Error('aturat');
     }
     // com quan s'esborra o s'amplia, la foto nova passa a ser la foto

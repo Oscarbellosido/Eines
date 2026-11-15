@@ -1196,7 +1196,7 @@ if (vol('arregla')) {
   // tocar la resta de la foto. «Suau» n'ha de canviar menys que «Fort». En una
   // foto sense cares, ho ha de dir. No es fa servir la foto de ningú.
   if (vol('cares')) {
-    const abansC = problemes.length;
+    const abansC = problemes.length; let sepiaDisp = null;
     const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
     vigila(q, 'cares');
     const demanatsC = [];
@@ -1288,6 +1288,23 @@ if (vol('arregla')) {
     await arregla('gfpgan', 'suau');
     const suau = await mira([170, 150, 140, 170]);
     if (!(suau.dif < difFort * 0.75)) problemes.push(`«Suau» canvia la cara tant com «Fort» (${suau.dif.toFixed(1)} contra ${difFort.toFixed(1)})`);
+    // en sèpia, la cara arreglada ha de quedar del to de la foto, no de colors
+    // (amb una foto de l'usuari, CodeFormer hi posava ulls blaus i llavis rosats)
+    { await q.click('#btnUndo').catch(() => {}); await q.waitForTimeout(200);
+      const sepia = Buffer.from((await q.evaluate(async orig => { const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = 'data:image/png;base64,' + orig; });
+        const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const x = c.getContext('2d'); x.drawImage(i, 0, 0);
+        const im = x.getImageData(0, 0, c.width, c.height), d = im.data;
+        for (let k = 0; k < d.length; k += 4) { const g = 0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2]; d[k] = Math.min(255, g * 1.07); d[k + 1] = g * 0.95; d[k + 2] = g * 0.78; }
+        x.putImageData(im, 0, 0); return c.toDataURL('image/png'); }, original.toString('base64'))).split(',')[1], 'base64');
+      await q.setInputFiles('#file', { name: 'sepia.png', mimeType: 'image/png', buffer: sepia }); await q.waitForTimeout(500);
+      await arregla('codeformer', 0.5);
+      // la dispersió del to (en graus) dels punts de la cara amb color: la sèpia, gairebé un sol to
+      const dispersio = await q.evaluate(() => { const v = document.querySelector('#view'), e = v.width / 720, d = v.getContext('2d').getImageData(Math.round(170 * e), Math.round(150 * e), Math.round(140 * e), Math.round(170 * e)).data;
+        let sx = 0, sy = 0, n = 0; for (let k = 0; k < d.length; k += 4) { const r = d[k], g = d[k + 1], b = d[k + 2], a = r - (g + b) / 2, bb = (g - b) * 0.866, cr = Math.hypot(a, bb); if (cr > 6) { sx += a / cr; sy += bb / cr; n++; } }
+        const R = n ? Math.hypot(sx, sy) / n : 1; return Math.sqrt(-2 * Math.log(Math.max(R, 1e-9))) * 180 / Math.PI; });
+      if (!(await q.locator('.hitem span').allInnerTexts()).some(t => t.startsWith('Arregla les cares'))) problemes.push('en una foto en sèpia, no s\'ha arreglat la cara');
+      else if (dispersio > 4) problemes.push(`en una foto en sèpia, la cara arreglada surt de colors (el to varia ${dispersio.toFixed(1)}°; la sèpia, gairebé gens)`);
+      sepiaDisp = dispersio; }
     // una foto sense cares (la d'exemple): ho diu i no hi toca
     await q.setInputFiles('#file', { name: 'paisatge.png', mimeType: 'image/png', buffer: Buffer.from((await q.evaluate(() => { const c = document.createElement('canvas'); c.width = 400; c.height = 300;
       const x = c.getContext('2d'); const g = x.createLinearGradient(0, 0, 0, 300); g.addColorStop(0, '#5b8fd0'); g.addColorStop(1, '#3a5a2a'); x.fillStyle = g; x.fillRect(0, 0, 400, 300); return c.toDataURL('image/png'); })).split(',')[1], 'base64') });
@@ -1295,7 +1312,7 @@ if (vol('arregla')) {
     await arregla('codeformer', 0.5);
     if (!(await q.locator('#stMsg').innerText()).includes('No he trobat cap cara') || (await q.locator('.hitem span').allInnerTexts()).length !== 1)
       problemes.push('en una foto sense cares, no diu que no n\'ha trobat cap o hi ha tocat');
-    console.log(`${problemes.length > abansC ? '✗' : '✓'} arreglar les cares (pel processador): troba la cara dibuixada, CodeFormer (nitidesa de ${cara.nit0.toFixed(1)} a ${cara.nit.toFixed(1)}; «semblant» canvia ${semblant.dif.toFixed(1)} i «nítida» ${nitida.dif.toFixed(1)}), GFPGAN («Suau» menys que «Fort»), els ulls al seu lloc, la resta igual, sense cares ho diu, i desfer`);
+    console.log(`${problemes.length > abansC ? '✗' : '✓'} arreglar les cares (pel processador): troba la cara dibuixada, CodeFormer (nitidesa de ${cara.nit0.toFixed(1)} a ${cara.nit.toFixed(1)}; «semblant» canvia ${semblant.dif.toFixed(1)} i «nítida» ${nitida.dif.toFixed(1)}), GFPGAN («Suau» menys que «Fort»), en sèpia la cara es queda del to de la foto (${sepiaDisp == null ? '?' : sepiaDisp.toFixed(1)}°), els ulls al seu lloc, la resta igual, sense cares ho diu, i desfer`);
     await q.close();
   }
 
@@ -1614,7 +1631,7 @@ if (vol('arregla')) {
   // nítida i sense cares, no s'ha de tocar ni baixar cap IA grossa; i amb una
   // en blanc i negre, el color només si s'ha marcat.
   if (vol('auto')) {
-    const abansU = problemes.length;
+    const abansU = problemes.length; let esquerdes = null;
     const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
     vigila(q, 'auto');
     const baixats = []; q.on('request', r => { const m = r.url().match(/([\w-]+)\.onnx/); if (m) baixats.push(m[1]); });
@@ -1679,6 +1696,23 @@ if (vol('arregla')) {
     if (await q.locator('#stDims').innerText() !== '1440 × 960 px') problemes.push('a la foto vella de 720 punts, no l\'ha feta el doble de gran: ' + await q.locator('#stDims').innerText());
     { const t = await q.locator('#antigaRes').innerText();
       if (!t.includes('✓ Arreglada') || !t.includes('una cara arreglada') || !t.includes('2 vegades més gran')) problemes.push('al final de la foto vella, no diu què ha fet: ' + t); }
+    // ---- una foto molt esquerdada (com una de l'usuari, amb el 20% de la foto
+    // plena d'esquerdes; aquesta, de mentida, en té un 12%): s'han d'esborrar, no
+    // prendre-les per la textura (fins llavors, a partir del 6% no es tocaven).
+    // Les esquerdes han de ser corbes i irregulars: rectes i regulars, la IA no
+    // les reconeix (no s'assemblen a les de debò).
+    { const esquerdada = await fes(700, 900, `const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#a89678');g.addColorStop(1,'#5a4a38');x.fillStyle=g;x.fillRect(0,0,w,h);
+x.filter='blur(6px)';x.fillStyle='#6b5a45';x.fillRect(150,260,400,480);x.fillStyle='#c2ae8e';x.beginPath();x.ellipse(350,230,90,110,0,0,7);x.fill();x.fillStyle='#3e3326';x.fillRect(0,760,w,140);x.filter='none';
+const im=x.getImageData(0,0,w,h),d=im.data;let s=11;const r=()=>{s=(s+0x6D2B79F5)|0;let t=Math.imul(s^(s>>>15),1|s);t=(t+Math.imul(t^(t>>>7),61|t))^t;return ((t^(t>>>14))>>>0)/4294967296;};
+for(let k=0;k<d.length;k+=4){const n=(r()-.5)*18;d[k]+=n;d[k+1]+=n;d[k+2]+=n;}x.putImageData(im,0,0);
+x.lineCap='round';x.lineJoin='round';
+for(let i=0;i<70;i++){let px=r()*w,py=r()*h,a=r()*6.28;x.strokeStyle='rgba(243,238,226,'+(0.75+r()*0.25)+')';x.lineWidth=1.5+r()*3.5;x.beginPath();x.moveTo(px,py);
+  const n=25+r()*60;for(let k=0;k<n;k++){a+=(r()-.5)*0.9;px+=Math.cos(a)*6;py+=Math.sin(a)*6;x.lineTo(px,py);}x.stroke();}`);
+      await q.setInputFiles('#file', { name: 'esquerdada.png', mimeType: 'image/png', buffer: esquerdada }); await q.waitForTimeout(600);
+      await obreTargeta(q, 'antiga'); await q.click('#autoGo'); await espera();
+      const h = await hist(), t = await q.locator('#antigaRes').innerText();
+      esquerdes = h.filter(x => x.startsWith('Esborra les ratllades')).length;
+      if (!esquerdes || t.includes('massa')) problemes.push('en una foto molt esquerdada, «Arregla-la» no esborra les esquerdes (les pren per la textura?): ' + t.slice(0, 160)); }
     // ---- en blanc i negre: el color només si s'ha marcat (es mira el pla i s'atura)
     const bn = await fes(1600, 1000, `const g=x.createLinearGradient(0,0,0,1000);g.addColorStop(0,'#bbb');g.addColorStop(1,'#444');x.fillStyle=g;x.fillRect(0,0,w,h);x.fillStyle='#222';x.fillRect(300,400,400,300);x.fillStyle='#eee';x.beginPath();x.arc(1100,500,180,0,7);x.fill();`);
     for (const ambColor of [false, true]) {
@@ -1700,7 +1734,7 @@ if (vol('arregla')) {
     { const r = await m.evaluate(() => { const c = document.querySelector('#iaCos-antiga').getBoundingClientRect(); return { sw: document.documentElement.scrollWidth, dins: [...document.querySelectorAll('#iaCos-antiga button')].filter(b => b.offsetParent).every(b => { const x = b.getBoundingClientRect(); return x.left >= c.left - 0.5 && x.right <= c.right + 0.5; }), gros: document.querySelector('#autoGo').getBoundingClientRect().height >= 38 }; });
       if (r.sw > 320 || !r.dins || !r.gros) problemes.push('a 320 px, la targeta «Arregla-la tota» no hi cap: ' + JSON.stringify(r)); }
     await m.close();
-    console.log(`${problemes.length > abansU ? '✗' : '✓'} arreglar-la tota, sola: una foto d'avui no es toca ni baixa res de gros, la vella passa per ratllades, soroll, cares, llum i més gran, el color només si es marca, aturar, i a 320 px`);
+    console.log(`${problemes.length > abansU ? '✗' : '✓'} arreglar-la tota, sola: una foto d'avui no es toca ni baixa res de gros, la vella passa per ratllades, soroll, cares, llum i més gran, una de molt esquerdada s'esborra (${esquerdes} passades), el color només si es marca, aturar, i a 320 px`);
   }
 
   // ------------------------------------- les IA baixades: quant ocupen, i esborrar-les
