@@ -19,7 +19,7 @@ const MIDES = [320, 360, 390, 768, 1280];
 // Per provar només unes parts (la prova sencera triga uns 25 minuts):
 //   node prova.mjs cares fons
 // Les parts: retall, tampo, arregla, amplia, esborra, ratllades, cares, fons,
-// antiga, baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app, revisio, visites. La portada i el bàsic de
+// antiga, auto, baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app, revisio, visites. La portada i el bàsic de
 // la Cambra Fosca es proven sempre. Abans de desar un canvi, la sencera.
 const NOMES = process.argv.slice(2);
 const vol = n => !NOMES.length || NOMES.includes(n);
@@ -1544,6 +1544,9 @@ if (vol('arregla')) {
     await q.setInputFiles('#file', { name: 'avis.png', mimeType: 'image/png', buffer: Buffer.from(foto.split(',')[1], 'base64') });
     await q.waitForTimeout(600);
     await obreTargeta(q, 'antiga');
+    // els passos a mà són a «Tria tu els passos», tancat de partida
+    if (await q.locator('#antigaPassos').isVisible()) problemes.push('a «Arregla-la tota», els passos a mà es veuen sense obrir «Tria tu els passos»');
+    await q.click('#antigaTria'); await q.waitForTimeout(200);
     // de partida: ratllades, soroll i cares, sense el color; i diu quant es baixa
     const triats = () => q.evaluate(() => [...document.querySelectorAll('#antigaPassos .chip')].filter(c => c.getAttribute('aria-pressed') === 'true').map(c => c.id.slice(8)).join());
     if (await triats() !== 'ratllades,soroll,cares') problemes.push('a «Restaura una foto antiga», de partida no hi ha ratllades, soroll i cares: ' + await triats());
@@ -1602,6 +1605,102 @@ if (vol('arregla')) {
     if (!(await q.locator('#antigaRes').innerText()).includes('aturada')) problemes.push('aturant la restauració, no diu que s\'ha aturat: ' + await q.locator('#antigaRes').innerText());
     console.log(`${problemes.length > abansA ? '✗' : '✓'} restaurar una foto antiga (pel processador): els quatre passos seguits i apuntats (soroll de ${m0.soroll.toFixed(1)} a ${m1.soroll.toFixed(1)}, la ratllada de ${m0.clar} a ${m1.clar}, color de ${m0.color.toFixed(1)} a ${m1.color.toFixed(1)}), el pas al vel, una sola IA a la memòria, desfer i aturar`);
     await q.close();
+  }
+
+  // ------------------------------------- arreglar-la tota, sola
+  // «✦ Arregla-la» mira la foto i decideix sol els passos. Una foto vella (la
+  // mateixa de la prova d'abans: descolorida, amb soroll, dues ratllades i
+  // una cara borrosa, de 720 punts) ha de passar per tots; una d'avui, gran,
+  // nítida i sense cares, no s'ha de tocar ni baixar cap IA grossa; i amb una
+  // en blanc i negre, el color només si s'ha marcat.
+  if (vol('auto')) {
+    const abansU = problemes.length;
+    const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+    vigila(q, 'auto');
+    const baixats = []; q.on('request', r => { const m = r.url().match(/([\w-]+)\.onnx/); if (m) baixats.push(m[1]); });
+    await q.goto(BASE); await q.waitForTimeout(1500);
+    const foto = await q.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 720; c.height = 480; const x = c.getContext('2d');
+      x.fillStyle = '#788ca0'; x.fillRect(0, 0, 720, 480);
+      x.fillStyle = '#5a7a4a'; x.fillRect(0, 380, 720, 100);
+      x.filter = 'blur(2px)';
+      const el = (cx, cy, rx, ry, col) => { x.fillStyle = col; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, 7); x.fill(); };
+      el(240, 195, 100, 135, '#462d1e'); el(150, 220, 15, 30, '#d7aa8c'); el(330, 220, 15, 30, '#d7aa8c'); el(240, 220, 80, 120, '#e1b496');
+      for (const ex of [200, 280]) { el(ex, 207, 22, 12, '#fafafa'); el(ex, 207, 9, 9, '#463228'); el(ex, 207, 4, 4, '#0a0a0a');
+        x.strokeStyle = '#3c281e'; x.lineWidth = 6; x.beginPath(); x.moveTo(ex - 25, 180); x.lineTo(ex + 22, 176); x.stroke(); }
+      x.fillStyle = '#cd9b7d'; x.beginPath(); x.moveTo(240, 215); x.lineTo(225, 265); x.lineTo(255, 265); x.fill();
+      el(240, 295, 35, 10, '#aa4646');
+      x.fillStyle = '#e1b496'; x.fillRect(180, 335, 120, 145); x.fillStyle = '#283c64'; x.fillRect(120, 400, 240, 80);
+      x.filter = 'none';
+      // amb els colors esvaïts i amb soroll (del tot en gris i ja sense soroll, la
+      // cara dibuixada és tan llisa que la IA no la veu com una cara)
+      const im = x.getImageData(0, 0, 720, 480), d = im.data; let s = 5;
+      for (let k = 0; k < d.length; k += 4) { s = (s * 1103515245 + 12345) >>> 0; const g = 0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2], r = ((s >>> 8) / 16777216 - 0.5) * 26;
+        for (let j = 0; j < 3; j++) d[k + j] = g + (d[k + j] - g) * 0.35 + r; }
+      x.putImageData(im, 0, 0);
+      // dues ratllades clares, lluny de la cara
+      x.lineCap = 'round';
+      const corba = (p0, p1, amp) => Array.from({ length: 50 }, (_, i) => [p0[0] + (p1[0] - p0[0]) * i / 49, p0[1] + (p1[1] - p0[1]) * i / 49 + amp * Math.sin(i / 49 * 3)]);
+      for (const [pts, gruix] of [[corba([470, 20], [690, 300], 14), 3], [corba([400, 330], [700, 460], 10), 3]]) {
+        x.strokeStyle = '#f7f4ee'; x.lineWidth = gruix; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke(); }
+      return c.toDataURL('image/png');
+    });
+    const fotoVella = Buffer.from(foto.split(',')[1], 'base64');
+    const fes = (w, h, codi) => q.evaluate(([w, h, codi]) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); new Function('x', 'w', 'h', codi)(x, w, h); return c.toDataURL('image/png'); }, [w, h, codi]).then(u => Buffer.from(u.split(',')[1], 'base64'));
+    const espera = async (max = 1500000) => { await q.waitForFunction(() => !document.querySelector('#vel').hidden, null, { timeout: 8000 }).catch(() => {});
+      await q.waitForFunction(() => document.querySelector('#vel').hidden && !document.querySelector('#autoGo').disabled, null, { timeout: max }); await q.waitForTimeout(500); };
+    const pla = () => q.evaluate(() => document.documentElement.dataset.autoPla || '');
+    const hist = () => q.locator('.hitem span').allInnerTexts();
+    // ---- una d'avui: gran, nítida, sense cares ni soroll. Des del botó d'Ajustos.
+    const avui = await fes(1600, 1000, `const g=x.createLinearGradient(0,0,0,1000);g.addColorStop(0,'#3a7bd5');g.addColorStop(.6,'#bfe3ff');g.addColorStop(.61,'#3f8f3f');g.addColorStop(1,'#245a24');x.fillStyle=g;x.fillRect(0,0,w,h);
+      x.fillStyle='#c0392b';x.fillRect(200,500,300,260);x.fillStyle='#f1c40f';x.beginPath();x.arc(1200,250,90,0,7);x.fill();x.fillStyle='#ecf0f1';x.fillRect(800,560,420,200);
+      x.strokeStyle='#222';x.lineWidth=6;for(let i=0;i<12;i++){x.beginPath();x.moveTo(820+i*35,560);x.lineTo(820+i*35,760);x.stroke();}`);
+    await q.setInputFiles('#file', { name: 'avui.png', mimeType: 'image/png', buffer: avui }); await q.waitForTimeout(600);
+    await q.click('#tab-adj'); await q.waitForTimeout(200);
+    await q.click('#arreglaTota');
+    await espera();
+    if (await pla() !== 'cares,llum') problemes.push('a una foto d\'avui, gran i neta, «Arregla-la» hi planeja passos que no li calen: ' + await pla());
+    if (!await q.locator('#iaCos-antiga').isVisible()) problemes.push('el botó d\'Ajustos no porta a la targeta «Arregla-la tota»');
+    { const t = await q.locator('#antigaRes').innerText();
+      if (!/No li calia buscar ratllades.*treure el soroll.*fer-la més gran/.test(t)) problemes.push('a una foto d\'avui, no diu què no li calia: ' + t); }
+    if (baixats.some(b => !/cares-troba/.test(b) && !/wasm/.test(b))) problemes.push('a una foto d\'avui sense cares, «Arregla-la» ha baixat IA que no li calien: ' + [...new Set(baixats)].join(', '));
+    if ((await hist()).some(t => /IA|soroll|cares|Amplia/.test(t))) problemes.push('a una foto d\'avui, «Arregla-la» hi ha passat IA: ' + (await hist()).join(' · '));
+    // ---- la foto vella: tots els passos
+    await q.setInputFiles('#file', { name: 'avis.png', mimeType: 'image/png', buffer: fotoVella }); await q.waitForTimeout(600);
+    await q.click('#iaMode-mobil');
+    await obreTargeta(q, 'antiga');
+    if (!(await q.locator('#autoInfo').innerText()).includes('MB')) problemes.push('«Arregla-la tota» no diu quant es pot arribar a baixar');
+    await q.click('#autoGo');
+    await espera();
+    const p1 = await pla(), h1 = await hist();
+    if (p1 !== 'ratllades,soroll,cares,llum,amplia') problemes.push('a la foto vella, «Arregla-la» no planeja ratllades, soroll, cares, llum i fer-la més gran: ' + p1);
+    for (const [pas, txt] of [['ratllades', 'Esborra les ratllades (IA)'], ['soroll', 'Treu el soroll'], ['cares', 'Arregla les cares (1 · CodeFormer)'], ['amplia', 'Amplia ×2']])
+      if (!h1.some(t => t.startsWith(txt))) problemes.push(`a la foto vella, «Arregla-la» no ha fet «${pas}»: ` + h1.join(' · '));
+    if (await q.locator('#stDims').innerText() !== '1440 × 960 px') problemes.push('a la foto vella de 720 punts, no l\'ha feta el doble de gran: ' + await q.locator('#stDims').innerText());
+    { const t = await q.locator('#antigaRes').innerText();
+      if (!t.includes('✓ Arreglada') || !t.includes('una cara arreglada') || !t.includes('2 vegades més gran')) problemes.push('al final de la foto vella, no diu què ha fet: ' + t); }
+    // ---- en blanc i negre: el color només si s'ha marcat (es mira el pla i s'atura)
+    const bn = await fes(1600, 1000, `const g=x.createLinearGradient(0,0,0,1000);g.addColorStop(0,'#bbb');g.addColorStop(1,'#444');x.fillStyle=g;x.fillRect(0,0,w,h);x.fillStyle='#222';x.fillRect(300,400,400,300);x.fillStyle='#eee';x.beginPath();x.arc(1100,500,180,0,7);x.fill();`);
+    for (const ambColor of [false, true]) {
+      await q.setInputFiles('#file', { name: 'bn.png', mimeType: 'image/png', buffer: bn }); await q.waitForTimeout(600);
+      await obreTargeta(q, 'antiga');
+      if ((await q.getAttribute('#autoColor', 'aria-pressed') === 'true') !== ambColor) await q.click('#autoColor');
+      await q.evaluate(() => { delete document.documentElement.dataset.autoPla; });
+      await q.click('#autoGo');
+      await q.waitForFunction(() => !!document.documentElement.dataset.autoPla && !document.querySelector('#vel').hidden, null, { timeout: 20000 }).catch(() => {});
+      const p = await pla();
+      await q.click('#velAtura').catch(() => {}); await espera();
+      if (p !== (ambColor ? 'ratllades,cares,color,llum' : 'ratllades,cares,llum')) problemes.push(`a una foto en blanc i negre ${ambColor ? 'amb' : 'sense'} «Posa-hi color», el pla és ${p}`);
+      if (!ambColor && !(await q.locator('#antigaRes').innerText()).includes('aturada')) problemes.push('aturant «Arregla-la», no diu que s\'ha aturat: ' + await q.locator('#antigaRes').innerText());
+    }
+    await q.close();
+    // ---- a 320 px, la targeta hi cap
+    const m = await navegador.newPage({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+    await m.goto(BASE); await m.waitForTimeout(1200); await m.click('#tab-ia'); await m.click('#iaCap-antiga'); await m.waitForTimeout(300);
+    { const r = await m.evaluate(() => { const c = document.querySelector('#iaCos-antiga').getBoundingClientRect(); return { sw: document.documentElement.scrollWidth, dins: [...document.querySelectorAll('#iaCos-antiga button')].filter(b => b.offsetParent).every(b => { const x = b.getBoundingClientRect(); return x.left >= c.left - 0.5 && x.right <= c.right + 0.5; }), gros: document.querySelector('#autoGo').getBoundingClientRect().height >= 38 }; });
+      if (r.sw > 320 || !r.dins || !r.gros) problemes.push('a 320 px, la targeta «Arregla-la tota» no hi cap: ' + JSON.stringify(r)); }
+    await m.close();
+    console.log(`${problemes.length > abansU ? '✗' : '✓'} arreglar-la tota, sola: una foto d'avui no es toca ni baixa res de gros, la vella passa per ratllades, soroll, cares, llum i més gran, el color només si es marca, aturar, i a 320 px`);
   }
 
   // ------------------------------------- les IA baixades: quant ocupen, i esborrar-les

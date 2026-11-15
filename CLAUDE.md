@@ -454,14 +454,50 @@ l'usuari va dir que es fes.
 - **No s'ha pogut provar en un mòbil de debò**: si a l'usuari li falla, el
   primer que s'ha de mirar és aquesta línia de detalls.
 
-## La Cambra Fosca: restaurar una foto antiga, tot seguit
+## La Cambra Fosca: arreglar-la tota, sola
 
-L'usuari arregla fotos velles, i fer-ho eren quatre targetes, una per una. A
-dalt de tot de la pestanya ✦ IA hi ha la targeta **Restaura una foto antiga**
-(`restauraAntiga`): es trien els passos (`PASSOS_ANTIGA`: Ratllades i taques,
-Soroll i gra, Cares i Color; de partida, tots menys el color, que la IA se
-l'inventa) i **✦ Restaura-la** els fa seguits, per l'ordre en què s'arregla
-una foto.
+L'usuari va demanar no haver d'anar d'una IA en una: posar «arregla la foto»
+i que es facin servir soles les que calguin. A dalt de tot de la pestanya ✦
+IA, la targeta **Arregla-la tota** té el botó gros **✦ Arregla-la**
+(`arreglaTota`); a la pestanya Ajustos, sota «Arregla-la sola», un botó
+«✦ Arregla-la tota, amb IA» hi porta i el fa anar.
+
+Primer **mira la foto** (`mirantFoto`, una dècima i sense cap IA) i decideix
+el pla; després fa els passos amb el mateix corredor que «Tria tu els
+passos» (`corrPassos`), i al final diu què ha fet, què no li calia i per
+què («No li calia treure el soroll (no en té gaire)»).
+
+- **Ratllades** (trobar-les i esborrar-les, sense repassar): **només si la
+  foto sembla vella** (en blanc i negre o sèpia, `fotoTeColor`; amb soroll;
+  o amb els colors esvaïts, `cromaFoto` < 14). **En una foto d'avui la IA
+  s'inventa ratllades** (a la prova, les ratlles negres d'una persiana i un
+  quadre blanc) i les esborrava: per això no s'hi busquen. Si se'n troben
+  moltíssimes (més del 6% de la foto), deu ser la textura: no s'esborren.
+- **Soroll**: si `sorollFoto` dona 2,8 o més. És el mètode d'Immerkær (el
+  filtre de 3 × 3 que només deixa el soroll) als punts del 40% més llis,
+  sobre un tros del mig **a mida sencera** (reduint-la, el soroll es perd).
+  Amb fotos de mostra: les netes, d'1 a 1,5; amb soroll que es veu
+  (desviació 5 a cada color), de 3 a 4.
+- **Cares**: sempre es busquen (la IA que les troba fa 1,6 MB), però **la
+  que les arregla només es baixa i es fa servir si alguna ho necessita**
+  (`caraCal`): petita (ulls a menys de 70 punts), borrosa (vores fluixes a
+  128 × 128, menys de 7; una cara nítida en fa uns 12) o de foto vella. Una
+  cara gran i nítida es queda com és. `preparaSessioCares(progres, true)`
+  només prepara la que les troba (també a la targeta Cares: si no n'hi ha
+  cap, ja no es baixa la grossa).
+- **Color**: només si és en blanc i negre **i** s'ha marcat «Posa-hi color si
+  és en blanc i negre» (`AUTO.color`): els colors se'ls inventa la IA. Si
+  no, al final ho diu.
+- **Llum i color**: «Arregla-la sola», si mou algun control 4 o més.
+- **Més gran**: si el costat llarg fa menys de 1.200 punts (×4 per sota de
+  600, si hi cap), amb el mode Mòbil / Ordinador triat.
+- `document.documentElement.dataset.autoPla` diu el pla (per a la prova).
+
+**Tria tu els passos** (`restauraAntiga`, a sota, tancat de partida): es
+trien els passos (`PASSOS_ANTIGA`: Ratllades i taques, Soroll i gra, Cares i
+Color; de partida, tots menys el color, que la IA se l'inventa) i **Fes
+aquests passos** els fa seguits, per l'ordre en què s'arregla una foto. Era
+la targeta d'abans, «Restaura una foto antiga».
 
 - **No hi ha res de nou per dins**: es criden les mateixes funcions de cada
   targeta (`trobaRatllades` i `fesTreu`, `fesNitida`, `arreglaCares`,
@@ -500,8 +536,8 @@ Mida · Historial**:
   els controls de sempre.
 - **✦ IA** (`construeixIA`, `pintaIA`): a dalt, **un sol «On ho fas»** per a
   totes (`IA.mode`), i una **targeta** per a cada IA, per l'ordre en què
-  s'arregla una foto vella (`TARGETES`): Restaura una foto antiga (tots els
-  passos seguits), Ratllades i taques, Soroll i borrós,
+  s'arregla una foto vella (`TARGETES`): Arregla-la tota (decideix sola
+  els passos), Ratllades i taques, Soroll i borrós,
   Esborra coses, Cares, Color, Fons i Amplia. **Només una d'oberta** (`IA.targeta`), que al mòbil
   no s'hagi de baixar tant; tocant-la oberta, es tanca. El Fons i l'Amplia
   es pinten dins de la seva targeta (`#pane-fons`, `#pane-amp`, que ara són
@@ -1237,7 +1273,7 @@ Les mateixes que al repositori dels jocs, i ja ens han mossegat allà:
 `/opt/node22/lib/node_modules/playwright`). **La sencera triga uns 25
 minuts; per provar només unes parts, `node prova.mjs cares fons`** (les parts:
 retall, tampo, arregla, amplia, esborra, ratllades, cares, fons, antiga,
-baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app,
+auto, baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app,
 revisio, visites; la portada i el bàsic de
 la Cambra Fosca es proven sempre). Abans de desar un canvi, la sencera. En una còpia nova del repositori,
 abans cal `python ia/models_r2.py baixa` (els models no hi són). Obre les
@@ -1380,7 +1416,16 @@ pàgines amb un navegador de debò i comprova:
   PNG transparent; desfer; i que el difuminat difumini el fons, no toqui el
   gerro i no hi deixi aura. Es va comprovar que falla amb el mapa al revés,
   difuminant amb el gerro inclòs, sense difuminar o amb el JPG sense blanc;
-- **restaurar una foto antiga** (també serveix el repositori ella mateixa):
+- **arreglar-la tota, sola** (`auto`, també serveix el repositori ella
+  mateixa): que a una foto d'avui (gran, nítida, sense cares ni soroll),
+  des del botó d'Ajustos, el pla sigui només cares i llum, digui què no li
+  calia, no baixi cap IA grossa i no hi passi cap IA; que la foto vella
+  (descolorida, amb soroll, dues ratllades i una cara borrosa, de 720 punts)
+  passi per ratllades, soroll, cares, llum i ×2 (1.440 × 960), i ho digui;
+  que en blanc i negre el color només entri al pla si s'ha marcat; aturar; i
+  a 320 px. Es va comprovar que falla si les ratllades es busquen a
+  qualsevol foto o si la IA de les cares es baixa sense cap cara;
+- **restaurar una foto antiga** («Tria tu els passos»; també serveix el repositori ella mateixa):
   sobre una foto descolorida feta a mida, amb una cara dibuixada, soroll i
   dues ratllades, que de partida hi hagi ratllades, soroll i cares triats;
   que digui quant es baixa; que sense cap pas no es pugui prémer; que amb els

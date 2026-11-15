@@ -2138,7 +2138,11 @@ function grupArregla(){
   b.onclick=arreglaSola;
   box.appendChild(b);
   const res=el('div','tiny'); res.id='arreglaRes'; res.hidden=true; box.appendChild(res);
-
+  // la de dalt només toca la llum i el color; aquesta ho mira tot, amb les IA
+  const t=el('button','btn','✦ Arregla-la tota, amb IA'); t.type='button'; t.id='arreglaTota';
+  t.style.marginTop='6px';
+  t.onclick=()=>{ if(IA.treballant) return; $('#tab-ia').click(); IA.targeta='antiga'; pintaIA(); arreglaTota(); };
+  box.appendChild(t);
   return box;
 }
 
@@ -4373,7 +4377,7 @@ async function fesTreu(){
    s'arregla una foto vella, i amb un sol «On ho fas» per a totes.
 =================================================================== */
 const TARGETES=[
-  ['antiga','Restaura una foto antiga','Tot seguit: ratllades, soroll, cares i, si vols, color.'],
+  ['antiga','Arregla-la tota','Mira què li cal i hi fa servir les IA que calgui, tot seguit.'],
   ['ratllades','Ratllades i taques','Per a fotos velles: les troba soles i les esborra.'],
   ['nitida','Soroll i borrós','Treu el gra i el soroll, o torna més nítida una foto desenfocada.'],
   ['esborra','Esborra coses','Toca o pinta el que vulguis treure i la IA hi posa el que hi hauria al darrere.'],
@@ -4408,7 +4412,20 @@ function construeixIA(){
   }
   // restaurar una foto antiga: els passos de sota, tots seguits
   const ca=$('#iaCos-antiga');
-  ca.appendChild(el('div','tiny','Fa, un darrere l\'altre, els passos que triïs. Cada pas queda a l\'Historial: si un no t\'agrada, pots tornar al d\'abans.'));
+  ca.appendChild(el('div','tiny','Mira la foto i decideix sola què li cal: treure les ratllades i les taques, el soroll i el gra, arreglar les cares borroses, corregir la llum i el color i, si és petita, fer-la més gran. Cada pas queda a l\'Historial.'));
+  const aco=el('div','chips'); aco.style.marginTop='8px';
+  const acc=el('button','chip','Posa-hi color si és en blanc i negre'); acc.type='button'; acc.id='autoColor';
+  acc.onclick=()=>{ AUTO.color=!AUTO.color; estatAntiga(); };
+  aco.appendChild(acc);
+  const agb=el('button','btn primary','✦ Arregla-la'); agb.type='button'; agb.id='autoGo';
+  agb.style.cssText='width:100%;height:40px;justify-content:center;margin-top:8px;font-size:14px'; agb.onclick=arreglaTota;
+  const agi=el('div','tiny'); agi.id='autoInfo';
+  // els passos a mà, per a qui els vulgui triar ell
+  const atb=el('button','btn ghost','Tria tu els passos ▾'); atb.type='button'; atb.id='antigaTria';
+  atb.style.cssText='margin-top:6px;height:28px;font-size:11.5px';
+  const atc=el('div'); atc.id='antigaManual'; atc.hidden=true;
+  atb.onclick=()=>{ atc.hidden=!atc.hidden; atb.textContent=atc.hidden?'Tria tu els passos ▾':'Tria tu els passos ▴'; };
+  atc.appendChild(el('div','tiny','Fa, un darrere l\'altre, els passos que triïs.'));
   const xpa=el('div','chips'); xpa.id='antigaPassos'; xpa.style.marginTop='8px';
   for(const [k,nom] of PASSOS_ANTIGA){
     const c=el('button','chip',nom); c.type='button'; c.id='antigaP-'+k;
@@ -4418,11 +4435,12 @@ function construeixIA(){
   const apb=el('button','btn','Si és una foto feta a una foto de paper, primer redreça-la'); apb.type='button'; apb.id='antigaPaper';
   apb.style.cssText='width:100%;height:auto;min-height:32px;white-space:normal;text-align:left;font-size:11.5px;margin-top:8px;padding:6px 10px;line-height:1.3';
   apb.onclick=()=>{ if(IA.treballant) return; setTool('crop'); paperInici(); };
-  const ab=el('button','btn primary','✦ Restaura-la'); ab.type='button'; ab.id='antigaGo';
-  ab.style.cssText='width:100%;height:36px;justify-content:center;margin-top:8px'; ab.onclick=restauraAntiga;
+  const ab=el('button','btn','Fes aquests passos'); ab.type='button'; ab.id='antigaGo';
+  ab.style.cssText='width:100%;height:34px;justify-content:center;margin-top:8px'; ab.onclick=restauraAntiga;
   const ai=el('div','tiny'); ai.id='antigaInfo';
   const ar=el('div','ia-fet'); ar.id='antigaRes'; ar.hidden=true; ar.style.margin='10px 0 0';
-  ca.append(xpa,apb,ab,ai,ar);
+  atc.append(xpa,ab,ai);
+  ca.append(aco,agb,agi,ar,apb,atb,atc);
   // ratllades: troba-les i repassa-les amb la vareta
   const cr=$('#iaCos-ratllades');
   cr.appendChild(el('div','tiny','Marca de vermell les ratllades, els plecs i les taques clares. Després les repasses (amb «Treu vermell» treus el que no ho sigui, i pintes el que falti) i prems «Esborra-ho».'));
@@ -4611,6 +4629,22 @@ const PASSOS_ANTIGA=[['ratllades','Ratllades i taques'],['soroll','Soroll i gra'
 IA.antiga={ passos:{ ratllades:true, soroll:true, cares:true, color:false }, fet:null };
 IA.cadena=null; IA.ultimError=null;
 function estatAntiga(){
+  const ag=$('#autoGo'), ai=$('#autoInfo');
+  if(ag && ai){
+    ag.disabled=IA.treballant || IA.motor==null || !baseCanvas;
+    $('#autoColor').setAttribute('aria-pressed',AUTO.color?'true':'false');
+    // el que es podria arribar a baixar, si li calgués tot
+    let f=0; const hi=x=>!!IA.baixats[x];
+    if(IA.motor && !hi(IA.motors[IA.motor].wasm) && IA.carregat!==IA.motor) f+=IA.motors[IA.motor].mb;
+    if(!hi(IA.ratllades.fitxer)) f+=IA.ratllades.mb;
+    if(IA.mode==='ordinador'){ if(!IA.treu.lama.parts.every(hi)) f+=IA.treu.lama.mb; } else if(!hi(IA.treu.fitxer)) f+=IA.treu.mb;
+    if(!hi(IA.nitida.fitxer)) f+=IA.nitida.mb;
+    { const C=IA.cares, md=C.models[C.quin]; if(!hi(C.troba)) f+=C.mbTroba; if(!md.parts.every(hi)) f+=md.mb; }
+    if(AUTO.color && !IA.color.parts.every(hi)) f+=IA.color.mb;
+    if(!hi(IA.models[IA.mode].fitxer)) f+=IA.models[IA.mode].mb;
+    ai.textContent=(f ? 'Només baixa les IA que li calguin (la primera vegada, com a molt '+mb(f)+'). ' : '')+'Pot trigar uns quants minuts: deixa la pàgina oberta.'+
+      (AUTO.color?' Els colors se\'ls inventa la IA.':'');
+  }
   const b=$('#antigaGo'), info=$('#antigaInfo'); if(!b||!info) return;
   const A=IA.antiga, P=A.passos;
   for(const [k] of PASSOS_ANTIGA) $('#antigaP-'+k).setAttribute('aria-pressed',P[k]?'true':'false');
@@ -4633,48 +4667,179 @@ function estatAntiga(){
   const r=$('#antigaRes');
   if(r){ const f=A.fet; r.hidden=!(f && f.src===S.src); if(!r.hidden) r.innerHTML=f.text; }
 }
+/* Fa uns quants passos seguits (cadascun, la funció de la seva targeta) i
+   diu què ha passat amb cada un: fet, no calia (o no hi havia res), saltat,
+   fallat, o aturat tot. Un pas és fet si ha apuntat alguna cosa a
+   l'Historial. IA.notaPas és el que el pas vol que es digui si no fa res
+   («les cares ja es veien bé»). */
+async function corrPassos(passos){
+  const t0=performance.now(), eina=S.tool, N=IA.nitida, queAbans=N.que, fFac=IA.factor, fTriat=IA.factorTriat;
+  const fets=[], res=[]; let aturat=false;
+  IA.cadena={ i:0, n:passos.length, salta:false };
+  try{
+    for(const k of passos){
+      IA.cadena.i++; IA.cadena.salta=false; IA.ultimError=null; IA.notaPas=null;
+      const abans=S.history[S.hIndex];
+      if(k==='ratllades'){
+        await trobaRatllades();
+        const m=S.mascara.find(x=>x.ras && !x.obj);
+        // si n'hi ha moltíssimes, deu ser la textura de la foto: no s'esborra
+        if(m && m.part>0.06 && IA.auto){ netejaVermell(); IA.notaPas='n\'he trobat massa per estar segura que ho siguin: si en té, repassa-les a la targeta «Ratllades i taques»'; }
+        else if(!IA.ultimError && hiHaVermell()) await fesTreu();
+      }
+      else if(k==='soroll'){ N.que='soroll'; await fesNitida(); }
+      else if(k==='cares') await arreglaCares();
+      else if(k==='color') await posaColor();
+      else if(k==='llum'){
+        const v=calculaArregla(), canvia=ARREGLA.CONTROLA.some(c=>Math.abs((v[c]||0)-(S.adj[c]||0))>=4);
+        if(canvia) arreglaSola();
+      }
+      else if(k==='amplia'){
+        IA.factor=IA.auto.factor; IA.factorTriat=true;
+        await fesAmplia();
+      }
+      const err=IA.ultimError;
+      if(err==='aturat' && !IA.cadena.salta){ aturat=true; break; }
+      if(S.history[S.hIndex]!==abans) fets.push(k);
+      else if(err==='aturat') res.push([k,'saltat']);
+      else if(err) res.push([k,'error']);
+      else res.push([k,'res',IA.notaPas]);
+    }
+  }finally{
+    IA.cadena=null; N.que=queAbans; IA.factor=fFac; IA.factorTriat=fTriat; IA.notaPas=null; amagaVel();
+    $('#velPregunta').hidden=true; $('#velAtura').hidden=false;
+    if(hiHaVermell()) netejaVermell();
+    if(S.tool==='treu' && eina!=='treu') setTool(eina);
+  }
+  return { fets, res, aturat, temps:minuts((performance.now()-t0)/1000) };
+}
+const llistaI=a=>a.length>1 ? a.slice(0,-1).join(', ')+' i '+a[a.length-1] : a[0]||'';
+const NOM_PAS={ ratllades:'ratllades tretes', soroll:'soroll tret', cares:'cares arreglades', color:'color posat', llum:'llum i color corregits', amplia:'feta més gran' };
+const TITOL_PAS={ ratllades:'ratllades i taques', soroll:'soroll i gra', cares:'cares', color:'color', llum:'llum i color', amplia:'fer-la més gran' };
+function resumPassos(r, ok){
+  let t = r.fets.length ? '<b>✓ '+ok+'</b> en '+r.temps+': '+llistaI(r.fets.map(k=>NOM_PAS[k]))+'.' : '<b>No s\'hi ha canviat res.</b>';
+  const noNom={ ratllades:'no hi he trobat ratllades', cares:'no hi he trobat cap cara prou clara', soroll:'el soroll no s\'ha tocat', color:'el color no s\'ha tocat', llum:'la llum i el color ja estaven bé', amplia:'no s\'ha fet més gran' };
+  const notes=r.res.map(([k,q,nota])=> q==='saltat' ? 'has saltat «'+TITOL_PAS[k]+'»' : q==='error' ? '«'+TITOL_PAS[k]+'» ha fallat' : (nota||noNom[k]));
+  if(r.aturat) notes.push('l\'has aturada abans d\'acabar');
+  return { t, notes };
+}
 async function restauraAntiga(){
   if(IA.treballant || !baseCanvas) return;
   if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
   const A=IA.antiga, tria=PASSOS_ANTIGA.filter(([k])=>A.passos[k]).map(p=>p[0]);
   if(!tria.length) return;
-  const t0=performance.now(), eina=S.tool, N=IA.nitida, queAbans=N.que;
-  const fets=[], res=[], errors=[]; let aturat=false;
-  IA.cadena={ i:0, n:tria.length, salta:false };
-  try{
-    for(const k of tria){
-      IA.cadena.i++; IA.cadena.salta=false; IA.ultimError=null;
-      const abans=S.src;
-      if(k==='ratllades'){ await trobaRatllades(); if(!IA.ultimError && hiHaVermell()) await fesTreu(); }
-      else if(k==='soroll'){ N.que='soroll'; await fesNitida(); }
-      else if(k==='cares') await arreglaCares();
-      else await posaColor();
-      const err=IA.ultimError;
-      if(err==='aturat' && !IA.cadena.salta){ aturat=true; break; }
-      if(S.src!==abans) fets.push(k);
-      else if(err==='aturat') res.push(k+':saltat');
-      else if(err){ res.push(k+':error'); errors.push(err); }
-      else res.push(k+':res');
-    }
-  }finally{
-    IA.cadena=null; N.que=queAbans; amagaVel();
-    $('#velPregunta').hidden=true; $('#velAtura').hidden=false;
-    if(hiHaVermell()) netejaVermell();
-    if(S.tool==='treu' && eina!=='treu') setTool(eina);
-  }
-  const nom={ ratllades:'ratllades tretes', soroll:'soroll tret', cares:'cares arreglades', color:'color posat' };
-  const noNom={ 'ratllades:res':'no hi he trobat ratllades', 'cares:res':'no hi he trobat cap cara prou clara', 'soroll:res':'el soroll no s\'ha tocat', 'color:res':'el color no s\'ha tocat' };
-  const llista=a=>a.length>1 ? a.slice(0,-1).join(', ')+' i '+a[a.length-1] : a[0]||'';
-  const temps=minuts((performance.now()-t0)/1000);
-  let t = fets.length ? '<b>✓ Restaurada</b> en '+temps+': '+llista(fets.map(k=>nom[k]))+'.' : '<b>No s\'hi ha canviat res.</b>';
-  const notes=res.map(r=>{ const [k,q]=r.split(':'); const n=PASSOS_ANTIGA.find(p=>p[0]===k)[1].toLowerCase();
-    return q==='saltat' ? 'has saltat «'+n+'»' : q==='error' ? '«'+n+'» ha fallat' : noNom[r]; });
-  if(aturat) notes.push('l\'has aturada abans d\'acabar');
-  if(notes.length){ const n=llista(notes); t+=' '+n[0].toUpperCase()+n.slice(1)+'.'; }
-  if(fets.length) t+=' Mantén premut «Abans» per comparar-la. Cada pas és a l\'Historial: si un no t\'agrada, torna al d\'abans.';
+  const r=await corrPassos(tria);
+  let { t, notes }=resumPassos(r,'Restaurada');
+  if(notes.length){ const n=llistaI(notes); t+=' '+n[0].toUpperCase()+n.slice(1)+'.'; }
+  if(r.fets.length) t+=' Mantén premut «Abans» per comparar-la. Cada pas és a l\'Historial: si un no t\'agrada, torna al d\'abans.';
   A.fet={ src:S.src, text:t };
-  if(fets.length) titolFet('✓ Restaurada · '+TITOL);
-  say(fets.length ? 'Restaurada en '+temps+'.' : (aturat ? 'Aturada. La foto és com era.' : 'No s\'hi ha canviat res.'));
+  if(r.fets.length) titolFet('✓ Restaurada · '+TITOL);
+  say(r.fets.length ? 'Restaurada en '+r.temps+'.' : (r.aturat ? 'Aturada. La foto és com era.' : 'No s\'hi ha canviat res.'));
+  pintaIA();
+}
+
+/* ===================================================================
+   16j. arreglar-la tota, sola
+   L'usuari ho va demanar: posar «Arregla-la» i que es facin servir soles les
+   IA que calguin, sense haver d'anar d'una en una. Primer es mira la foto
+   (mirantFoto, en una dècima: res d'IA) i es decideix el pla; després es
+   fan els passos amb corrPassos, i al final es diu què s'ha fet, què no
+   calia i per què.
+   - **Ratllades** (la IA les troba i l'esborrador les treu): només si la
+     foto sembla vella (en blanc i negre o sèpia, amb gra, o amb els colors
+     esvaïts). En una foto d'avui no es busquen: un cable o una lletra prima
+     es podrien prendre per ratllades. Si se'n troben moltíssimes (més del 6%
+     de la foto), deu ser la textura i no s'esborren.
+   - **Soroll**: si se'n mesura prou (sorollFoto, més avall).
+   - **Cares**: sempre es busquen (la IA que les troba fa 1,6 MB), però només
+     s'arreglen les que ho necessiten (caraCal): petites, borroses, o de
+     foto vella. Una cara gran i nítida es queda com és.
+   - **Color**: només si és en blanc i negre i s'ha marcat «Posa-hi color»
+     (els colors se'ls inventa la IA: no es posen sense demanar-ho).
+   - **Llum i color**: «Arregla-la sola» de la pestanya Ajustos, si li cal.
+   - **Més gran**: si el costat llarg fa menys de 1.200 punts (×4 per sota
+     de 600, si hi cap), amb el mode Mòbil / Ordinador triat.
+=================================================================== */
+const AUTO={ color:false };
+IA.auto=null;
+// El soroll, en nivells (de 0 a 255): el mètode d'Immerkær, als punts on no
+// hi ha vores, sobre un tros del mig a mida sencera (reduint-la, el soroll
+// es perdria). Mesurat amb fotos de mostra: les netes fan d'1 a 1,5; amb
+// soroll que es veu (desviació de 5 a cada color), de 3 a 4. Llindar, 2,8.
+const SOROLL_LLINDAR=2.8;
+function sorollFoto(src){
+  const W=src.width, H=src.height, c=Math.min(768,W,H), x0=(W-c)>>1, y0=(H-c)>>1, w=Math.min(W,768), h=Math.min(H,768);
+  const cv=mkCanvas(w,h), cx=cv.getContext('2d',{willReadFrequently:true});
+  cx.drawImage(src,(W-w)>>1,(H-h)>>1,w,h,0,0,w,h);
+  const d=cx.getImageData(0,0,w,h).data, g=new Float32Array(w*h);
+  for(let i=0,k=0;i<g.length;i++,k+=4) g[i]=0.299*d[k]+0.587*d[k+1]+0.114*d[k+2];
+  const n=(w-2)*(h-2); if(n<100) return 0;
+  const L=new Float32Array(n), G=new Float32Array(n);
+  for(let y=1,j=0;y<h-1;y++) for(let x=1;x<w-1;x++,j++){
+    const i=y*w+x, a=g[i-w-1], b=g[i-w], cc=g[i-w+1], e=g[i-1], f=g[i+1], p=g[i+w-1], q=g[i+w], r=g[i+w+1];
+    L[j]=Math.abs(a-2*b+cc-2*e+4*g[i]-2*f+p-2*q+r);
+    const gx=(cc+2*f+r)-(a+2*e+p), gy=(p+2*q+r)-(a+2*b+cc); G[j]=Math.hypot(gx,gy);
+  }
+  // els punts amb menys vora (el 40% més llis)
+  const ord=Float32Array.from(G).sort(), llin=Math.max(ord[Math.floor(n*0.4)],1e-6);
+  let s=0, m=0; for(let j=0;j<n;j++) if(G[j]<=llin){ s+=L[j]; m++; }
+  return m ? Math.sqrt(Math.PI/2)/6*s/m : 0;
+}
+// Quant de color té de mitjana (de 0 a 255): una foto de colors esvaïts en té poc
+function cromaFoto(src){
+  const n=64, c=mkCanvas(n,n), x=c.getContext('2d',{willReadFrequently:true});
+  x.imageSmoothingQuality='high'; x.drawImage(src,0,0,n,n);
+  const d=x.getImageData(0,0,n,n).data; let t=0;
+  for(let k=0;k<d.length;k+=4) t+=Math.max(d[k],d[k+1],d[k+2])-Math.min(d[k],d[k+1],d[k+2]);
+  return t/(n*n);
+}
+// Si una cara necessita la IA: petita (ulls a menys de 70 punts), borrosa
+// (vores fluixes, mirada a 128 × 128 punts), o d'una foto vella. Una cara de
+// mostra nítida fa uns 12 de nitidesa; borrosa o petita, de 1 a 4.
+function caraCal(src, cara, antiga){
+  if(antiga) return true;
+  const [p0,p1]=cara.punts; if(Math.hypot(p0[0]-p1[0],p0[1]-p1[1])<70) return true;
+  const [a,b,c,e]=cara.caixa, n=128, cv=mkCanvas(n,n), x=cv.getContext('2d',{willReadFrequently:true});
+  x.imageSmoothingQuality='high'; x.drawImage(src,a,b,Math.max(1,c-a),Math.max(1,e-b),0,0,n,n);
+  const d=x.getImageData(0,0,n,n).data, g=i=>0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2];
+  let t=0, m=0;
+  for(let y=4;y<n-4;y++) for(let xx=4;xx<n-4;xx++){ const i=y*n+xx; t+=Math.abs(g(i-1)+g(i+1)+g(i-n)+g(i+n)-4*g(i)); m++; }
+  return t/m < 7;
+}
+function mirantFoto(src){
+  const bn=!fotoTeColor(), soroll=sorollFoto(src), croma=cromaFoto(src);
+  const antiga = bn || soroll>=SOROLL_LLINDAR || croma<14;
+  const llarg=Math.max(src.width,src.height);
+  let factor=0;
+  if(llarg<1200){ factor = llarg<600 && midaResultat(4).mp<=IA.models[IA.mode].maxMP ? 4 : 2; if(midaResultat(factor).mp>IA.models[IA.mode].maxMP) factor=0; }
+  return { bn, soroll, croma, antiga, llarg, factor };
+}
+async function arreglaTota(){
+  if(IA.treballant || !baseCanvas) return;
+  if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
+  const m=mirantFoto(baseCanvas), passos=[], noCal=[];
+  if(m.antiga) passos.push('ratllades'); else noCal.push('buscar ratllades (no sembla una foto vella)');
+  if(m.soroll>=SOROLL_LLINDAR) passos.push('soroll'); else noCal.push('treure el soroll (no en té gaire)');
+  passos.push('cares');
+  if(m.bn && AUTO.color) passos.push('color');
+  passos.push('llum');
+  if(m.factor) passos.push('amplia'); else noCal.push('fer-la més gran (ja fa '+m.llarg+' punts de costat)');
+  IA.auto={ ...m, factor:m.factor };
+  document.documentElement.dataset.autoPla=passos.join(',');
+  let r;
+  try{ r=await corrPassos(passos); }finally{ IA.auto=null; }
+  const nCares=r.fets.includes('cares') ? (IA.cares.ultimes||0) : 0;
+  NOM_PAS.cares = nCares===1 ? 'una cara arreglada' : nCares ? nCares+' cares arreglades' : 'cares arreglades';
+  NOM_PAS.amplia = 'feta '+m.factor+' vegades més gran';
+  let { t, notes }=resumPassos(r,'Arreglada');
+  NOM_PAS.cares='cares arreglades'; NOM_PAS.amplia='feta més gran';
+  if(notes.length){ const n=llistaI(notes); t+=' '+n[0].toUpperCase()+n.slice(1)+'.'; }
+  if(noCal.length && !r.aturat) t+=' No li calia '+llistaI(noCal)+'.';
+  if(m.bn && !AUTO.color && !r.aturat) t+=' És en blanc i negre: si la vols en color, marca «Posa-hi color» abans d\'arreglar-la, o fes-ho a la targeta «Color».';
+  if(r.fets.length) t+=' Mantén premut «Abans» per comparar-la. Cada pas és a l\'Historial: si un no t\'agrada, torna al d\'abans.';
+  IA.antiga.fet={ src:S.src, text:t };
+  if(r.fets.length) titolFet('✓ Arreglada · '+TITOL);
+  say(r.fets.length ? 'Arreglada en '+r.temps+'.' : (r.aturat ? 'Aturada. La foto és com era.' : 'No li calia res.'));
   pintaIA();
 }
 
@@ -4731,13 +4896,16 @@ function estatCares(){
   if(IA.mode==='mobil' && C.quin==='gfpgan') t+=' És una IA gran: va millor des de l\'ordinador, i al mòbil pot quedar-se sense memòria.';
   info.textContent=t+(C.quin==='gfpgan'?' «Suau» barreja la cara arreglada amb l\'original, que quedi més natural.':'');
 }
-async function preparaSessioCares(progres){
+// Primer la que troba les cares (1,6 MB); la que les arregla, només si n'hi
+// ha alguna per arreglar (nomesTroba): si no, no cal baixar-la
+async function preparaSessioCares(progres, nomesTroba){
   const C=IA.cares;
   await nomesIA('cares');
   if(!C.sTroba){
     const b=await baixaIA(C.troba,(a,t)=>progres('la IA que troba les cares',a,t||C.mbTroba*1048576));
     C.sTroba=(await creaSessio(b)).sessio;
   }
+  if(nomesTroba){ apuntaVives(); return; }
   if(C.sArregla && C.sArreglaDe!==C.quin) await deixaAnar(C,'sArregla','sArreglaDe');   // l'altra, fora
   if(!C.sArregla){
     const md=C.models[C.quin];
@@ -4858,11 +5026,20 @@ async function arreglaCares(){
     };
     vel('Preparant…',0,'');
     await preparaMotor(progres);
-    await preparaSessioCares(progres);
+    await preparaSessioCares(progres, true);
     if(IA.atura) throw new Error('aturat');
     vel('Buscant cares…',0,'');
-    const cares=await trobaCares(baseCanvas);
+    let cares=await trobaCares(baseCanvas);
     if(!cares.length){ say('No he trobat cap cara prou clara. Va millor amb cares de cara, no de perfil, i que no siguin molt petites.'); return; }
+    // «Arregla-la tota»: només les que ho necessiten (una cara gran i nítida es queda com és)
+    if(IA.auto){
+      const totes=cares.length;
+      cares=cares.filter(c=>caraCal(baseCanvas,c,IA.auto.antiga));
+      if(!cares.length){ IA.notaPas=totes===1?'la cara ja es veia bé':'les cares ja es veien bé'; return; }
+    }
+    IA.cares.ultimes=cares.length;
+    await preparaSessioCares(progres);
+    if(IA.atura) throw new Error('aturat');
     const feina=mkCanvas(baseCanvas.width,baseCanvas.height), cf=IA.cares.quin==='codeformer';
     feina.getContext('2d').drawImage(baseCanvas,0,0);
     for(let i=0;i<cares.length;i++){
