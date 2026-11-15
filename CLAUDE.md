@@ -19,7 +19,7 @@ són les IA de La Cambra Fosca: el motor és a la carpeta `ia/` i els models, a
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares, encara que estiguin molt malmeses), treu el soroll, posa color, esborra coses, treu el fons i amplia fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares, encara que estiguin molt malmeses), treu el soroll, posa color, esborra coses, treu el fons, redreça fotos de paper, enganxa una imatge sobre una altra i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -356,6 +356,62 @@ totes» demana dos tocs**.
   no surt a la llista.
 - Esborrar-ne una no la treu de la memòria si ja és carregada: fins que no es
   torna a obrir la pàgina, no cal tornar-la a baixar.
+
+## La Cambra Fosca: foto de paper, i tallar i enganxar
+
+L'usuari va preguntar si es podien fer capes i pujar dues imatges per tallar
+i enganxar, «o alguna cosa més interessant o útil». Es va proposar això, i va
+dir que es fes:
+
+**Redreçar una foto de paper** (`paperInici`, `aplicaPaper`, `PAPER`). Fent
+una foto amb el mòbil a una foto antiga, sempre surt una mica de costat i amb
+la taula al voltant. A l'eina **Retalla** hi ha «Foto de paper: marca'n les
+cantonades» (i un botó que hi porta des de la targeta «Restaura una foto
+antiga»): surten quatre punts, s'arrossega cada un fins a una cantonada de la
+foto de paper i **«Redreça-la»** la deixa plana, recta i retallada.
+
+- **Mentre s'arrossega un punt, una lupa** a sobre del dit ensenya on és de
+  debò, que el dit el tapa.
+- **Els punts no cal posar-los per ordre**: s'ordenen sols al voltant del mig
+  (`ordenaPaper`). Si no fan un quadrilàter de debò, es diu i no es fa res.
+- **La forma de debò no surt de les llargades dels costats** (el costat de
+  més lluny surt més curt, i una foto de 4:3 molt inclinada donaria 1,57 en
+  lloc d'1,33). Es calcula amb la perspectiva (`formaReal`, de Zhang i He),
+  que suposa que el mig de la foto és el mig de la càmera; si gairebé no hi
+  ha perspectiva o el resultat és estrany, es fa amb les llargades.
+- La transformació es resol amb un sistema de vuit incògnites (`homografia`)
+  i cada punt de la foto nova es treu de quatre punts veïns de la vella.
+- La foto redreçada passa a ser la foto, com quan s'endreça: les pinzellades
+  es mouen amb ella i desfer la torna com era.
+
+**Afegir una imatge a sobre** (`objPosa`, `enganxaObjecte`, `OBJ`). **No es
+van fer capes de debò**: totes les eines (les IA, el retall, la mida,
+l'historial, el desat) haurien d'aprendre a anar capa per capa, i al mòbil un
+panell de capes ocupa mitja pantalla. A l'eina **Mou** hi ha «＋ Afegeix una
+imatge a sobre»: s'obre una segona imatge, que queda damunt de la foto.
+
+- **Es mou amb el dit; amb dos dits, o amb el punt de la cantonada, es fa
+  gran o petita i es gira** (a prop de recta, es queda recta). Mentre hi és,
+  els dos dits són per a ella i no per al zoom de la foto (`pessiga`).
+- **«✦ Treu-li el fons»** fa servir la IA del fons (la del mode triat a la
+  pestanya ✦ IA) i **retalla el que queda al seu contorn**, sense que es
+  mogui de lloc; «Torna-li el fons» la deixa com era. També hi ha
+  Transparència, Mirall, «Posa-la recta» i «Una altra imatge».
+- **«Enganxa-la»** (a la barra que sura a sota, amb Cancel·la; o Retorn i
+  Esc) la pinta a la foto, i la foto nova passa a ser la foto, com amb les
+  IA: desfer la torna com era. **Un cop enganxada ja no es pot moure**; se'n
+  poden enganxar tantes com es vulgui.
+- Mentre es col·loca només és a la pantalla: no es desa ni va a l'historial,
+  i qualsevol canvi de la foto o d'eina la treu (`objFi`, des de `buildBase`
+  i `setTool`).
+- **Com que s'enganxa a la foto, després li passen els ajustos i els
+  filtres** com a la resta (si la foto és en blanc i negre, també hi queda).
+- La imatge afegida es redueix a 4.000 punts de costat com a molt.
+
+**Una altra foto de fons** (`F.fotoFons`, a `componFons`). A la targeta del
+Fons, a més de transparent, blanc, d'un color i difuminat, hi ha **«Una
+foto»**: es tria una altra imatge de l'aparell i es posa al darrere, omplint
+tot el fons (si no fa la mateixa forma, se'n retallen les vores).
 
 ## La Cambra Fosca: la IA amb uns quants nuclis
 
@@ -981,8 +1037,8 @@ zero després de la primera multiplicació.
 
 L'usuari ho va triar d'una llista de millores. És la targeta **Fons** de la pestanya ✦ IA: deixa
 sol el que hi ha al davant (una persona, un objecte) i el fons el fa
-**transparent**, **blanc**, **d'un color** o **difuminat** (com el mode retrat
-del mòbil). Dos models, amb el mateix «On ho fas: Mòbil / Ordinador» de dalt
+**transparent**, **blanc**, **d'un color**, **difuminat** (com el mode retrat
+del mòbil) o amb **una altra foto** al darrere. Dos models, amb el mateix «On ho fas: Mòbil / Ordinador» de dalt
 de la pestanya (`IA.mode`, compartit):
 
 | Mode | Model | Pes | Entrada |
@@ -1181,8 +1237,8 @@ Les mateixes que al repositori dels jocs, i ja ens han mossegat allà:
 `/opt/node22/lib/node_modules/playwright`). **La sencera triga uns 25
 minuts; per provar només unes parts, `node prova.mjs cares fons`** (les parts:
 retall, tampo, arregla, amplia, esborra, ratllades, cares, fons, antiga,
-baixades, color, cloudflare, soroll, extres, continua, app, revisio,
-visites; la portada i el bàsic de
+baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app,
+revisio, visites; la portada i el bàsic de
 la Cambra Fosca es proven sempre). Abans de desar un canvi, la sencera. En una còpia nova del repositori,
 abans cal `python ia/models_r2.py baixa` (els models no hi són). Obre les
 pàgines amb un navegador de debò i comprova:
@@ -1334,6 +1390,24 @@ pàgines amb un navegador de debò i comprova:
   la memòria només hi hagi l'última IA; que desfer tregui només l'últim pas;
   i que aturant-la al segon pas es quedi el primer i ho digui. Es va
   comprovar que falla si «Atura» no atura la resta;
+- **redreçar una foto de paper** (`paper`): una «foto de paper» de 4 per 3
+  (un escaquer de colors) vista molt de costat damunt d'una taula, feta amb
+  una càmera de mentida. Posant els quatre punts a les cantonades (no per
+  ordre), ha de sortir la lupa, i la foto ha de quedar plana amb cada quadre
+  al seu lloc i amb la forma de debò (1,333; per les llargades dels costats
+  sortiria 1,57). També cancel·lar, desfer, tres punts en ratlla, i al mòbil
+  des de la targeta de restaurar. Es va comprovar que falla si la forma es
+  calcula amb els costats;
+- **afegir una imatge a sobre** (`enganxa`, també serveix el repositori ella
+  mateixa): que no es pinti a la foto fins que s'enganxa; moure-la, fer-la
+  gran amb el punt de la cantonada i enganxar-la on toca i de la mida que
+  toca; girar-la un quart, el mirall i la transparència; desfer, Cancel·la i
+  Esc; treure-li el fons a un gerro que no és al mig de la seva imatge (es
+  retalla al contorn, no es mou de lloc, no s'hi enganxa la paret, i
+  «Torna-li el fons»); a la targeta del fons, una altra foto al darrere; i al
+  mòbil, que amb dos dits es faci gran i es giri sense moure la foto, i que
+  hi càpiga a 320 px. Es va comprovar que falla si no es gira en enganxar, si
+  el gerro es mou en treure-li el fons o si els dos dits fan zoom de la foto;
 - **la cortina, compartir i les fotos enormes** (`extres`): que un toc a
   «Abans» posi la cortina amb ABANS i ARA, que l'esquerra sigui la foto del
   principi i la dreta la d'ara, que la ratlla s'arrossegui, que no vagi a

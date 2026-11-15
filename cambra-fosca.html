@@ -402,6 +402,39 @@ select{
 }
 #btnAbans.cortina{background:var(--accent-wash);color:var(--accent);border-color:rgba(240,163,60,.5)}
 
+/* redreçar una foto de paper: quatre punts que s'arrosseguen fins a les cantonades */
+#paper{position:absolute;inset:0;display:none;z-index:7}
+#paper.on{display:block}
+#paper svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+#paper polygon{fill:rgba(240,163,60,.13);stroke:#f0a33c;stroke-width:2;vector-effect:non-scaling-stroke}
+#paper .pc{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none}
+#paper .pc::before{
+  content:"";position:absolute;left:12px;top:12px;width:20px;height:20px;border-radius:50%;box-sizing:border-box;
+  background:#fff;border:4px solid #f0a33c;box-shadow:0 1px 7px rgba(0,0,0,.65);
+}
+#lupa{
+  position:fixed;z-index:36;width:112px;height:112px;border-radius:50%;pointer-events:none;display:none;
+  border:2px solid #fff;box-shadow:0 4px 18px rgba(0,0,0,.6);background:#000;
+}
+/* una segona imatge a sobre de la foto, abans d'enganxar-la */
+#obj{position:absolute;display:none;z-index:6;touch-action:none;cursor:move;outline:2px dashed #f0a33c;outline-offset:1px;-webkit-user-select:none;user-select:none}
+#obj.on{display:block}
+#objCv{display:block;width:100%;height:100%;pointer-events:none}
+#objNansa{position:absolute;right:-22px;bottom:-22px;width:44px;height:44px;touch-action:none;cursor:nwse-resize}
+#objNansa::before{
+  content:"";position:absolute;left:11px;top:11px;width:22px;height:22px;border-radius:50%;box-sizing:border-box;
+  background:#fff;border:4px solid #f0a33c;box-shadow:0 1px 7px rgba(0,0,0,.65);
+}
+#paperBar,#objBar{
+  position:fixed;z-index:35;left:50%;transform:translateX(-50%);
+  bottom:calc(36px + env(safe-area-inset-bottom,0px));
+  display:flex;align-items:center;gap:14px;padding:6px;border-radius:12px;white-space:nowrap;
+  background:rgba(23,24,26,.92);border:1px solid var(--line);box-shadow:0 8px 28px rgba(0,0,0,.55);
+}
+#paperBar .btn,#objBar .btn{height:40px}
+#paperBar .btn.primary,#objBar .btn.primary{padding:0 20px;font-size:14px}
+#paperBar[hidden],#objBar[hidden]{display:none}
+
 /* «Esborra-ho», surant a sota de la pantalla del mòbil: allà les opcions de
    l'eina queden sota la foto, i després de pintar havies d'anar-les a buscar */
 #treuFlota{
@@ -549,6 +582,8 @@ if(location.hostname==='oscarbellosido.github.io'){
         <span class="lbl">Obre</span>
       </button>
       <input type="file" id="file" accept="image/*" hidden>
+      <input type="file" id="file2" accept="image/*" hidden>
+      <input type="file" id="file3" accept="image/*" hidden>
       <button class="btn icon" id="btnUndo" title="Desfés (Ctrl+Z)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 14 4 9l5-5"/><path d="M4 9h9a6 6 0 0 1 0 12H8"/></svg>
       </button>
@@ -595,6 +630,8 @@ if(location.hostname==='oscarbellosido.github.io'){
         <div id="cloneSrc"></div>
         <div id="etAbans" hidden>ABANS</div>
         <div id="etAra" hidden>ARA</div>
+        <div id="obj"><canvas id="objCv"></canvas><i id="objNansa"></i></div>
+        <div id="paper"><svg preserveAspectRatio="none"><polygon id="paperPol" points=""/></svg><i class="pc" data-i="0"></i><i class="pc" data-i="1"></i><i class="pc" data-i="2"></i><i class="pc" data-i="3"></i></div>
         <div id="cortina" role="slider" aria-label="Cortina d'abans i després" aria-valuemin="0" aria-valuemax="100"><i>‹›</i></div>
         <div id="crop"><div id="cropBox">
           <i class="g v1"></i><i class="g v2"></i><i class="g h1"></i><i class="g h2"></i>
@@ -654,6 +691,16 @@ if(location.hostname==='oscarbellosido.github.io'){
         </div>
       </div>
     </aside>
+  </div>
+
+  <canvas id="lupa" width="224" height="224"></canvas>
+  <div id="objBar" hidden>
+    <button class="btn" id="objNo" type="button">Cancel·la</button>
+    <button class="btn primary" id="objSi" type="button">Enganxa-la</button>
+  </div>
+  <div id="paperBar" hidden>
+    <button class="btn" id="paperNo" type="button">Cancel·la</button>
+    <button class="btn primary" id="paperSi" type="button">Redreça-la</button>
   </div>
 
   <div id="treuFlota" hidden>
@@ -887,6 +934,8 @@ function orientedSize(){
 }
 function buildBase(){
   S.mascara=[];        // si la foto canvia, les ratlles ja no serien al seu lloc
+  paperFi();           // i els quatre punts de la foto de paper, tampoc
+  objFi();             // ni la imatge que s'hi estava posant a sobre
   // Sense girs, inversions ni retall, la base és la foto mateixa: no se'n fa
   // cap còpia. Cap llenç no hi dibuixa a sobre, i amb una foto ampliada a
   // 6000 px una còpia són 144 MB més.
@@ -1369,6 +1418,8 @@ function applyZoomCss(){
   if(S.cloneSrc && $('#cloneSrc').style.display==='block') posaMarcaOrigen(S.cloneSrc[0],S.cloneSrc[1]);
   $('#stZoom').textContent=pct+'%';
   if(cropOn) syncCropBox();
+  if(PAPER.on) pintaPaper();
+  if(OBJ.on) pintaObjecte();
 }
 function fitToStage(){
   if(!baseCanvas) return;
@@ -1624,7 +1675,7 @@ function buildRail(){
   }
 }
 function setTool(id){
-  cancelaEndreca();
+  cancelaEndreca(); paperFi(); objFi();
   if(id!=='treu' && S.mascara.length){ S.mascara=[]; pintaVista(); }
   if(id!=='treu'){ S.mascGoma=false; S.mascToca=false; }
   if(id!=='crop' && cropOn) endCrop(false);
@@ -1760,6 +1811,10 @@ function buildOpts(id,hint){
       const b=el('button','chip',lab); b.type='button'; b.onclick=fn; row2.appendChild(b);
     });
     box.appendChild(row2);
+    // una foto feta a una foto de paper: es marquen les quatre cantonades
+    const rp=el('div','optrow');
+    const pb=el('button','btn','Foto de paper: marca\'n les cantonades'); pb.type='button'; pb.id='paperGo'; pb.onclick=paperInici;
+    rp.appendChild(pb); box.appendChild(rp);
     if(S.crop){
       const b=el('button','btn ghost','Restaura el marc complet'); b.type='button';
       b.onclick=()=>{
@@ -1796,6 +1851,11 @@ function buildOpts(id,hint){
       chips.appendChild(c);
     });
     row2.appendChild(chips); box.appendChild(row2);
+    // tallar i enganxar entre dues fotos: una segona imatge a sobre d'aquesta
+    const row3=el('div','optrow');
+    const ob=el('button','btn','＋ Afegeix una imatge a sobre'); ob.type='button'; ob.id='objGo';
+    ob.onclick=()=>{ if(!IA.treballant) $('#file2').click(); };
+    row3.appendChild(ob); box.appendChild(row3);
     addHint();
   }
 }
@@ -2125,6 +2185,373 @@ function drawThumbs(){
 }
 
 /* ===================================================================
+   10b. redreçar una foto de paper
+   Fent una foto amb el mòbil a una foto antiga, sempre surt una mica de
+   costat i amb la taula al voltant. Es marquen les quatre cantonades de la
+   foto de paper (quatre punts que s'arrosseguen) i es deixa plana, recta i
+   retallada, com si s'hagués escanejat.
+   - Els punts es desen en coordenades de la base (PAPER.pts). No cal
+     posar-los per ordre: s'ordenen sols al voltant del mig.
+   - Mentre s'arrossega un punt, el dit el tapa: una lupa a sobre del dit
+     ensenya on és de debò.
+   - Quant fa d'ample i d'alt la foto de paper no es pot saber només amb les
+     llargades dels costats (el costat de més lluny surt més curt). Es
+     calcula amb la perspectiva (formaReal, de Zhang i He: «Whiteboard
+     scanning and image enhancement»), que suposa que el mig de la foto és
+     el mig de la càmera; si la foto s'ha retallat molt de costat o gairebé
+     no hi ha perspectiva, es fa amb les llargades.
+   - La foto redreçada passa a ser la foto, com quan s'endreça: les
+     pinzellades es mouen amb ella i desfer la torna com era.
+=================================================================== */
+const PAPER={ on:false, pts:null };
+function paperInici(){
+  if(!baseCanvas || IA.treballant) return;
+  cancelaEndreca();
+  const W=baseCanvas.width, H=baseCanvas.height, m=0.12;
+  PAPER.on=true;
+  PAPER.pts=[[W*m,H*m],[W*(1-m),H*m],[W*(1-m),H*(1-m)],[W*m,H*(1-m)]];
+  $('#crop').classList.remove('on');           // el marc del retall, fora mentre dura
+  $('#paper').classList.add('on'); $('#paperBar').hidden=false;
+  pintaPaper(); veuFoto();
+  say('Arrossega cada punt fins a una cantonada de la foto de paper i prem «Redreça-la».');
+}
+function paperFi(){
+  if(!PAPER.on) return;
+  PAPER.on=false; PAPER.pts=null;
+  $('#paper').classList.remove('on'); $('#paperBar').hidden=true; $('#lupa').style.display='none';
+  if(cropOn && !S.endreca) $('#crop').classList.add('on');
+}
+function pintaPaper(){
+  if(!PAPER.on) return;
+  const z=S.zoom, sv=$('#paper svg');
+  sv.setAttribute('viewBox','0 0 '+baseCanvas.width+' '+baseCanvas.height);
+  $('#paperPol').setAttribute('points',ordenaPaper(PAPER.pts).map(p=>p[0]+','+p[1]).join(' '));
+  document.querySelectorAll('#paper .pc').forEach((n,i)=>{ n.style.left=(PAPER.pts[i][0]*z)+'px'; n.style.top=(PAPER.pts[i][1]*z)+'px'; });
+}
+// dalt-esquerra, dalt-dreta, baix-dreta, baix-esquerra, es posin com es posin
+function ordenaPaper(pts){
+  const cx=pts.reduce((t,p)=>t+p[0],0)/4, cy=pts.reduce((t,p)=>t+p[1],0)/4;
+  const o=pts.slice().sort((a,b)=>Math.atan2(a[1]-cy,a[0]-cx)-Math.atan2(b[1]-cy,b[0]-cx));
+  let k=0; for(let i=1;i<4;i++) if(o[i][0]+o[i][1]<o[k][0]+o[k][1]) k=i;
+  return [o[k],o[(k+1)%4],o[(k+2)%4],o[(k+3)%4]];
+}
+// La transformació de perspectiva que porta quatre punts a quatre punts
+// (vuit incògnites; es resol el sistema). Torna la funció (x,y) → [x',y'].
+function homografia(de,a){
+  const M=[];
+  for(let i=0;i<4;i++){
+    const [x,y]=de[i], [u,v]=a[i];
+    M.push([x,y,1,0,0,0,-u*x,-u*y,u]); M.push([0,0,0,x,y,1,-v*x,-v*y,v]);
+  }
+  for(let c=0;c<8;c++){
+    let piv=c; for(let r=c+1;r<8;r++) if(Math.abs(M[r][c])>Math.abs(M[piv][c])) piv=r;
+    if(Math.abs(M[piv][c])<1e-12) return null;
+    [M[c],M[piv]]=[M[piv],M[c]];
+    for(let r=0;r<8;r++) if(r!==c){ const f=M[r][c]/M[c][c]; if(f) for(let k=c;k<9;k++) M[r][k]-=f*M[c][k]; }
+  }
+  const h=M.map((r,i)=>r[8]/r[i]);
+  const f=(x,y)=>{ const w=h[6]*x+h[7]*y+1; return [(h[0]*x+h[1]*y+h[2])/w,(h[3]*x+h[4]*y+h[5])/w]; };
+  f.h=h; return f;
+}
+// L'ample partit per l'alt de la foto de paper, de debò (vegeu a dalt)
+function formaReal(q,W,H){
+  const d=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+  const simple=(d(q[0],q[1])+d(q[3],q[2]))/(d(q[0],q[3])+d(q[1],q[2]));
+  try{
+    const m=p=>[p[0]-W/2,p[1]-H/2,1], m1=m(q[0]), m2=m(q[1]), m3=m(q[3]), m4=m(q[2]);
+    const creu=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], punt=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+    const k2=punt(creu(m1,m4),m3)/punt(creu(m2,m4),m3), k3=punt(creu(m1,m4),m2)/punt(creu(m3,m4),m2);
+    const n2=m2.map((v,i)=>k2*v-m1[i]), n3=m3.map((v,i)=>k3*v-m1[i]);
+    if(Math.abs(n2[2])<1e-4 || Math.abs(n3[2])<1e-4) return simple;      // gairebé sense perspectiva
+    const f2=-(n2[0]*n3[0]+n2[1]*n3[1])/(n2[2]*n3[2]);
+    if(!(f2>0) || !isFinite(f2)) return simple;
+    const r=Math.sqrt(((n2[0]*n2[0]+n2[1]*n2[1])/f2+n2[2]*n2[2])/((n3[0]*n3[0]+n3[1]*n3[1])/f2+n3[2]*n3[2]));
+    return isFinite(r) && r>simple*0.6 && r<simple*1.7 ? r : simple;
+  }catch(e){ return simple; }
+}
+function aplicaPaper(){
+  if(!PAPER.on || !baseCanvas || IA.treballant) return;
+  const W=baseCanvas.width, H=baseCanvas.height, q=ordenaPaper(PAPER.pts);
+  // ha de ser un quadrilàter de debò (sense creuar-se ni fer cap entrant)
+  const gir=i=>{ const a=q[i], b=q[(i+1)%4], c=q[(i+2)%4]; return (b[0]-a[0])*(c[1]-b[1])-(b[1]-a[1])*(c[0]-b[0]); };
+  const d=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+  if(![0,1,2,3].every(i=>gir(i)>0) || Math.min(d(q[0],q[1]),d(q[1],q[2]),d(q[2],q[3]),d(q[3],q[0]))<16){
+    say('Els quatre punts han de ser a les quatre cantonades de la foto de paper, sense creuar-se.'); return; }
+  // la mida: els punts que ocupa ara, amb la forma de debò
+  const area=Math.max(d(q[0],q[1]),d(q[3],q[2]))*Math.max(d(q[0],q[3]),d(q[1],q[2])), forma=formaReal(q,W,H);
+  let w=Math.sqrt(area*forma), h=Math.sqrt(area/forma);
+  const k=Math.min(1,Math.sqrt(MAX_DESA_MP*1e6/(w*h)),16384/Math.max(w,h));
+  w=Math.max(8,round(w*k)); h=Math.max(8,round(h*k));
+  const cap=homografia([[0,0],[w,0],[w,h],[0,h]],q), enlla=homografia(q,[[0,0],[w,0],[w,h],[0,h]]);
+  if(!cap || !enlla){ say('Amb aquests punts no es pot redreçar.'); return; }
+  say('Redreçant…');
+  const src=baseCanvas.getContext('2d',{willReadFrequently:true}).getImageData(0,0,W,H).data;
+  const out=mkCanvas(w,h), ox=out.getContext('2d'), im=ox.createImageData(w,h), o=im.data, g=cap.h;
+  // per a cada punt de la foto nova, d'on surt de la vella (entre quatre punts veïns)
+  for(let y=0,n=0;y<h;y++){
+    const yy=y+0.5;
+    for(let x=0;x<w;x++,n+=4){
+      const xx=x+0.5, t=g[6]*xx+g[7]*yy+1;
+      let sx=(g[0]*xx+g[1]*yy+g[2])/t-0.5, sy=(g[3]*xx+g[4]*yy+g[5])/t-0.5;
+      if(sx<0) sx=0; else if(sx>W-1) sx=W-1;
+      if(sy<0) sy=0; else if(sy>H-1) sy=H-1;
+      const x0=sx|0, y0=sy|0, x1=x0<W-1?x0+1:x0, y1=y0<H-1?y0+1:y0, fx=sx-x0, fy=sy-y0;
+      const a=(y0*W+x0)*4, b=(y0*W+x1)*4, c=(y1*W+x0)*4, e=(y1*W+x1)*4;
+      const wa=(1-fx)*(1-fy), wb=fx*(1-fy), wc=(1-fx)*fy, we=fx*fy;
+      o[n]=src[a]*wa+src[b]*wb+src[c]*wc+src[e]*we;
+      o[n+1]=src[a+1]*wa+src[b+1]*wb+src[c+1]*wc+src[e+1]*we;
+      o[n+2]=src[a+2]*wa+src[b+2]*wb+src[c+2]*wc+src[e+2]*we;
+      o[n+3]=src[a+3]*wa+src[b+3]*wb+src[c+3]*wc+src[e+3]*we;
+    }
+  }
+  ox.putImageData(im,0,0);
+  // les pinzellades es mouen amb la foto
+  const esc=Math.sqrt(w*h/Math.max(1,area));
+  mapOps((x,y)=>enlla(x,y));
+  for(const op of S.ops) if(op.size) op.size*=esc;
+  paperFi();
+  S.src=out; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
+  S.cloneSrc=null; $('#cloneSrc').style.display='none';
+  buildBase(); fitToStage();
+  push('Redreça la foto de paper');
+  if(S.tool==='crop') setTool('crop');
+  say('Redreçada: ara fa '+w+' × '+h+' px. Si no ha quedat bé, desfés-ho i torna a posar els punts.');
+}
+$('#paperSi').onclick=aplicaPaper;
+$('#paperNo').onclick=()=>{ paperFi(); say('No s\'ha tocat res.'); };
+{
+  // arrossegar els punts, amb la lupa a sobre del dit
+  let quin=-1, dx=0, dy=0;
+  const lupa=$('#lupa'), lx=lupa.getContext('2d');
+  const pintaLupa=e=>{
+    const p=PAPER.pts[quin], rs=view.width/baseCanvas.width, mida=(112/2.6)/S.zoom*rs;
+    lx.fillStyle='#000'; lx.fillRect(0,0,224,224);
+    lx.imageSmoothingEnabled=true;
+    lx.drawImage(view,p[0]*rs-mida/2,p[1]*rs-mida/2,mida,mida,0,0,224,224);
+    lx.strokeStyle='#f0a33c'; lx.lineWidth=3;
+    lx.beginPath(); lx.moveTo(112,84); lx.lineTo(112,140); lx.moveTo(84,112); lx.lineTo(140,112); lx.stroke();
+    lupa.style.display='block';
+    lupa.style.left=clamp(e.clientX-56,4,innerWidth-116)+'px';
+    lupa.style.top=(e.clientY>190 ? e.clientY-150 : e.clientY+48)+'px';
+  };
+  document.querySelectorAll('#paper .pc').forEach(n=>{
+    n.addEventListener('pointerdown',e=>{
+      if(!PAPER.on) return;
+      e.preventDefault(); e.stopPropagation();
+      quin=+n.dataset.i;
+      const rc=view.getBoundingClientRect();
+      dx=PAPER.pts[quin][0]-(e.clientX-rc.left)/S.zoom; dy=PAPER.pts[quin][1]-(e.clientY-rc.top)/S.zoom;
+      try{ n.setPointerCapture(e.pointerId); }catch(_){}
+      pintaLupa(e);
+    });
+    n.addEventListener('pointermove',e=>{
+      if(quin!==+n.dataset.i || !PAPER.on) return;
+      e.stopPropagation();
+      const rc=view.getBoundingClientRect();
+      PAPER.pts[quin]=[clamp((e.clientX-rc.left)/S.zoom+dx,0,baseCanvas.width), clamp((e.clientY-rc.top)/S.zoom+dy,0,baseCanvas.height)];
+      pintaPaper(); pintaLupa(e);
+    });
+    ['pointerup','pointercancel','lostpointercapture'].forEach(t=>n.addEventListener(t,e=>{ e.stopPropagation(); quin=-1; lupa.style.display='none'; }));
+  });
+}
+
+/* ===================================================================
+   10c. afegir una imatge a sobre (tallar i enganxar entre dues fotos)
+   L'usuari va demanar capes i poder pujar dues imatges per tallar i
+   enganxar. No es van fer capes de debò: totes les eines (les IA, el retall,
+   la mida, l'historial, el desat) haurien d'aprendre a anar capa per capa, i
+   al mòbil un panell de capes ocupa mitja pantalla. Es fa així:
+   - S'obre una segona imatge, que queda a sobre de la foto com un objecte
+     (OBJ): es mou amb el dit, i amb dos dits (o amb el punt de la cantonada)
+     es fa gran o petita i es gira. Es pot fer mig transparent, girar com un
+     mirall i, amb la IA del fons, treure-li el fons perquè en quedi només la
+     persona o l'objecte (i es retalla al seu contorn).
+   - «Enganxa-la» la pinta a la foto, i la foto nova passa a ser la foto,
+     com amb les IA: desfer la torna com era. Un cop enganxada ja no es pot
+     moure; se'n poden enganxar tantes com es vulgui, una darrere l'altra.
+   - Mentre es col·loca només és a la pantalla: no es desa ni va a
+     l'historial, i qualsevol canvi de la foto la treu.
+=================================================================== */
+const OBJ={ on:false, img:null, x:0, y:0, w:0, rot:0, op:1, ambFons:null };
+const arrodoneixGir=r=>{ r=Math.atan2(Math.sin(r),Math.cos(r)); return Math.abs(r)<0.045 ? 0 : r; };   // a prop de recta, recta
+function objPosa(img){
+  const W=baseCanvas.width, H=baseCanvas.height;
+  let w=Math.min(img.width, W*0.5); if(w*img.height/img.width>H*0.7) w=H*0.7*img.width/img.height;
+  Object.assign(OBJ,{ on:true, img, x:W/2, y:H/2, w, rot:0, op:1, ambFons:null });
+  if(cropOn) $('#crop').classList.remove('on');
+  $('#obj').classList.add('on'); $('#objBar').hidden=false;
+  objPrevia(); pintaObjecte(); pintaOptsObjecte(); veuFoto();
+  say('Mou-la amb el dit. Amb dos dits, o amb el punt de la cantonada, la fas gran o petita i la gires. Després, «Enganxa-la».');
+}
+function objFi(){
+  if(!OBJ.on) return;
+  OBJ.on=false; OBJ.img=null; OBJ.ambFons=null;
+  $('#obj').classList.remove('on'); $('#objBar').hidden=true;
+  if(cropOn && !S.endreca) $('#crop').classList.add('on');
+  const t=TOOLS.find(x=>x.id===S.tool); $('#optTitle').textContent=t.name; $('#optKey').textContent=t.key; buildOpts(S.tool,t.hint);
+}
+// el que es veu de l'objecte: una còpia de 1.400 punts com a molt, que moure-la no costi
+function objPrevia(){
+  const i=OBJ.img, k=Math.min(1,1400/Math.max(i.width,i.height)), c=$('#objCv');
+  c.width=Math.max(1,round(i.width*k)); c.height=Math.max(1,round(i.height*k));
+  const x=c.getContext('2d'); x.imageSmoothingQuality='high'; x.clearRect(0,0,c.width,c.height); x.drawImage(i,0,0,c.width,c.height);
+}
+function pintaObjecte(){
+  if(!OBJ.on) return;
+  const z=S.zoom, w=OBJ.w*z, h=w*OBJ.img.height/OBJ.img.width, o=$('#obj');
+  o.style.width=w+'px'; o.style.height=h+'px';
+  o.style.left=(OBJ.x*z-w/2)+'px'; o.style.top=(OBJ.y*z-h/2)+'px';
+  o.style.transform='rotate('+OBJ.rot+'rad)';
+  $('#objCv').style.opacity=OBJ.op;
+}
+function pintaOptsObjecte(){
+  const box=$('#opts'); box.textContent='';
+  $('#optTitle').textContent='Afegeix una imatge'; $('#optKey').textContent='';
+  const F=IA.fons, md=F.models[IA.mode];
+  const r1=el('div','optrow');
+  const bf=el('button','btn', OBJ.ambFons ? 'Torna-li el fons' : '✦ Treu-li el fons'); bf.type='button'; bf.id='objFons';
+  bf.disabled=IA.treballant || IA.motor==null;
+  bf.onclick=OBJ.ambFons ? objTornaFons : objTreuFons;
+  r1.appendChild(bf); box.appendChild(r1);
+  if(!OBJ.ambFons){
+    const cal=!(md.parts||[md.fitxer]).every(f=>IA.baixats[f]) && !(F.sessio && F.sessioDe===IA.mode);
+    box.appendChild(el('div','tiny','La IA en deixa només la persona o l\'objecte'+(cal?' (la primera vegada es baixen '+mb(md.mb)+')':'')+'. Amb el mode Ordinador de la pestanya ✦ IA retalla millor els cabells.'));
+  }
+  const r2=el('div','row');
+  const l=el('label',null,'Transparència'); l.htmlFor='objOp';
+  const v=el('span','val',round((1-OBJ.op)*100)+'%');
+  const rg=document.createElement('input'); rg.type='range'; rg.min=0; rg.max=90; rg.step=1; rg.value=round((1-OBJ.op)*100); rg.id='objOp';
+  rg.oninput=()=>{ OBJ.op=1-rg.value/100; v.textContent=rg.value+'%'; pintaObjecte(); };
+  r2.append(l,v,rg); box.appendChild(r2);
+  const r3=el('div','optrow');
+  const mi=el('button','chip','↔ Mirall'); mi.type='button'; mi.id='objMirall';
+  mi.onclick=()=>{ const c=mkCanvas(OBJ.img.width,OBJ.img.height), x=c.getContext('2d'); x.translate(c.width,0); x.scale(-1,1); x.drawImage(OBJ.img,0,0);
+    OBJ.img=c; OBJ.ambFons=null; objPrevia(); pintaObjecte(); pintaOptsObjecte(); };
+  const re=el('button','chip','Posa-la recta'); re.type='button'; re.onclick=()=>{ OBJ.rot=0; pintaObjecte(); };
+  const ca=el('button','chip','Una altra imatge'); ca.type='button'; ca.onclick=()=>$('#file2').click();
+  r3.append(mi,re,ca); box.appendChild(r3);
+  // (enganxar-la i cancel·lar són a la barra que sura a sota de la pantalla)
+  box.appendChild(el('div','tiny','Mou-la amb el dit. Amb dos dits, o amb el punt de la cantonada, la fas gran o petita i la gires. Quan sigui al seu lloc, «Enganxa-la» (a sota de la pantalla). Un cop enganxada ja no es pot moure, però es pot desfer.'));
+}
+function enganxaObjecte(){
+  if(!OBJ.on || !baseCanvas || IA.treballant) return;
+  const W=baseCanvas.width, H=baseCanvas.height, i=OBJ.img, h=OBJ.w*i.height/i.width;
+  const out=mkCanvas(W,H), x=out.getContext('2d');
+  x.drawImage(baseCanvas,0,0);
+  x.save(); x.translate(OBJ.x,OBJ.y); x.rotate(OBJ.rot); x.globalAlpha=OBJ.op; x.imageSmoothingQuality='high';
+  x.drawImage(i,-OBJ.w/2,-h/2,OBJ.w,h); x.restore();
+  objFi();
+  // com amb les IA: la foto nova passa a ser la foto (la mida és la mateixa i
+  // les pinzellades no es mouen), i desfer la torna com era
+  S.src=out; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
+  buildBase(); scheduleRender();
+  push('Enganxa una imatge');
+  say('Enganxada. Si no t\'agrada, desfés-ho. En pots afegir una altra.');
+}
+$('#objSi').onclick=enganxaObjecte;
+$('#objNo').onclick=()=>{ objFi(); say('No s\'ha enganxat res.'); };
+// la segona imatge: com a molt de 4.000 punts de costat, que només és un tros de la foto
+$('#file2').onchange=e=>{
+  const f=e.target.files[0]; e.target.value='';
+  if(!f || !baseCanvas) return;
+  if(!/^image\//.test(f.type)){ say('Aquest fitxer no és una imatge.'); return; }
+  const u=URL.createObjectURL(f), img=new Image();
+  img.onload=()=>{
+    const k=Math.min(1,4000/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=mkCanvas(Math.max(1,round(img.naturalWidth*k)),Math.max(1,round(img.naturalHeight*k))), x=c.getContext('2d');
+    x.imageSmoothingQuality='high'; x.drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(u);
+    if(S.tool!=='move') setTool('move');
+    objPosa(c);
+  };
+  img.onerror=()=>{ URL.revokeObjectURL(u); say('No s\'ha pogut llegir aquesta imatge.'); };
+  img.src=u;
+};
+/* Treure el fons de la imatge que s'afegeix: la mateixa IA de «Fons», i el
+   que en queda es retalla al seu contorn, que el marc i el punt de la
+   cantonada quedin a tocar de la persona. El que es veu no es mou de lloc. */
+async function objTreuFons(){
+  if(!OBJ.on || IA.treballant) return;
+  if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
+  const F=IA.fons, md=F.models[IA.mode], img=OBJ.img;
+  IA.treballant=true; IA.atura=false; pintaOptsObjecte(); mantenEncesa();
+  try{
+    const progres=(que,a,t)=>{
+      if(IA.atura) throw new Error('aturat');
+      vel(t ? 'Baixant '+que+'…' : 'Preparant la IA…', t ? a/t : 0, t ? mb(a/1048576)+' de '+mb(t/1048576)+' · només la primera vegada' : 'Només la primera vegada.');
+    };
+    vel('Preparant…',0,'');
+    await preparaMotor(progres);
+    const sessio=await preparaSessioFons(progres);
+    if(IA.atura) throw new Error('aturat');
+    vel('Buscant què hi ha al davant…',1,F.motorReal==='gpu'?'Amb la gràfica.':'Amb el processador: pot trigar uns segons.');
+    const mapa=await alfaDelDavant(img, sessio, md);
+    if(IA.atura || !OBJ.on || OBJ.img!==img) throw new Error('aturat');
+    const tot=componFons(img, mapa, 'transparent');
+    // el contorn del que queda
+    const W=img.width, H=img.height, a=mapa.alfa; let x0=W, y0=H, x1=-1, y1=-1;
+    for(let y=0,i=0;y<H;y++) for(let x=0;x<W;x++,i++) if(a[i]>12){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+    if(x1<0){ say('No hi he trobat res al davant: la imatge es queda com era.'); return; }
+    const bw=x1-x0+1, bh=y1-y0+1, c=mkCanvas(bw,bh); c.getContext('2d').drawImage(tot,-x0,-y0);
+    // el mig del tros retallat, on era a la foto (amb la mida i el gir que té)
+    const e=OBJ.w/W, dx=((x0+x1+1)/2-W/2)*e, dy=((y0+y1+1)/2-H/2)*e, cs=Math.cos(OBJ.rot), sn=Math.sin(OBJ.rot);
+    OBJ.ambFons={ img, x:OBJ.x, y:OBJ.y, w:OBJ.w };
+    OBJ.img=c; OBJ.x+=dx*cs-dy*sn; OBJ.y+=dx*sn+dy*cs; OBJ.w=bw*e;
+    objPrevia(); pintaObjecte();
+    say('Fons tret. Si se n\'ha menjat un tros, «Torna-li el fons» i prova el mode Ordinador a la pestanya ✦ IA.');
+  }catch(err){
+    const msg=IA.ultimError=String(err&&err.message||err);
+    if(msg==='aturat') say('Aturat. La imatge és com era.');
+    else { say('No s\'ha pogut treure el fons: '+msg+'.'); console.warn('Fons de l\'objecte:',err); }
+  }finally{
+    IA.treballant=false; IA.atura=false;
+    try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
+    bloqueigPantalla=null;
+    amagaVel();
+    if(OBJ.on) pintaOptsObjecte();
+    if($('#pane-ia').classList.contains('on')) pintaIA();
+  }
+}
+function objTornaFons(){
+  const f=OBJ.ambFons; if(!f) return;
+  OBJ.img=f.img; OBJ.x=f.x; OBJ.y=f.y; OBJ.w=f.w; OBJ.ambFons=null;
+  objPrevia(); pintaObjecte(); pintaOptsObjecte();
+}
+let objDeixa=()=>{};
+{
+  // moure-la amb el dit, i el punt de la cantonada per a la mida i el gir
+  const o=$('#obj'), n=$('#objNansa'); let mou=null, nansa=null;
+  objDeixa=()=>{ mou=null; nansa=null; };
+  const aBase=e=>{ const rc=view.getBoundingClientRect(); return [(e.clientX-rc.left)/S.zoom,(e.clientY-rc.top)/S.zoom]; };
+  o.addEventListener('pointerdown',e=>{
+    if(!OBJ.on || e.target===n || IA.treballant) return;
+    e.preventDefault();
+    const p=aBase(e); mou={ id:e.pointerId, dx:OBJ.x-p[0], dy:OBJ.y-p[1] };
+    try{ o.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  o.addEventListener('pointermove',e=>{
+    if(!mou || mou.id!==e.pointerId || !OBJ.on) return;
+    const p=aBase(e), W=baseCanvas.width, H=baseCanvas.height;
+    OBJ.x=clamp(p[0]+mou.dx,-OBJ.w*0.4,W+OBJ.w*0.4); OBJ.y=clamp(p[1]+mou.dy,-H*0.4,H*1.4);
+    pintaObjecte();
+  });
+  n.addEventListener('pointerdown',e=>{
+    if(!OBJ.on || IA.treballant) return;
+    e.preventDefault(); e.stopPropagation();
+    const p=aBase(e); nansa={ id:e.pointerId, d0:Math.max(4,Math.hypot(p[0]-OBJ.x,p[1]-OBJ.y)), a0:Math.atan2(p[1]-OBJ.y,p[0]-OBJ.x), w0:OBJ.w, r0:OBJ.rot };
+    try{ n.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  n.addEventListener('pointermove',e=>{
+    if(!nansa || nansa.id!==e.pointerId || !OBJ.on) return;
+    e.stopPropagation();
+    const p=aBase(e);
+    OBJ.w=clamp(nansa.w0*Math.hypot(p[0]-OBJ.x,p[1]-OBJ.y)/nansa.d0,16,baseCanvas.width*4);
+    OBJ.rot=arrodoneixGir(nansa.r0+Math.atan2(p[1]-OBJ.y,p[0]-OBJ.x)-nansa.a0);
+    pintaObjecte();
+  });
+  for(const t of ['pointerup','pointercancel']){ o.addEventListener(t,()=>{ mou=null; }); n.addEventListener(t,e=>{ e.stopPropagation(); nansa=null; }); }
+}
+
+/* ===================================================================
    11. el retall
 =================================================================== */
 let cropOn=false, cropRect=null, cropAR=0;
@@ -2366,11 +2793,13 @@ function cancelaTraca(){
   st.addEventListener('pointerdown',e=>{
     if(e.pointerType!=='touch') return;
     dits.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    if(dits.size===2 && baseCanvas && !cropOn && !IA.treballant){
+    if(dits.size===2 && baseCanvas && (!cropOn || OBJ.on) && !IA.treballant){
       e.stopPropagation(); e.preventDefault();
       cancelaTraca();
       const m=mig(), rc=view.getBoundingClientRect();
       g={ d0:Math.max(12,m.d), z0:S.zoom, bx:(m.x-rc.left)/S.zoom, by:(m.y-rc.top)/S.zoom };
+      // amb una imatge a sobre, els dos dits són per a ella: mida i gir
+      if(OBJ.on){ const [a,b]=[...dits.values()]; objDeixa(); g.obj={ w0:OBJ.w, r0:OBJ.rot, a0:Math.atan2(b.y-a.y,b.x-a.x) }; }
       dosDits=true;
     } else if(dosDits) e.stopPropagation();
   },true);
@@ -2381,6 +2810,12 @@ function cancelaTraca(){
     e.stopPropagation();
     if(!g || dits.size<2) return;
     const m=mig();
+    if(g.obj){
+      const [a,b]=[...dits.values()];
+      OBJ.w=clamp(g.obj.w0*m.d/g.d0,16,baseCanvas.width*4);
+      OBJ.rot=arrodoneixGir(g.obj.r0+Math.atan2(b.y-a.y,b.x-a.x)-g.obj.a0);
+      pintaObjecte(); return;
+    }
     S.zoom=clamp(g.z0*m.d/g.d0,0.02,8);
     applyZoomCss();
     // el punt de la foto que hi havia entre els dos dits s'hi queda
@@ -2959,8 +3394,8 @@ $('#btnHelp').onclick=()=>dialog('Dreceres de teclat',body=>{
     ['1','Zoom al 100%'],
     ['Ctrl + roda','Zoom amb el punter'],
     ['\\ (mantenint)','Veure la foto com era'],
-    ['Retorn','Aplica el retall'],
-    ['Esc','Cancel·la el retall o el text'],
+    ['Retorn','Aplica el retall, o enganxa la imatge afegida'],
+    ['Esc','Cancel·la el retall, el text o la imatge afegida'],
     ['Ctrl + O','Obre una imatge'],
     ['Ctrl + S','Desa la imatge'],
   ];
@@ -3052,6 +3487,7 @@ const IA={
     },
     sessio:null, sessioDe:null, motorReal:null, errorGPU:null,
     darrere:'transparent', color:'#ffffff', fet:null, error:null,
+    fotoFons:null, fotoNom:'',      // «Una foto»: la que es posa al darrere
   },
 };
 
@@ -3979,11 +4415,14 @@ function construeixIA(){
     c.onclick=()=>{ IA.antiga.passos[k]=!IA.antiga.passos[k]; estatAntiga(); };
     xpa.appendChild(c);
   }
+  const apb=el('button','btn','Si és una foto feta a una foto de paper, primer redreça-la'); apb.type='button'; apb.id='antigaPaper';
+  apb.style.cssText='width:100%;height:auto;min-height:32px;white-space:normal;text-align:left;font-size:11.5px;margin-top:8px;padding:6px 10px;line-height:1.3';
+  apb.onclick=()=>{ if(IA.treballant) return; setTool('crop'); paperInici(); };
   const ab=el('button','btn primary','✦ Restaura-la'); ab.type='button'; ab.id='antigaGo';
   ab.style.cssText='width:100%;height:36px;justify-content:center;margin-top:8px'; ab.onclick=restauraAntiga;
   const ai=el('div','tiny'); ai.id='antigaInfo';
   const ar=el('div','ia-fet'); ar.id='antigaRes'; ar.hidden=true; ar.style.margin='10px 0 0';
-  ca.append(xpa,ab,ai,ar);
+  ca.append(xpa,apb,ab,ai,ar);
   // ratllades: troba-les i repassa-les amb la vareta
   const cr=$('#iaCos-ratllades');
   cr.appendChild(el('div','tiny','Marca de vermell les ratllades, els plecs i les taques clares. Després les repasses (amb «Treu vermell» treus el que no ho sigui, i pintes el que falti) i prems «Esborra-ho».'));
@@ -4815,7 +5254,7 @@ async function posaColor(){
    transparent, d'un color, o es difumina com a les fotos de retrat del mòbil.
    Mateix motor que ampliar i esborrar; la foto no surt de l'aparell.
 =================================================================== */
-const DARRERE=[['transparent','Transparent'],['blanc','Blanc'],['color','Un color'],['difuminat','Difuminat']];
+const DARRERE=[['transparent','Transparent'],['blanc','Blanc'],['color','Un color'],['difuminat','Difuminat'],['foto','Una foto']];
 function pintaFons(){
   const pane=$('#pane-fons'); if(!pane || !baseCanvas) return;
   const F=IA.fons, md=F.models[IA.mode];
@@ -4846,7 +5285,17 @@ function pintaFons(){
     row.append(sw, el('span','tiny','Toca el quadre per triar el color'));
     g3.appendChild(row);
   }
+  if(F.darrere==='foto'){
+    // una altra foto al darrere (un paisatge, una paret): es tria de l'aparell
+    const row=el('div','optrow');
+    const tb=el('button','btn',F.fotoFons?'Tria\'n una altra':'Tria la foto del fons'); tb.type='button'; tb.id='fonsFotoTria';
+    tb.onclick=()=>{ if(!IA.treballant) $('#file3').click(); };
+    const tn=el('span','tiny',F.fotoFons ? F.fotoNom+' ('+F.fotoFons.width+' × '+F.fotoFons.height+' px)' : 'Encara no n\'has triat cap.'); tn.id='fonsFotoNom';
+    tn.style.cssText='min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    row.append(tb,tn); g3.appendChild(row);
+  }
   const expl={
+    foto:'Al darrere hi va una altra foto, que omple tot el fons (si no fa la mateixa forma, se\'n retallen les vores).',
     transparent:'Es veu com un escaquer. Per desar-la transparent, desa en PNG: el JPG no guarda la transparència i hi posaria blanc.',
     blanc:'Com les fotos de carnet o de les botigues per internet.',
     color:'Un fons llis del color que triïs.',
@@ -4870,9 +5319,9 @@ function pintaFons(){
   if(F.error) linia('L\'última vegada no ha funcionat: '+F.error+'.','ia-mal');
   pane.appendChild(linies);
 
-  const go=el('button','btn primary',F.darrere==='difuminat'?'Difumina el fons':'Treu el fons'); go.type='button'; go.id='fonsGo';
+  const go=el('button','btn primary',F.darrere==='difuminat'?'Difumina el fons':F.darrere==='foto'?'Canvia el fons':'Treu el fons'); go.type='button'; go.id='fonsGo';
   go.style.cssText='width:100%;height:38px;justify-content:center;font-size:13px';
-  go.disabled=IA.motor==null || IA.treballant;
+  go.disabled=IA.motor==null || IA.treballant || (F.darrere==='foto' && !F.fotoFons);
   go.onclick=fesFons;
   pane.appendChild(go);
 }
@@ -4960,7 +5409,21 @@ function fonsDifuminat(src, petita){
   return gx.getImageData(0,0,W,H).data;
 }
 
-function componFons(src, {alfa, petita}, darrere, color){
+$('#file3').onchange=e=>{
+  const f=e.target.files[0]; e.target.value='';
+  if(!f) return;
+  if(!/^image\//.test(f.type)){ say('Aquest fitxer no és una imatge.'); return; }
+  const u=URL.createObjectURL(f), img=new Image();
+  img.onload=()=>{
+    const k=Math.min(1,4000/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=mkCanvas(Math.max(1,round(img.naturalWidth*k)),Math.max(1,round(img.naturalHeight*k))), x=c.getContext('2d');
+    x.imageSmoothingQuality='high'; x.drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(u);
+    IA.fons.fotoFons=c; IA.fons.fotoNom=f.name; pintaFons();
+  };
+  img.onerror=()=>{ URL.revokeObjectURL(u); say('No s\'ha pogut llegir aquesta imatge.'); };
+  img.src=u;
+};
+function componFons(src, {alfa, petita}, darrere, color, fotoFons){
   const W=src.width, H=src.height;
   const out=mkCanvas(W,H), ox=out.getContext('2d',{willReadFrequently:true});
   ox.drawImage(src,0,0);
@@ -4971,6 +5434,13 @@ function componFons(src, {alfa, petita}, darrere, color){
     let bg=null, c=[255,255,255];
     if(darrere==='color'){ const n=parseInt(color.slice(1),16); c=[n>>16&255,n>>8&255,n&255]; }
     if(darrere==='difuminat') bg=fonsDifuminat(src, petita);
+    if(darrere==='foto' && fotoFons){
+      // la foto del fons, omplint-lo tot: es fa prou gran i se'n retalla el que sobra
+      const f=mkCanvas(W,H), fx=f.getContext('2d',{willReadFrequently:true}), k=Math.max(W/fotoFons.width,H/fotoFons.height);
+      fx.imageSmoothingQuality='high';
+      fx.drawImage(fotoFons,(W-fotoFons.width*k)/2,(H-fotoFons.height*k)/2,fotoFons.width*k,fotoFons.height*k);
+      bg=fx.getImageData(0,0,W,H).data;
+    }
     for(let i=0,k=0;i<alfa.length;i++,k+=4){
       const a=alfa[i]/255*d[k+3]/255, b=1-a;
       if(bg){ d[k]=d[k]*a+bg[k]*b; d[k+1]=d[k+1]*a+bg[k+1]*b; d[k+2]=d[k+2]*a+bg[k+2]*b; }
@@ -5005,14 +5475,14 @@ async function fesFons(){
     if(IA.atura) throw new Error('aturat');
     vel(darrere==='difuminat'?'Difuminant el fons…':'Traient el fons…',1,'');
     await new Promise(r=>setTimeout(r,30));     // que el vel es pinti abans de la feina
-    const nova=componFons(src, mapa, darrere, F.color);
+    const nova=componFons(src, mapa, darrere, F.color, F.fotoFons);
     // Com quan s'esborra o s'amplia, la foto nova passa a ser la foto: els
     // girs i el retall ja hi són, les pinzellades no es mouen i desfer torna
     // a la d'abans.
     S.src=nova; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
     buildBase(); scheduleRender();
-    const nom={transparent:'transparent',blanc:'blanc',color:'de color',difuminat:'difuminat'}[darrere];
-    push(darrere==='difuminat'?'Difumina el fons':'Treu el fons ('+nom+')');
+    const nom={transparent:'transparent',blanc:'blanc',color:'de color',difuminat:'difuminat',foto:'amb una altra foto'}[darrere];
+    push(darrere==='difuminat'?'Difumina el fons':darrere==='foto'?'Canvia el fons (una foto)':'Treu el fons ('+nom+')');
     const temps=minuts((performance.now()-t0)/1000);
     F.fet={ src:S.src, text:(darrere==='difuminat'?'Fons difuminat':'Fons '+nom)+' en '+temps+', '+(F.motorReal==='gpu'?'amb la gràfica':'amb el processador')+
       '. Si s\'hi ha menjat un tros o se n\'ha deixat, desfés-ho i prova el mode '+(IA.mode==='mobil'?'Ordinador, que és més fi':'Mòbil')+'.'+
@@ -5075,6 +5545,8 @@ document.addEventListener('keydown',e=>{
   const map={v:'move',c:'crop',b:'brush',e:'eraser',s:'clone',x:'treu',t:'text',i:'pick'};
   if(map[k]){ e.preventDefault(); setTool(map[k]); return; }
   if(k==='\\'){ e.preventDefault(); mostraAbans(true); return; }
+  if(OBJ.on && (k==='enter'||k==='escape')){ e.preventDefault(); k==='enter' ? enganxaObjecte() : (objFi(), say('No s\'ha enganxat res.')); return; }
+  if(PAPER.on && (k==='enter'||k==='escape')){ e.preventDefault(); k==='enter' ? aplicaPaper() : (paperFi(), say('No s\'ha tocat res.')); return; }
   if(k==='enter'&&cropOn){ e.preventDefault(); endCrop(true); setTool('move'); return; }
   if(k==='escape' && S.mascara.length){ netejaVermell(); return; }
   if(k==='escape'){ if(cropOn){ endCrop(false); setTool('move'); } hideTextEdit(); return; }

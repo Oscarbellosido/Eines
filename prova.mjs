@@ -19,7 +19,7 @@ const MIDES = [320, 360, 390, 768, 1280];
 // Per provar només unes parts (la prova sencera triga uns 25 minuts):
 //   node prova.mjs cares fons
 // Les parts: retall, tampo, arregla, amplia, esborra, ratllades, cares, fons,
-// antiga, baixades, color, cloudflare, soroll, extres, continua, app, revisio, visites. La portada i el bàsic de
+// antiga, baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app, revisio, visites. La portada i el bàsic de
 // la Cambra Fosca es proven sempre. Abans de desar un canvi, la sencera.
 const NOMES = process.argv.slice(2);
 const vol = n => !NOMES.length || NOMES.includes(n);
@@ -1641,6 +1641,134 @@ if (vol('arregla')) {
     await q.close();
   }
 
+  // ------------------------------------- afegir una imatge a sobre, i una foto de fons
+  // Tallar i enganxar entre dues fotos: una segona imatge que es mou, es fa
+  // gran, es gira i s'enganxa; treure-li el fons amb la IA; i, a la targeta del
+  // fons, posar-hi una altra foto al darrere.
+  if (vol('enganxa')) {
+    const abansE = problemes.length;
+    const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+    vigila(q, 'enganxa');
+    await q.goto(BASE); await q.waitForTimeout(1500);
+    const fes = (w, h, codi) => q.evaluate(([w, h, codi]) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); new Function('x', 'w', 'h', codi)(x, w, h); return c.toDataURL('image/png'); }, [w, h, codi]).then(u => Buffer.from(u.split(',')[1], 'base64'));
+    const gris = await fes(800, 600, "x.fillStyle='#808080';x.fillRect(0,0,w,h);");
+    const dosColors = await fes(200, 100, "x.fillStyle='#e00000';x.fillRect(0,0,100,100);x.fillStyle='#0000e0';x.fillRect(100,0,100,100);");
+    const obre = async (sel, nom, buf) => { await q.setInputFiles(sel, { name: nom, mimeType: 'image/png', buffer: buf }); await q.waitForTimeout(600); };
+    const punt = (bx, by) => q.evaluate(([bx, by]) => { const v = document.querySelector('#view'), e = v.width / 800; return [...v.getContext('2d').getImageData(Math.round(bx * e), Math.round(by * e), 1, 1).data]; }, [bx, by]);
+    const es = (c, quin) => quin === 'vermell' ? c[0] > 180 && c[2] < 70 : quin === 'blau' ? c[2] > 180 && c[0] < 70 : Math.abs(c[0] - 128) < 12 && Math.abs(c[2] - 128) < 12;
+    const aPant = async (bx, by) => { const v = await q.locator('#view').boundingBox(), z = v.width / 800; return [v.x + bx * z, v.y + by * z]; };
+    const arrossega = async (de, a) => { const p = await aPant(...de), f = await aPant(...a); await q.mouse.move(...p); await q.mouse.down(); await q.mouse.move(...f, { steps: 6 }); await q.mouse.up(); await q.waitForTimeout(150); };
+    const historial = () => q.locator('.hitem span').allInnerTexts();
+    await obre('#file', 'gris.png', gris);
+    if (!await q.locator('#objGo').isVisible()) problemes.push('a l\'eina Mou no hi ha «Afegeix una imatge a sobre»');
+    await obre('#file2', 'dos.png', dosColors);
+    if (!await q.locator('#obj').isVisible() || !await q.locator('#objBar').isVisible() || !await q.locator('#objFons').isVisible()) problemes.push('afegint una imatge, no surt a sobre de la foto amb els seus botons');
+    if (!es(await punt(400, 300), 'gris') || (await historial()).length !== 1) problemes.push('la imatge afegida es pinta a la foto (o s\'apunta) abans d\'enganxar-la');
+    // es mou (120 a la dreta i 60 avall) i, amb el punt de la cantonada, es fa una vegada i mitja més gran
+    await arrossega([400, 300], [520, 360]);
+    await arrossega([520 + 100, 360 + 50], [520 + 150, 360 + 75]);
+    await q.click('#objSi'); await q.waitForTimeout(500);
+    if (!(await historial()).includes('Enganxa una imatge') || await q.locator('#obj').isVisible() || await q.locator('#objBar').isVisible() || !await q.locator('#objGo').isVisible()) problemes.push('«Enganxa-la» no l\'apunta a l\'historial, o la imatge i els seus botons s\'hi queden');
+    { const c = [await punt(520 - 140, 360), await punt(520 + 140, 360), await punt(520 - 160, 360), await punt(520 + 160, 360), await punt(520 - 60, 360 - 68), await punt(520 - 60, 360 - 82)];
+      if (!es(c[0], 'vermell') || !es(c[1], 'blau') || !es(c[2], 'gris') || !es(c[3], 'gris') || !es(c[4], 'vermell') || !es(c[5], 'gris')) problemes.push('la imatge enganxada no és on s\'ha deixat ni de la mida que s\'ha fet (300 × 150 a 520,360): ' + JSON.stringify(c)); }
+    await q.click('#btnUndo'); await q.waitForTimeout(300);
+    if (!es(await punt(520 - 100, 360), 'gris')) problemes.push('desfer no treu la imatge enganxada');
+    // girada un quart de volta amb el punt de la cantonada, com un mirall i mig transparent
+    await obre('#file2', 'dos.png', dosColors);
+    await q.click('#objMirall'); await q.waitForTimeout(150);
+    await arrossega([400 + 100, 300 + 50], [400 - 50, 300 + 100]);       // el punt, un quart de volta més enllà
+    await q.evaluate(() => { const r = document.querySelector('#objOp'); r.value = 50; r.dispatchEvent(new Event('input')); });
+    await q.keyboard.press('Enter'); await q.waitForTimeout(500);
+    { const dalt = await punt(400, 300 - 60), baix = await punt(400, 300 + 60), costat = await punt(400 + 75, 300);
+      // amb el mirall el blau és a l'esquerra; girat un quart, a dalt. Mig transparent sobre gris: (64,64,176) i (176,64,64)
+      const mig = (c, o) => Math.abs(c[0] - o[0]) < 22 && Math.abs(c[1] - o[1]) < 22 && Math.abs(c[2] - o[2]) < 22;
+      if (!mig(dalt, [64, 64, 176]) || !mig(baix, [176, 64, 64]) || !es(costat, 'gris')) problemes.push('girada un quart, com un mirall i mig transparent, la imatge enganxada no és com toca: ' + JSON.stringify([dalt, baix, costat])); }
+    // Cancel·la i Esc no enganxen res
+    await obre('#file2', 'dos.png', dosColors); const n0 = (await historial()).length;
+    await q.click('#objNo'); await q.waitForTimeout(200);
+    await obre('#file2', 'dos.png', dosColors); await q.keyboard.press('Escape'); await q.waitForTimeout(200);
+    if ((await historial()).length !== n0 || await q.locator('#obj').isVisible()) problemes.push('cancel·lant (amb el botó o amb Esc), la imatge s\'enganxa o s\'hi queda');
+
+    // ---- treure-li el fons: d'un gerro blau sobre una paret clara, només en queda el gerro
+    const verd = await fes(900, 700, "x.fillStyle='#20a040';x.fillRect(0,0,w,h);");
+    const gerro = await fes(600, 450, `const g=x.createLinearGradient(0,0,0,450);g.addColorStop(0,'#d2c6b0');g.addColorStop(1,'#8c8270');x.fillStyle=g;x.fillRect(0,0,600,450);
+      x.filter='blur(10px)';[['#b48cd2',120,80,50],['#d28c78',200,160,45],['#8cc8b4',450,70,40],['#c8b48c',500,220,55]].forEach(([col,cx,cy,r])=>{x.fillStyle=col;x.beginPath();x.arc(cx,cy,r,0,7);x.fill();});
+      x.filter='none';x.fillStyle='#6e4f37';x.fillRect(0,340,600,110);
+      const gg=x.createRadialGradient(260,190,10,300,250,170);gg.addColorStop(0,'#3a74d0');gg.addColorStop(1,'#0e2448');
+      x.fillStyle=gg;x.beginPath();x.ellipse(300,250,80,110,0,0,7);x.fill();x.fillRect(270,100,60,60);x.beginPath();x.ellipse(300,100,42,16,0,0,7);x.fill();`);
+    // (per afegir-lo, el gerro no és al mig de la seva imatge sinó 120 punts a la dreta:
+    // així es veu si, en retallar-lo al contorn, es mou de lloc)
+    const gerroDret = await fes(600, 450, `const g=x.createLinearGradient(0,0,0,450);g.addColorStop(0,'#d2c6b0');g.addColorStop(1,'#8c8270');x.fillStyle=g;x.fillRect(0,0,600,450);
+      x.fillStyle='#6e4f37';x.fillRect(0,340,600,110);x.translate(120,0);
+      const gg=x.createRadialGradient(260,190,10,300,250,170);gg.addColorStop(0,'#3a74d0');gg.addColorStop(1,'#0e2448');
+      x.fillStyle=gg;x.beginPath();x.ellipse(300,250,80,110,0,0,7);x.fill();x.fillRect(270,100,60,60);x.beginPath();x.ellipse(300,100,42,16,0,0,7);x.fill();`);
+    await obre('#file', 'verd.png', verd);
+    await q.click('#tab-ia'); await q.click('#iaMode-mobil');
+    await obre('#file2', 'gerro.png', gerroDret);
+    const caixa0 = await q.locator('#obj').boundingBox();
+    if (!(await q.locator('#opts').innerText()).includes('MB')) problemes.push('«Treu-li el fons» no diu quant es baixa la primera vegada');
+    await q.click('#objFons');
+    await q.waitForFunction(() => !document.querySelector('#vel').hidden, null, { timeout: 5000 }).catch(() => {});
+    await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 }); await q.waitForTimeout(400);
+    const caixa1 = await q.locator('#obj').boundingBox();
+    if (await q.locator('#objFons').innerText() !== 'Torna-li el fons') problemes.push('després de treure el fons de la imatge afegida, no s\'ofereix de tornar-l\'hi: ' + await q.locator('#stMsg').innerText());
+    if (!(caixa1.width < caixa0.width * 0.5 && caixa1.height > caixa1.width)) problemes.push(`sense el fons, la imatge afegida no es retalla al contorn del gerro (de ${Math.round(caixa0.width)}×${Math.round(caixa0.height)} a ${Math.round(caixa1.width)}×${Math.round(caixa1.height)})`);
+    // «Torna-li el fons» la deixa com era, i es torna a treure
+    await q.click('#objFons'); await q.waitForTimeout(200);
+    { const c = await q.locator('#obj').boundingBox(); if (Math.abs(c.width - caixa0.width) > 2 || Math.abs(c.x - caixa0.x) > 2) problemes.push('«Torna-li el fons» no deixa la imatge afegida com era'); }
+    await q.click('#objFons');
+    await q.waitForFunction(() => !document.querySelector('#vel').hidden, null, { timeout: 5000 }).catch(() => {});
+    await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 }); await q.waitForTimeout(400);
+    await q.click('#objSi'); await q.waitForTimeout(500);
+    { // el gerro era a 420,250 d'una imatge de 600 posada a 450 d'ample al mig (450,350): a la foto, a 540,368.75
+      const p9 = (bx, by) => q.evaluate(([bx, by]) => { const v = document.querySelector('#view'), e = v.width / 900; return [...v.getContext('2d').getImageData(Math.round(bx * e), Math.round(by * e), 1, 1).data]; }, [bx, by]);
+      const g = await p9(540, 369), paret = await p9(248, 204), taula = await p9(300, 480), vora = await p9(540 + 80, 369 - 60);
+      // la boca del gerro és a 244 de la foto: just a sobre hi ha d'haver verd, i just a sota, gerro
+      const sobre = await p9(540, 234), boca = await p9(540, 254);
+      if (!(sobre[1] > 130 && sobre[0] < 70) || !(boca[2] > boca[0] + 30)) problemes.push('en treure-li el fons, el gerro es mou de lloc: ' + JSON.stringify([sobre, boca]));
+      const verdC = c => c[1] > 130 && c[0] < 70 && c[2] < 100;
+      if (!(g[2] > g[0] + 40 && g[2] > g[1])) problemes.push('enganxant el gerro sense fons, el gerro no és on era: ' + g);
+      if (!verdC(paret) || !verdC(taula) || !verdC(vora)) problemes.push('enganxant el gerro sense fons, s\'hi enganxa també la paret o la taula: ' + JSON.stringify([paret, taula, vora])); }
+
+    // ---- la targeta del fons: una altra foto al darrere
+    await obre('#file', 'gerro.png', gerro);
+    await obreTargeta(q, 'fons'); await q.click('#iaMode-mobil'); await q.click('#fonsD-foto');
+    if (!await q.locator('#fonsGo').isDisabled() || !(await q.locator('#fonsFotoNom').innerText()).includes('cap')) problemes.push('amb «Una foto» i sense haver-ne triat cap, el botó es pot prémer');
+    await obre('#file3', 'platja.png', await fes(300, 300, "x.fillStyle='#e000e0';x.fillRect(0,0,150,300);x.fillStyle='#00d0d0';x.fillRect(150,0,150,300);"));
+    if (await q.locator('#fonsGo').isDisabled() || await q.locator('#fonsGo').innerText() !== 'Canvia el fons' || !(await q.locator('#fonsFotoNom').innerText()).includes('platja.png')) problemes.push('després de triar la foto del fons, el botó no diu «Canvia el fons» o no diu quina és');
+    await q.click('#fonsGo');
+    await q.waitForFunction(() => !document.querySelector('#vel').hidden, null, { timeout: 5000 }).catch(() => {});
+    await q.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 }); await q.waitForTimeout(400);
+    { const p6 = (bx, by) => q.evaluate(([bx, by]) => { const v = document.querySelector('#view'), e = v.width / 600; return [...v.getContext('2d').getImageData(Math.round(bx * e), Math.round(by * e), 1, 1).data]; }, [bx, by]);
+      const esq = await p6(40, 40), dre = await p6(560, 40), g = await p6(300, 260);
+      if (!(esq[0] > 180 && esq[1] < 60 && esq[2] > 180) || !(dre[0] < 60 && dre[1] > 170 && dre[2] > 170) || !(g[2] > g[0] + 40)) problemes.push('amb una foto de fons, el fons no és la foto triada (omplint-lo tot) o el gerro no hi és: ' + JSON.stringify([esq, dre, g]));
+      if (!(await historial()).includes('Canvia el fons (una foto)')) problemes.push('canviar el fons per una foto no surt a l\'historial'); }
+    await q.close();
+
+    // ---- al mòbil: amb dos dits es fa gran i es gira (i la foto no es mou), i tot hi cap a 320 px
+    const m = await navegador.newPage({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+    vigila(m, 'enganxa mòbil');
+    await m.goto(BASE); await m.waitForTimeout(1500);
+    await m.setInputFiles('#file', { name: 'gris.png', mimeType: 'image/png', buffer: gris }); await m.waitForTimeout(600);
+    await m.setInputFiles('#file2', { name: 'dos.png', mimeType: 'image/png', buffer: dosColors }); await m.waitForTimeout(900);
+    const zoom0 = await m.locator('#zoomRead').inputValue().catch(() => m.locator('#zoomRead').innerText());
+    const mida = () => m.evaluate(() => { const o = document.querySelector('#obj'); return { w: parseFloat(o.style.width), gir: o.style.transform }; });
+    const m0 = await mida(), c = await m.locator('#obj').boundingBox(), cx = c.x + c.width / 2, cy = c.y + c.height / 2;
+    const cdp = await m.context().newCDPSession(m);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx - 15, y: cy, id: 1 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx - 15, y: cy, id: 1 }, { x: cx + 15, y: cy, id: 2 }] });
+    for (const k of [0.25, 0.5, 0.75, 1]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cx - 15 - 15 * k, y: cy - 30 * k, id: 1 }, { x: cx + 15 + 15 * k, y: cy + 30 * k, id: 2 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await m.waitForTimeout(300);
+    const m1 = await mida(), zoom1 = await m.locator('#zoomRead').inputValue().catch(() => m.locator('#zoomRead').innerText());
+    if (!(m1.w > m0.w * 1.8) || m1.gir === m0.gir || zoom1 !== zoom0) problemes.push(`amb dos dits, la imatge afegida no es fa gran i es gira, o es mou la foto (ample ${m0.w.toFixed(0)} → ${m1.w.toFixed(0)}, ${m0.gir} → ${m1.gir}, zoom ${zoom0} → ${zoom1})`);
+    { const r = await m.evaluate(() => { const b = document.querySelector('#objBar').getBoundingClientRect(), n = document.querySelector('#objNansa').getBoundingClientRect();
+        return { barra: b.left >= 0 && b.right <= 320 && b.width > 100, nansa: n.width >= 40 && n.height >= 40, sw: document.documentElement.scrollWidth, tact: getComputedStyle(document.querySelector('#obj')).touchAction,
+                 botons: [...document.querySelectorAll('#opts button')].every(x => x.getBoundingClientRect().right <= 320.5) }; });
+      if (!r.barra || !r.nansa || r.sw > 320 || r.tact !== 'none' || !r.botons) problemes.push('al mòbil, la imatge afegida i els seus botons no hi caben a 320 px: ' + JSON.stringify(r)); }
+    await m.close();
+    console.log(`${problemes.length > abansE ? '✗' : '✓'} afegir una imatge a sobre: moure-la, fer-la gran i girar-la (també amb dos dits), mirall, transparència, enganxar, desfer i cancel·lar; treure-li el fons amb la IA; i una altra foto de fons`);
+  }
+
   // ------------------------------------- els models es baixen de Cloudflare
   // A internet, els models no són a GitHub sinó a Cloudflare R2, i els
   // entrega el Worker «eines-ia». Aquí es fa veure que la web és a internet
@@ -1759,6 +1887,92 @@ if (vol('arregla')) {
     await q.close();
   }
   servidor.close();
+}
+
+// ------------------------------- la Cambra Fosca: redreçar una foto de paper
+// Una «foto de paper» de 4 per 3 (un escaquer de colors) vista de costat damunt
+// d'una taula, feta amb una càmera de mentida (un pla girat i projectat). Posant
+// els quatre punts a les cantonades, ha de quedar plana, amb els colors al seu
+// lloc i amb la forma de debò (4:3), que no surt de les llargades dels costats.
+if (vol('paper')) {
+  const abansP = problemes.length;
+  const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+  vigila(q, 'paper');
+  await q.goto(fitxer('cambra-fosca.html'));
+  await q.waitForTimeout(1500);
+  const escena = await q.evaluate(() => {
+    const W = 900, H = 700, f = 900, PW = 400, PH = 300;
+    const color = (u, v) => { const i = Math.floor(u / 50), j = Math.floor(v / 50), k = i * 7 + j * 13; return [40 + (k * 53) % 200, 40 + (k * 97) % 200, 40 + (k * 29) % 200]; };
+    // el pla de la foto: girat sobre tres eixos i allunyat
+    const a = 0.80, b = -0.55, g = 0.14, c = Math.cos, s = Math.sin;
+    const Rx = [[1, 0, 0], [0, c(a), -s(a)], [0, s(a), c(a)]], Ry = [[c(b), 0, s(b)], [0, 1, 0], [-s(b), 0, c(b)]], Rz = [[c(g), -s(g), 0], [s(g), c(g), 0], [0, 0, 1]];
+    const mul = (A, B) => A.map(r => B[0].map((_, j) => r.reduce((t, v, k) => t + v * B[k][j], 0)));
+    const R = mul(Rx, mul(Ry, Rz)), esc = 1.5 / PW, T = [0, 0, 2.6];
+    const projecta = (u, v) => { const X = (u - PW / 2) * esc, Y = (v - PH / 2) * esc;
+      const x = R[0][0] * X + R[0][1] * Y + T[0], y = R[1][0] * X + R[1][1] * Y + T[1], z = R[2][0] * X + R[2][1] * Y + T[2]; return [f * x / z + W / 2, f * y / z + H / 2]; };
+    // de la imatge al pla: la recta de cada punt, tallada amb el pla
+    const n = [R[0][2], R[1][2], R[2][2]], nT = n[0] * T[0] + n[1] * T[1] + n[2] * T[2];
+    const k = document.createElement('canvas'); k.width = W; k.height = H; const x = k.getContext('2d'), im = x.createImageData(W, H), d = im.data;
+    for (let py = 0, o = 0; py < H; py++) for (let px = 0; px < W; px++, o += 4) {
+      const r = [(px + 0.5 - W / 2) / f, (py + 0.5 - H / 2) / f, 1], t = nT / (n[0] * r[0] + n[1] * r[1] + n[2] * r[2]);
+      const P = [r[0] * t - T[0], r[1] * t - T[1], r[2] * t - T[2]];
+      const u = (R[0][0] * P[0] + R[1][0] * P[1] + R[2][0] * P[2]) / esc + PW / 2, v = (R[0][1] * P[0] + R[1][1] * P[1] + R[2][1] * P[2]) / esc + PH / 2;
+      const col = u >= 0 && u < PW && v >= 0 && v < PH ? color(u, v) : [96 + (px * 3 + py) % 9, 70, 48];
+      d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = 255; }
+    x.putImageData(im, 0, 0);
+    const cant = [projecta(0, 0), projecta(PW, 0), projecta(PW, PH), projecta(0, PH)];
+    const costats = [0, 1, 2, 3].map(i => Math.hypot(cant[i][0] - cant[(i + 1) % 4][0], cant[i][1] - cant[(i + 1) % 4][1]));
+    return { png: k.toDataURL('image/png'), cant, simple: (costats[0] + costats[2]) / (costats[1] + costats[3]) };
+  });
+  await q.setInputFiles('#file', { name: 'paper.png', mimeType: 'image/png', buffer: Buffer.from(escena.png.split(',')[1], 'base64') });
+  await q.waitForTimeout(600);
+  await q.keyboard.press('c'); await q.waitForTimeout(300);
+  await q.click('#paperGo'); await q.waitForTimeout(400);
+  if (!await q.locator('#paper').isVisible() || !await q.locator('#paperBar').isVisible() || await q.locator('#cropBox').isVisible()) problemes.push('«Foto de paper» no posa els quatre punts i els botons, o deixa el marc del retall a sobre');
+  // Cancel·la no toca res
+  await q.click('#paperNo'); await q.waitForTimeout(200);
+  if (await q.locator('#paper').isVisible() || (await q.locator('.hitem span').allInnerTexts()).length !== 1) problemes.push('cancel·lant la foto de paper, els punts s\'hi queden o s\'ha apuntat alguna cosa');
+  await q.click('#paperGo'); await q.waitForTimeout(400);
+  // els punts, a les cantonades (no per ordre: el primer punt va a la de baix a la dreta)
+  const arrossega = async (i, [bx, by]) => {
+    const v = await q.locator('#view').boundingBox(), z = v.width / 900, h = await q.locator(`#paper .pc[data-i="${i}"]`).boundingBox();
+    await q.mouse.move(h.x + h.width / 2, h.y + h.height / 2); await q.mouse.down();
+    await q.mouse.move(v.x + bx * z, v.y + by * z, { steps: 6 });
+    const lupa = await q.locator('#lupa').isVisible(); await q.mouse.up(); await q.waitForTimeout(80); return lupa; };
+  const lupes = [];
+  for (const [i, c] of [[0, 2], [1, 3], [2, 0], [3, 1]]) lupes.push(await arrossega(i, escena.cant[c]));
+  if (!lupes.every(Boolean)) problemes.push('mentre s\'arrossega un punt de la foto de paper, no surt la lupa');
+  if (await q.locator('#lupa').isVisible()) problemes.push('en deixar anar el punt, la lupa s\'hi queda');
+  await q.click('#paperSi'); await q.waitForTimeout(1500);
+  const res = await q.evaluate(() => { const v = document.querySelector('#view'), x = v.getContext('2d'), w = v.width, h = v.height;
+    const color = (u, vv) => { const i = Math.floor(u / 50), j = Math.floor(vv / 50), k = i * 7 + j * 13; return [40 + (k * 53) % 200, 40 + (k * 97) % 200, 40 + (k * 29) % 200]; };
+    let pitjor = 0; for (let j = 0; j < 6; j++) for (let i = 0; i < 8; i++) { const d = x.getImageData(Math.round((i + 0.5) / 8 * w), Math.round((j + 0.5) / 6 * h), 1, 1).data, c = color(i * 50 + 25, j * 50 + 25);
+      pitjor = Math.max(pitjor, Math.abs(d[0] - c[0]), Math.abs(d[1] - c[1]), Math.abs(d[2] - c[2])); }
+    return { pitjor, mida: document.querySelector('#stDims').textContent }; });
+  const [rw, rh] = res.mida.match(/\d+/g).map(Number);
+  if (res.pitjor > 30) problemes.push(`redreçant la foto de paper, els quadres no queden al seu lloc (un color s'allunya ${res.pitjor} nivells)`);
+  if (Math.abs(rw / rh / (4 / 3) - 1) > 0.05) problemes.push(`la foto de paper redreçada no fa la forma de debò: ${rw} × ${rh} (${(rw / rh).toFixed(3)}; hauria de ser 1,333, i amb les llargades dels costats sortiria ${escena.simple.toFixed(3)})`);
+  if (Math.abs(escena.simple / (4 / 3) - 1) < 0.05) problemes.push('la prova de la foto de paper no té prou perspectiva per distingir la forma de debò de la dels costats');
+  if (!(await q.locator('.hitem span').allInnerTexts()).includes('Redreça la foto de paper') || await q.locator('#paper').isVisible() || await q.locator('#paperBar').isVisible()) problemes.push('redreçar la foto de paper no surt a l\'historial, o els punts s\'hi queden');
+  await q.click('#btnUndo'); await q.waitForTimeout(400);
+  if (await q.locator('#stDims').innerText() !== '900 × 700 px') problemes.push('desfer no torna la foto d\'abans de redreçar-la');
+  // tres punts en ratlla no són cap quadrilàter: ho diu i no toca res
+  await q.keyboard.press('c'); await q.waitForTimeout(200); await q.click('#paperGo'); await q.waitForTimeout(300);
+  await arrossega(0, [100, 100]); await arrossega(1, [450, 100]); await arrossega(2, [800, 100]); await arrossega(3, [450, 600]);
+  await q.click('#paperSi'); await q.waitForTimeout(400);
+  if (!(await q.locator('#stMsg').innerText()).includes('cantonades') || await q.locator('#stDims').innerText() !== '900 × 700 px') problemes.push('amb tres punts en ratlla, la foto de paper es redreça igualment o no diu què passa');
+  await q.close();
+  // al mòbil: des de la targeta de restaurar, i que tot hi càpiga a 320 px
+  const m = await navegador.newPage({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+  vigila(m, 'paper mòbil');
+  await m.goto(fitxer('cambra-fosca.html')); await m.waitForTimeout(1500);
+  await m.click('#tab-ia'); await m.click('#iaCap-antiga'); await m.waitForTimeout(300); await m.click('#antigaPaper'); await m.waitForTimeout(900);
+  { const r = await m.evaluate(() => { const b = document.querySelector('#paperBar').getBoundingClientRect(), p = [...document.querySelectorAll('#paper .pc')].map(x => x.getBoundingClientRect());
+      return { on: document.querySelector('#paper').classList.contains('on'), barra: b.left >= 0 && b.right <= 320 && b.width > 100, punts: p.every(x => x.width >= 40 && x.height >= 40), sw: document.documentElement.scrollWidth,
+               tact: getComputedStyle(document.querySelector('#paper .pc')).touchAction, eina: document.querySelector('#wrap').dataset.tool }; });
+    if (!r.on || !r.barra || !r.punts || r.sw > 320 || r.tact !== 'none' || r.eina !== 'crop') problemes.push('al mòbil, des de la targeta de restaurar, la foto de paper no es posa bé o no hi cap a 320 px: ' + JSON.stringify(r)); }
+  await m.close();
+  console.log(`${problemes.length > abansP ? '✗' : '✓'} redreçar una foto de paper: els quatre punts amb la lupa, queda plana (els colors a ${res.pitjor} nivells) i amb la forma de debò (${(rw / rh).toFixed(3)}; pels costats, ${escena.simple.toFixed(3)}), cancel·lar, desfer, tres punts en ratlla, i al mòbil`);
 }
 
 // ------------------------------- la Cambra Fosca: la cortina, compartir i les fotos enormes
