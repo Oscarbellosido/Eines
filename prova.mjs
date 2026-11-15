@@ -1880,7 +1880,24 @@ if (vol('app')) {
   await p.reload().catch(() => {});
   await p.waitForTimeout(1200);
   if (await p.locator('#stDims').innerText().catch(() => '') !== '1500 × 1000 px') problemes.push('sense connexió, la Cambra Fosca no s\'obre');
+  // L'«aïllament»: perquè la IA faci servir uns quants nuclis del processador,
+  // el programa de sense connexió posa a la pàgina dues capçaleres que GitHub
+  // no envia. A partir de la segona visita (també sense xarxa, com ara) la
+  // pàgina ha de ser aïllada, i la Revisió no.
+  if (!await p.evaluate(() => self.crossOriginIsolated)) problemes.push('a partir de la segona visita, la Cambra Fosca no queda aïllada (la IA aniria amb un sol nucli)');
   await ctx.setOffline(false);
+  // i la IA ha d'anar amb uns quants fils: els fils són fitxers de la carpeta
+  // del motor, i si el programa no els cobreix, el navegador els bloqueja
+  { await p.reload(); await p.waitForTimeout(1500);
+    const nuclis = await p.evaluate(() => navigator.hardwareConcurrency || 1);
+    await obreTargeta(p, 'fons'); await p.click('#iaMode-mobil'); await p.click('#fonsD-blanc'); await p.click('#fonsGo');
+    await p.waitForFunction(() => !document.querySelector('#vel').hidden, null, { timeout: 5000 }).catch(() => {});
+    await p.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 300000 }); await p.waitForTimeout(300);
+    const fils = +(await p.evaluate(() => document.documentElement.dataset.iaFils || 0));
+    if (!(await p.locator('.hitem span').allInnerTexts()).some(t => t.startsWith('Treu el fons'))) problemes.push('amb la pàgina aïllada, la IA no funciona: ' + await p.locator('#stMsg').innerText());
+    if (nuclis > 1 && fils !== Math.min(4, nuclis)) problemes.push(`amb la pàgina aïllada i ${nuclis} nuclis, la IA va amb ${fils} fils`);
+    const ia = await p.evaluate(async () => (await navigator.serviceWorker.getRegistration('ia/ort/x'))?.scope || '');
+    if (!ia.endsWith('/Eines/ia/ort/')) problemes.push('el programa de sense connexió no cobreix la carpeta del motor de la IA: ' + ia); }
 
   // el botó d'instal·lar (quan el navegador el deixa sortir) hi cap a 320
   await p.setViewportSize({ width: 320, height: 700 }); await p.waitForTimeout(200);
@@ -1888,7 +1905,7 @@ if (vol('app')) {
   if (await p.evaluate(() => { const t = document.querySelector('.topbar'); return t.scrollWidth > t.clientWidth + 1; }))
     problemes.push('amb el botó INSTAL·LA, la barra de dalt no hi cap a 320 px');
 
-  console.log(`${problemes.length > abansDe ? '✗' : '✓'} com a app: Chrome la deixa instal·lar, s'obre sense connexió, i no toca la Revisió`);
+  console.log(`${problemes.length > abansDe ? '✗' : '✓'} com a app: Chrome la deixa instal·lar, s'obre sense connexió, queda aïllada (la IA amb uns quants nuclis), i no toca la Revisió`);
   await ctx.close();
   servidor.close();
 }

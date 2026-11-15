@@ -4,7 +4,7 @@
 //
 // Cada canvi en un fitxer d'aquesta llista: pujar la versió, que si no l'app
 // instal·lada sense connexió seguiria servint la vella.
-const VERSIO='cambra-fosca-v22';
+const VERSIO='cambra-fosca-v23';
 const FITXERS = [
   'cambra-fosca.html',
   'cambra-fosca.webmanifest',
@@ -29,6 +29,22 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+// L'«aïllament». Perquè la IA pugui fer servir uns quants nuclis del
+// processador (i no un de sol), el navegador demana que la pàgina arribi amb
+// dues capçaleres que GitHub no envia. Les hi posa aquest programa, a la
+// pàgina i a tot el que ve del mateix web (els fils del motor són fitxers
+// seus i també les han de portar). «credentialless»: el que ve d'altres webs
+// (les lletres, el comptador de visites) es demana sense galetes, i així no
+// cal que cap d'ells porti res d'especial. El Safari no l'entén: allà la
+// pàgina no queda aïllada i la IA va amb un sol nucli, com abans.
+function aillat(res) {
+  if (!res || res.status === 0 || res.type === 'opaque' || res.type === 'opaqueredirect') return res;
+  const h = new Headers(res.headers);
+  h.set('Cross-Origin-Opener-Policy', 'same-origin');
+  h.set('Cross-Origin-Embedder-Policy', 'credentialless');
+  return new Response(res.status === 204 || res.status === 304 ? null : res.body, { status: res.status, statusText: res.statusText, headers: h });
+}
+
 self.addEventListener('fetch', e => {
   const r = e.request;
   if (r.method !== 'GET') return;
@@ -39,7 +55,9 @@ self.addEventListener('fetch', e => {
   if (/\.(onnx(\.\d+)?|wasm)$/.test(url.pathname)) return;
   // Les lletres de Google: la primera vegada de la xarxa, després de la memòria.
   if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    e.respondWith(caches.open(VERSIO).then(c => c.match(r).then(m => m || fetch(r).then(res => { c.put(r, res.clone()); return res; }))));
+    // (amb la pàgina aïllada, el full de les lletres es demana sense galetes)
+    const rq = r.mode === 'no-cors' ? new Request(r, { credentials: 'omit' }) : r;
+    e.respondWith(caches.open(VERSIO).then(c => c.match(r).then(m => m || fetch(rq).then(res => { c.put(r, res.clone()); return res; }))));
     return;
   }
   if (url.origin !== location.origin) return;
@@ -48,7 +66,7 @@ self.addEventListener('fetch', e => {
   e.respondWith(
     fetch(r).then(res => {
       if (res.ok) { const copia = res.clone(); caches.open(VERSIO).then(c => c.put(r, copia)); }
-      return res;
-    }).catch(() => caches.match(r, { ignoreSearch: true }))
+      return aillat(res);
+    }).catch(() => caches.match(r, { ignoreSearch: true }).then(aillat))
   );
 });

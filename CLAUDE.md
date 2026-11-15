@@ -301,6 +301,47 @@ Descarta-la»**.
   avisar). Si el navegador no deixa desar, no es fa res i tot va igual.
 - L'ajuda ho diu, al costat de «les fotos no surten mai del teu aparell».
 
+## La Cambra Fosca: la IA amb uns quants nuclis
+
+Sense gràfica (la majoria de mòbils i molts ordinadors), la IA anava amb un
+sol nucli del processador: per fer-ne servir més, el navegador demana que la
+pàgina estigui «aïllada» (`crossOriginIsolated`), i això vol dues capçaleres
+(`Cross-Origin-Opener-Policy: same-origin` i `Cross-Origin-Embedder-Policy`)
+que GitHub Pages no envia ni deixa posar. Va sortir repassant el codi, i
+l'usuari va dir que es fes.
+
+- **Les capçaleres les posa el programa de sense connexió**
+  (`cambra-fosca-sw.js`, `aillat`), a la pàgina i a tot el que ve del mateix
+  web. Per això **la primera visita va amb un nucli i a partir de la segona,
+  amb fins a quatre** (`IA.fils`, a `preparaMotor`). Al contenidor, treure el
+  fons amb el BiRefNet passa de 28 segons a 10.
+- **`credentialless`, no `require-corp`**: el que ve d'altres webs (les
+  lletres de Google, el comptador de visites) es demana sense galetes i no
+  cal que porti res d'especial. El full de les lletres porta `crossorigin`.
+  **El Safari no entén `credentialless`**: allà la pàgina no queda aïllada i
+  la IA va amb un nucli, com abans.
+- **El programa es registra dues vegades**: per a la pàgina (`./cambra-fosca`)
+  i per a la carpeta del motor (`./ia/ort/`). Els fils del motor són fitxers
+  d'aquella carpeta, i el Chrome els fa passar pel programa que cobreix **la
+  seva adreça**, no pel de la pàgina: sense el segon registre no rebien les
+  capçaleres i el navegador els bloquejava («no available backend found»).
+  També passava amb el fil a part d'un sol nucli (`proxy`), o sigui que amb
+  la pàgina aïllada i sense el segon registre **la IA no anava gens**.
+- **Tres proteccions**, perquè aquí només es pot provar amb el Chromium:
+  - uns quants fils només si la pàgina és aïllada **i** el registre de la
+    carpeta del motor ja és actiu (`cobert`);
+  - si és aïllada però no està coberta, **sense fil a part** (`proxy` apagat):
+    va igual, només que la pàgina es queda quieta a cada tros;
+  - si amb uns quants fils el motor no arrenca, s'apunta
+    (`cambra-fosca-un-fil`) i durant un mes va amb un de sol; es diu que es
+    torni a carregar la pàgina.
+- **Només amb el motor del processador.** Amb la gràfica la feina la fa
+  ella, i aquell camí aquí no es pot provar: es queda amb un fil.
+- La línia de detalls de l'Amplia diu quants fils («processador, 4 fils»), i
+  `document.documentElement.dataset.iaFils` també (per a la prova).
+- **No s'ha pogut provar en un mòbil de debò**: si a l'usuari li falla, el
+  primer que s'ha de mirar és aquesta línia de detalls.
+
 ## La Cambra Fosca: restaurar una foto antiga, tot seguit
 
 L'usuari arregla fotos velles, i fer-ho eren quatre targetes, una per una. A
@@ -618,7 +659,9 @@ Coses que no s'han de desfer sense entendre-les:
   de la memòria del navegador el de la primera versió. La prova mira que cap
   model porti PRelu.
 - **Sense gràfica, el motor treballa en un fil a part** (`ort.env.wasm.proxy`).
-  Si no, el navegador es quedaria glaçat uns segons a cada tros.
+  Si no, el navegador es quedaria glaçat uns segons a cada tros. I, a partir
+  de la segona visita, amb fins a quatre nuclis (a dalt, «La IA amb uns
+  quants nuclis»).
 - **Es treballa per trossos** (`ampliaImatge`), sempre de la mateixa mida
   (que la gràfica no s'hagi de tornar a preparar a cada un), amb **16 píxels
   de context** al voltant (`MARGE`) que després es llencen. Comparat amb el
@@ -971,8 +1014,10 @@ la barra del navegador, sense la portada i també sense connexió.
 - **L'abast és `./cambra-fosca`, no tota la carpeta**: així l'app només és la
   Cambra Fosca. Si l'abast fos `/Eines/`, la portada i la Revisió també
   quedarien dins de l'app.
-- **`cambra-fosca-sw.js`** és el que la fa anar sense connexió. Es registra
-  amb el mateix abast (la Revisió no hi passa), demana sempre primer a la
+- **`cambra-fosca-sw.js`** és el que la fa anar sense connexió (i el que
+  «aïlla» la pàgina perquè la IA faci servir uns quants nuclis). Es registra
+  amb el mateix abast (la Revisió no hi passa; i una segona vegada per a la
+  carpeta del motor, `./ia/ort/`), demana sempre primer a la
   xarxa (així sempre és la versió nova) i, si no n'hi ha, treu la còpia
   desada. **No toca els models ni el motor** (`.onnx`, `.wasm`, i els
   trossos dels models partits, `.onnx.1`...): ja els desa l'app mateixa, i
@@ -1242,8 +1287,11 @@ pàgines amb un navegador de debò i comprova:
   que l'abast no agafi tota la carpeta, el nom i els colors, i que les icones
   hi siguin i facin la mida que diuen, amb una de «maskable»), que el programa
   de sense connexió s'ocupi de la Cambra Fosca i no de la Revisió, que sense
-  xarxa l'editor s'obri igual, que no desi els trossos dels models, i que el
-  botó INSTAL·LA hi càpiga a 320 px. Es
+  xarxa l'editor s'obri igual, que no desi els trossos dels models, que a
+  partir de la segona visita (també sense xarxa) la pàgina quedi aïllada, que
+  llavors la IA funcioni i vagi amb quatre fils i que el programa cobreixi la
+  carpeta del motor, i que el botó INSTAL·LA hi càpiga a 320 px. Es va
+  comprovar que falla sense el segon registre. Es
   va comprovar que la prova falla amb una fitxa que l'obre com una pàgina
   normal, o sense la icona «maskable»;
 - **les visites**: fent veure que les pàgines són a la web de debò, que

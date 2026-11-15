@@ -8,7 +8,7 @@
 <link rel="manifest" href="cambra-fosca.webmanifest">
 <link rel="icon" href="icones/cambra-fosca-192.png">
 <link rel="apple-touch-icon" href="icones/cambra-fosca-180.png">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" crossorigin href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Disposicio: barra de dalt, tira d'eines a l'esquerra, el llenc al mig, els
    panells a la dreta i la ratlla d'estat a sota.
@@ -3028,10 +3028,30 @@ async function preparaMotor(progres){
   if(!self.ort) throw new Error('el motor no s\'ha engegat');
   ort.env.wasm.wasmPaths=urlIA('ort/');
   ort.env.wasm.wasmBinary=wasm;
-  ort.env.wasm.numThreads=1;         // els fils demanen unes capçaleres que GitHub no envia
+  // Quants nuclis del processador fa servir. Més d'un només es pot si la
+  // pàgina està «aïllada» (crossOriginIsolated), i això demana unes capçaleres
+  // que GitHub no envia: les hi posa el programa de sense connexió
+  // (cambra-fosca-sw.js), o sigui que la primera visita va amb un de sol i a
+  // partir de la segona, amb fins a quatre (unes 2,5 vegades més de pressa
+  // sense gràfica). Només quan el motor és el del processador: amb la
+  // gràfica la feina la fa ella, i aquell camí aquí no es pot provar.
+  // - Els fils són fitxers de la carpeta del motor, i també han de passar
+  //   pel programa (un segon registre seu, que cobreix ia/ort/): si encara
+  //   no hi és, un sol fil, que si no el navegador els bloquejaria.
+  // - Si amb uns quants el motor no arrenca, s'apunta (cambra-fosca-un-fil)
+  //   i durant un mes va amb un de sol.
+  let unFil=false, cobert=false;
+  try{ unFil=Date.now()-(+localStorage.getItem('cambra-fosca-un-fil')||0) < 30*864e5; }catch(e){}
+  try{ const reg=await navigator.serviceWorker.getRegistration(urlIA('ort/')); cobert=!!(reg && reg.active && reg.scope===urlIA('ort/')); }catch(e){}
+  IA.fils = IA.motor==='cpu' && self.crossOriginIsolated && cobert && !unFil ? Math.max(1,Math.min(4,navigator.hardwareConcurrency||1)) : 1;
+  ort.env.wasm.numThreads=IA.fils;
+  document.documentElement.dataset.iaFils=String(IA.fils);
   // Sense gràfica, el motor treballa en un fil a part: si no, el navegador es
   // quedaria glaçat mentre fa cada tros.
-  if(IA.motor==='cpu') ort.env.wasm.proxy=true;
+  // (Si la pàgina és aïllada però el programa encara no cobreix la carpeta
+  // del motor, el navegador bloquejaria també aquest fil: llavors, sense fil
+  // a part. Va igual, només que la pàgina es queda quieta a cada tros.)
+  if(IA.motor==='cpu') ort.env.wasm.proxy=!(self.crossOriginIsolated && !cobert);
   IA.carregat=IA.motor;
 }
 async function preparaSessio(progres){
@@ -3058,9 +3078,21 @@ async function creaSessio(bytes){
     }catch(e){ errorGPU=String(e&&e.message||e).replace(/\s+/g,' ').slice(0,140); console.warn('IA: la gràfica no arrenca',e); }
   }
   if(!sessio){
-    sessio=await ort.InferenceSession.create(bytes, { executionProviders:['wasm'], graphOptimizationLevel:'all' });
+    try{
+      sessio=await ort.InferenceSession.create(bytes, { executionProviders:['wasm'], graphOptimizationLevel:'all' });
+    }catch(e){
+      // la primera vegada, amb uns quants fils: potser és això. S'apunta, i
+      // tornant a carregar la pàgina anirà amb un de sol.
+      console.warn('IA: el motor no arrenca',e);
+      if(IA.fils>1 && !IA.motorProvat){
+        try{ localStorage.setItem('cambra-fosca-un-fil',String(Date.now())); }catch(e2){}
+        throw new Error('el motor no ha arrencat. Torna a carregar la pàgina i prova-ho un altre cop');
+      }
+      throw e;
+    }
     motorReal='cpu';
   }
+  IA.motorProvat=true;
   return { sessio, motorReal, errorGPU };
 }
 // El navegador i la versió, per a la línia de detalls (Edg/131 → Edge 131).
@@ -3398,7 +3430,7 @@ async function fesAmplia(){
     const amb=IA.motorReal==='gpu'?'amb la gràfica':'amb el processador';
     IA.fet={ src:S.src,
       text:(desti ? 'Ampliada a '+desti+(pla.o.unitat==='px'?'':' (a '+pla.o.ppp+' ppp)') : 'Ampliada ×'+f)+' amb el model '+md.model+', '+amb+', en '+temps+': de '+midaAbans+' a '+out.width+' × '+out.height+' px. Ara desa-la amb el botó <b>Desa</b>.',
-      detalls:'Detalls per a qui ho hagi de revisar: '+quinNavegador()+' · '+(IA.motorReal==='gpu'?'gràfica':'processador'+(IA.errorGPU?' (la gràfica no ha arrencat)':''))+
+      detalls:'Detalls per a qui ho hagi de revisar: '+quinNavegador()+' · '+(IA.motorReal==='gpu'?'gràfica':'processador'+(IA.fils>1?', '+IA.fils+' fils':'')+(IA.errorGPU?' (la gràfica no ha arrencat)':''))+
               (gflops!=null?' · '+gflops+' GFLOP/s':'')+' · '+trossos+' trossos de '+iw+' × '+ih };
     say('Ampliada a '+out.width+' × '+out.height+' px en '+temps+'.');
     titolFet('✓ Ampliada · '+TITOL);
@@ -4872,6 +4904,11 @@ if(window.claude && typeof window.claude.use==='function'){
    (al Chrome i l'Edge); a la resta, ho diu l'ajuda. */
 if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
   navigator.serviceWorker.register('cambra-fosca-sw.js',{scope:'./cambra-fosca'}).catch(e=>console.warn('Sense connexió no anirà:',e));
+  // El mateix programa, també per a la carpeta del motor de la IA: els fils
+  // del motor són fitxers d'allà, i el Chrome els fa passar pel programa que
+  // cobreix la seva adreça, no pel de la pàgina. Sense això no hi posa les
+  // capçaleres de l'«aïllament» i el navegador els bloqueja.
+  navigator.serviceWorker.register('cambra-fosca-sw.js',{scope:'./ia/ort/'}).catch(()=>{});
 }
 let promptInstal=null;
 addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); promptInstal=e; $('#btnInstal').hidden=false; });
