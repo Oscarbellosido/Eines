@@ -19,7 +19,7 @@ const MIDES = [320, 360, 390, 768, 1280];
 // Per provar només unes parts (la prova sencera triga uns 25 minuts):
 //   node prova.mjs cares fons
 // Les parts: retall, tampo, arregla, amplia, esborra, ratllades, cares, fons,
-// sd, antiga, auto, baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app, revisio, visites. La portada i el bàsic de
+// sd, allarga, antiga, auto, baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app, revisio, visites. La portada i el bàsic de
 // la Cambra Fosca es proven sempre. Abans de desar un canvi, la sencera.
 const NOMES = process.argv.slice(2);
 const vol = n => !NOMES.length || NOMES.includes(n);
@@ -1239,6 +1239,108 @@ if (vol('arregla')) {
     await obreTargeta(p, 'esborra'); await p.click('#iaMode-mobil'); await p.waitForTimeout(200);
     if (await p.locator('#treuQuin').isVisible()) problemes.push('al mode Mòbil, a les opcions de l\'eina encara es pot triar Stable Diffusion');
     console.log(`${problemes.length > abansSD ? '✗' : '✓'} Stable Diffusion al mode Ordinador (4 passos pel processador, ${temps} s): la tria, la llicència, l'objecte fora sense tocar la resta, una altra vegada sense baixar res i diferent, aturar, i «Arregla-la» sense`);
+    await p.close();
+  }
+
+  // allargar la foto pels costats (pestanya Mida): la foto d'abans no canvia
+  // ni un punt, i el que és nou continua el que hi ha al costat. Amb LaMa,
+  // amb MI-GAN i amb Stable Diffusion (4 passos, que sense gràfica va lent).
+  if (vol('allarga')) {
+    const abansA = problemes.length;
+    const p = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+    vigila(p, 'allarga');
+    await p.goto(BASE);
+    await p.waitForTimeout(1500);
+    // cel blau a dalt, paret de maons al mig i terra fosc a baix
+    const dades = await p.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 640; c.height = 480;
+      const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 160);
+      g.addColorStop(0, '#4f86cc'); g.addColorStop(1, '#9cc0e6'); x.fillStyle = g; x.fillRect(0, 0, 640, 160);
+      x.fillStyle = '#8f8a82'; x.fillRect(0, 160, 640, 220);
+      x.strokeStyle = '#6f6a62'; x.lineWidth = 2;
+      for (let j = 160; j < 380; j += 20) for (let i = -40; i < 680; i += 40) x.strokeRect(i + ((j / 20) % 2) * 20, j, 40, 20);
+      x.fillStyle = '#4a443c'; x.fillRect(0, 380, 640, 100);
+      return c.toDataURL('image/png');
+    });
+    const obre = async () => { await p.setInputFiles('#file', { name: 'carrer.png', mimeType: 'image/png', buffer: Buffer.from(dades.split(',')[1], 'base64') }); await p.waitForTimeout(800); };
+    // com és ara: la foto d'abans (a x0, y0) igual que l'original, i el color
+    // mitjà de cada franja (cel, paret, terra) de la part nova contra la vella
+    const mira = (x0, y0, nou) => p.evaluate(async ([x0, y0, nou, original]) => {
+      const v = document.querySelector('#view'), x = v.getContext('2d');
+      const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = original; });
+      const c = document.createElement('canvas'); c.width = 640; c.height = 480; c.getContext('2d').drawImage(i, 0, 0);
+      const o = c.getContext('2d').getImageData(0, 0, 640, 480).data, d = x.getImageData(x0, y0, 640, 480).data;
+      let max = 0; for (let k = 0; k < d.length; k++) if (k % 4 !== 3) max = Math.max(max, Math.abs(d[k] - o[k]));
+      const mitja = r => { const e = x.getImageData(r[0], r[1], r[2], r[3]).data; const s = [0, 0, 0]; for (let k = 0; k < e.length; k += 4) for (let j = 0; j < 3; j++) s[j] += e[k + j]; return s.map(t => t / (e.length / 4)); };
+      const franges = [[10, 140], [180, 360], [400, 470]].map(([a, b]) => {
+        const n = mitja([nou[0], a + y0, nou[1], b - a]), vell = mitja([x0 + 560, a + y0, 70, b - a]);
+        return Math.max(...n.map((t, j) => Math.abs(t - vell[j])));
+      });
+      return { max, franges, ample: v.width, alt: v.height };
+    }, [x0, y0, nou, dades]);
+    const acaba = () => p.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 1500000 });
+    const historial = () => p.locator('.hitem span').allInnerTexts();
+    const posa = (sel, v) => p.fill(sel, String(v));
+
+    await obre();
+    await obreTargeta(p, 'esborra'); await p.click('#iaMode-ordinador'); await p.click('#iaQuin-normal');
+    await p.click('#tab-mida'); await p.click('#midaU-px'); await p.waitForTimeout(200);
+    if (!await p.locator('#allGo').isDisabled()) problemes.push('«Allarga-la» es pot prémer sense haver escrit res');
+    await posa('#all-e', 700);
+    if (!await p.locator('#allGo').isDisabled() || !/massa/.test(await p.locator('#allInfo').innerText())) problemes.push('allargar més del doble no diu que és massa: ' + await p.locator('#allInfo').innerText());
+    await posa('#all-e', '');
+    await posa('#all-r', 64);
+    if (!(await p.locator('#allInfo').innerText()).includes('704 × 480 px') || await p.locator('#allGo').isDisabled()) problemes.push('escrivint 64 px a la dreta no diu que farà 704 × 480 px: ' + await p.locator('#allInfo').innerText());
+    if (!/LaMa/.test(await p.locator('#allInfo').innerText())) problemes.push('allargar no diu amb quina IA ho farà');
+    // en mm, a la resolució de la foto (300 ppp): 5 mm són 59 punts
+    await p.click('#midaU-mm'); await p.waitForTimeout(200);
+    if (await p.inputValue('#all-r') !== '5,4') problemes.push('passant a mm, els 64 px de la dreta no diuen 5,4 mm: ' + await p.inputValue('#all-r'));
+    await posa('#all-r', 5);
+    if (!(await p.locator('#allInfo').innerText()).includes('699 × 480 px')) problemes.push('5 mm a la dreta, a 300 ppp, no fan 59 punts: ' + await p.locator('#allInfo').innerText());
+    await p.click('#midaU-px'); await p.waitForTimeout(200); await posa('#all-r', 64);
+    // amb LaMa
+    await p.click('#allGo'); await acaba();
+    if (await p.locator('#stDims').innerText() !== '704 × 480 px') problemes.push('amb LaMa, la foto allargada no fa 704 × 480 px: ' + await p.locator('#stDims').innerText());
+    if (!(await historial()).includes('Allarga la foto: 704 × 480 px · LaMa')) problemes.push('allargar amb LaMa no surt a l\'historial: ' + (await historial()).slice(-1));
+    { const r = await mira(0, 0, [645, 59]);
+      if (r.max > 0) problemes.push(`allargant amb LaMa, la foto d'abans ha canviat (diferència ${r.max})`);
+      if (r.franges.some(f => f > 25)) problemes.push(`allargant amb LaMa, el que és nou no continua el cel, la paret i el terra (${r.franges.map(Math.round)})`); }
+    if (await p.inputValue('#all-r') !== '') problemes.push('després d\'allargar, les caselles no tornen a zero');
+    await p.click('#btnUndo'); await p.waitForTimeout(400);
+    if (await p.locator('#stDims').innerText() !== '640 × 480 px') problemes.push('desfer no torna la foto a la mida d\'abans d\'allargar');
+    // al mode Mòbil, amb MI-GAN, i per dalt i per l'esquerra (la foto es mou)
+    await obreTargeta(p, 'esborra'); await p.click('#iaMode-mobil'); await p.click('#tab-mida'); await p.waitForTimeout(200);
+    if (await p.locator('#allQuin').isVisible()) problemes.push('al mode Mòbil, a la pestanya Mida es pot triar Stable Diffusion');
+    if (!/MI-GAN/.test(await p.locator('#allInfo').innerText())) problemes.push('al mode Mòbil, allargar no diu que ho fa MI-GAN');
+    await posa('#all-d', 40); await posa('#all-e', 48);
+    await p.click('#allGo'); await acaba();
+    if (await p.locator('#stDims').innerText() !== '688 × 520 px') problemes.push('allargant per dalt i per l\'esquerra amb MI-GAN, no fa 688 × 520 px: ' + await p.locator('#stDims').innerText());
+    { const r = await mira(48, 40, [5, 38]);
+      if (r.max > 0) problemes.push(`allargant per dalt i per l'esquerra, la foto d'abans no és al seu lloc o ha canviat (diferència ${r.max})`);
+      if (!(await historial()).some(t => t === 'Allarga la foto: 688 × 520 px')) problemes.push('allargar amb MI-GAN no surt a l\'historial: ' + (await historial()).slice(-1)); }
+    await p.click('#btnUndo'); await p.waitForTimeout(400);
+    // amb Stable Diffusion (4 passos: el control és a les opcions de l'eina d'esborrar)
+    await obreTargeta(p, 'esborra'); await p.click('#iaMode-ordinador'); await p.click('#iaQuin-sd');
+    await p.click('#iaVesEsborra'); await p.waitForTimeout(300);
+    await p.evaluate(() => { const r = document.querySelector('#opt-Passos'); r.value = 4; r.dispatchEvent(new Event('input')); });
+    await p.click('#tab-mida'); await p.waitForTimeout(200);
+    if (await p.locator('#allQuin-sd').getAttribute('aria-pressed') !== 'true' || !/Stable Diffusion/.test(await p.locator('#allInfo').innerText())) problemes.push('a la pestanya Mida no surt Stable Diffusion triat');
+    await posa('#all-r', 64);
+    await p.click('#allGo');
+    let vistPas = false;
+    try { await p.waitForFunction(() => /Pas [1-4] de 4/.test(document.querySelector('#velDetall').textContent) && /Allargant/.test(document.querySelector('#velText').textContent), null, { timeout: 1200000 }); vistPas = true; } catch (e) {}
+    if (!vistPas) problemes.push('allargant amb Stable Diffusion, la barra no diu per quin pas va');
+    await acaba();
+    if (!(await historial()).includes('Allarga la foto: 704 × 480 px · Stable Diffusion')) problemes.push('allargar amb Stable Diffusion no surt a l\'historial: ' + (await historial()).slice(-1));
+    { const r = await mira(0, 0, [645, 59]);
+      if (r.max > 0) problemes.push(`allargant amb Stable Diffusion, la foto d'abans ha canviat (diferència ${r.max})`);
+      if (r.franges.some(f => f > 35)) problemes.push(`allargant amb Stable Diffusion, el que és nou no continua el cel, la paret i el terra (${r.franges.map(Math.round)})`); }
+    // a 320 px, les quatre caselles hi caben
+    await p.setViewportSize({ width: 320, height: 700 }); await p.waitForTimeout(300);
+    { const g = await p.evaluate(() => { const g = document.querySelector('#midaGrpAllarga'), i = [...g.querySelectorAll('input')].map(x => x.getBoundingClientRect().width);
+        return { sobra: g.scrollWidth - g.clientWidth, minim: Math.min(...i) }; });
+      if (g.sobra > 1 || g.minim < 40) problemes.push(`a 320 px, les caselles d'allargar no hi caben (sobren ${g.sobra} px, la més estreta fa ${Math.round(g.minim)})`); }
+    console.log(`${problemes.length > abansA ? '✗' : '✓'} allargar la foto pels costats: les mides en px i mm, massa, amb LaMa, amb MI-GAN per dalt i per l'esquerra, amb Stable Diffusion, la foto d'abans intacta, desfer i a 320 px`);
     await p.close();
   }
 

@@ -19,7 +19,7 @@ són les IA de La Cambra Fosca: el motor és a la carpeta `ia/` i els models, a
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares, encara que estiguin molt malmeses), treu el soroll, posa color, esborra coses (i, a l'ordinador, les reconstrueix amb Stable Diffusion), treu el fons, redreça fotos de paper, enganxa una imatge sobre una altra i amplia fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares, encara que estiguin molt malmeses), treu el soroll, posa color, esborra coses (i, a l'ordinador, les reconstrueix amb Stable Diffusion), treu el fons, redreça fotos de paper, enganxa una imatge sobre una altra, allarga la foto pels costats i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -186,6 +186,8 @@ que l'**Amplia** fos només per guanyar qualitat. Ara és així:
 - Els números s'escriuen amb coma (`127,5`) i s'accepten amb coma o punt.
 - **Cinc pestanyes a 320 px**: per sota de 400 px es fan una mica més
   estretes.
+- **A sota, «Allarga-la pels costats, amb IA»**: vegeu «Allargar la foto
+  pels costats», més avall.
 
 **Desa** només té el format, la qualitat i el nom, i diu quant farà i on es
 canvia la mida. Avisa si el JPG perdrà la transparència o si el WEBP no
@@ -535,7 +537,8 @@ què («No li calia treure el soroll (no en té gaire)»).
   només quan calgui): la llista és a dalt de tot, «Com s'afegeix una IA».
   Ara **no** hi entren, a posta: esborrar coses i tocar l'objecte (s'ha de
   dir què es vol treure), el fons (és un canvi, no un arreglo), redreçar la
-  foto de paper (cal marcar les cantonades) i enganxar una imatge. **Stable
+  foto de paper (cal marcar les cantonades), enganxar una imatge i allargar
+  la foto pels costats (s'ha de dir quant). **Stable
   Diffusion tampoc**: encara que estigui triat a «Esborra coses», les
   ratllades d'«Arregla-la» s'esborren amb MI-GAN o LaMa (`corrPassos` posa
   `IA.treu.quin` a 'normal' mentre dura i després el torna com era).
@@ -1135,7 +1138,7 @@ l'aparell: la foto no surt enlloc.
   el que es vol treure i «Esborra-ho», com sempre: fa servir els mateixos
   camins (`treuAmbIA` i `treuPerTrossos`, a 512 × 512), i `omple512` passa la
   feina a `ompleSD`. Les ratllades de «Ratllades i taques» també s'hi poden
-  esborrar.
+  esborrar, i també **allarga la foto pels costats** (pestanya Mida, a sota).
 - **El model és SD 1.5 Inpainting** (Runway i Stability AI, el que fa servir
   tothom per esborrar), en tres peces amb els pesos en 8 bits: la UNet (863
   MB, en deu trossos), que treu el soroll, i les dues meitats del VAE (34 i
@@ -1197,6 +1200,39 @@ l'aparell: la foto no surt enlloc.
   d'una foto del Fossar de les Moreres, refà les rajoles amb les juntes i
   l'herba. Amb els pesos en 8 bits, el resultat és a 1,4 nivells (de 255) del
   de 32 bits, de mitjana dins del forat.
+
+## La Cambra Fosca: allargar la foto pels costats
+
+L'usuari va demanar afegir 5 mm de fons a la dreta d'un cartell (es va fer a
+part, amb LaMa), i després, quan es va parlar de què més sabia fer Stable
+Diffusion, va triar això. És a la pestanya **Mida**, a sota de tot:
+**«Allarga-la pels costats, amb IA»** (`allargaFoto`, `estatAllarga`, `AL`).
+
+- **Quatre caselles** (Dalt, Baix, Esquerra, Dreta), en la unitat de la
+  pestanya (px, mm o cm) i **a la resolució de la foto** (`S.ppp`): 5 mm a
+  300 ppp són 59 punts. Les mides es guarden en punts (`AL`), i canviant la
+  unitat es reescriuen. Diu quant farà, i en tornen a zero en acabar.
+- **Com es fa**: una foto més gran amb l'original al seu lloc, i tot el que
+  és nou és un forat, que omple l'esborrador triat (`treuPerTrossos` amb el
+  forat ja fet, `donat`): MI-GAN al mode Mòbil, i a l'Ordinador **LaMa o
+  Stable Diffusion**, amb les mateixes fitxes que «Esborra coses» (la tria és
+  la mateixa, `IA.treu.quin`; els passos de Stable Diffusion es canvien a les
+  opcions de la vareta). **La foto d'abans no canvia ni un punt.**
+- **Primer els trossos que toquen la foto**, i després els de més enfora
+  (`donat.rect`): un tros que fos tot de fora i passés abans no veuria res de
+  la foto. I **fora els trossos que no farien res**: amb una franja estreta,
+  el penúltim tros de la filera tenia tot el seu forat dins del de l'últim, i
+  Stable Diffusion feia el doble de feina per res.
+- **Com a molt el doble d'ample i el doble d'alt**: més enllà, la IA
+  s'hauria d'inventar més del que veu. Tampoc no pot passar de `MAX_DESA_MP`.
+- La foto més gran passa a ser la foto: les pinzellades es mouen amb ella
+  (`mapOps`) i desfer la torna com era. A l'historial, «Allarga la foto: 704 ×
+  480 px · LaMa» (o «· Stable Diffusion»).
+- **No entra a «Arregla-la»**: és un canvi que s'ha de demanar, no un arreglo.
+- **Com va**: a la prova de Python, Stable Diffusion allarga 59 punts la
+  dreta d'un tros del cartell del Fossar de les Moreres (amb 20 passos) i hi
+  continua la paret de maons, el mur de ferro amb les lletres i el terra,
+  sense que es vegi on comença.
 
 ## La Cambra Fosca: treure el fons
 
@@ -1401,7 +1437,7 @@ Les mateixes que al repositori dels jocs, i ja ens han mossegat allà:
 `node prova.mjs` (cal Playwright; al contenidor és a
 `/opt/node22/lib/node_modules/playwright`). **La sencera triga uns 25
 minuts; per provar només unes parts, `node prova.mjs cares fons`** (les parts:
-retall, tampo, arregla, amplia, esborra, sd, ratllades, cares, fons, antiga,
+retall, tampo, arregla, amplia, esborra, sd, allarga, ratllades, cares, fons, antiga,
 auto, baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app,
 revisio, visites; la portada i el bàsic de
 la Cambra Fosca es proven sempre). Abans de desar un canvi, la sencera. En una còpia nova del repositori,
@@ -1543,6 +1579,16 @@ pàgines amb un navegador de debò i comprova:
   Stable Diffusion triat esborri les ratllades d'una foto sèpia amb LaMa,
   sense baixar res de Stable Diffusion, i que la tria es quedi; i que tornant
   a LaMa se'n vagi el control dels passos;
+- **allargar la foto** (`allarga`, també serveix el repositori ella mateixa),
+  sobre una foto amb cel, paret de maons i terra: que sense mides i amb més
+  del doble no es pugui; que 64 px a la dreta diguin 704 × 480 i amb quina IA;
+  que en mm siguin a la resolució de la foto (5 mm, 59 punts); que amb LaMa
+  la foto faci la mida, la d'abans no canviï ni un punt, el que és nou
+  continuï el cel, la paret i el terra, surti a l'historial i desfer la torni;
+  que al mode Mòbil no es pugui triar Stable Diffusion i ho faci MI-GAN, per
+  dalt i per l'esquerra, amb la foto d'abans al seu lloc; que amb Stable
+  Diffusion (4 passos) la barra digui per quin pas va i passi el mateix; i
+  que a 320 px les caselles hi càpiguen;
 - **trobar i esborrar ratllades** (també serveix el repositori ella mateixa):
   sobre una foto vella feta a mida (sepia, muntanyes, una casa, gra) amb tres
   ratllades clares i un plec, que la IA en marqui almenys el 70% i no marqui

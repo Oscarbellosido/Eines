@@ -460,6 +460,9 @@ select{
 }
 /* la mida en desar: ample × alt, i la resolució si és per imprimir */
 .mida-fila{display:flex;align-items:center;gap:8px}
+.allarga-graella{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin:8px 0 4px}
+.allarga-camp{display:flex;flex-direction:column;gap:3px;min-width:0}
+.allarga-camp input.mida-num{width:100%}
 input.mida-num{
   width:96px;min-width:0;height:30px;border-radius:6px;border:1px solid var(--line);background:var(--bg-3);
   padding:0 8px;font-family:var(--font-mono);font-size:12px;color:var(--fg);text-align:right;
@@ -3212,6 +3215,29 @@ function pintaMidaFoto(){
   g3.append(pla, ia);
   pane.appendChild(g3);
 
+  // allargar-la pels costats: la IA s'inventa el que hi ha de fora
+  const g4=el('div','grp'); g4.id='midaGrpAllarga';
+  g4.appendChild(el('h4',null,'Allarga-la pels costats, amb IA'));
+  g4.appendChild(el('div','tiny','Afegeix fons a dalt, a baix o als costats: la IA s\'inventa el que hi hauria de fora perquè lligui amb la foto. '+
+    (MF.unitat==='px' ? 'Les mides, en punts.' : 'Les mides, en '+MF.unitat+', a '+S.ppp+' ppp (la resolució de la foto).')));
+  const graella=el('div','allarga-graella');
+  for(const [k,lab] of [['d','Dalt'],['b','Baix'],['e','Esquerra'],['r','Dreta']]){
+    const f=el('label','allarga-camp'); f.htmlFor='all-'+k;
+    const i=camp('all-'+k); i.placeholder='0';
+    i.value=AL[k] ? escriuAL(AL[k]) : '';
+    i.oninput=()=>{ const v=llegeixNum(i.value); AL[k]=v>0 ? deAL(v) : 0; estatAllarga(); };
+    f.append(el('span','tiny',lab), i);
+    graella.appendChild(f);
+  }
+  const qa=chipsQuinTreu('allQuin');
+  const ai=el('div','tiny'); ai.id='allInfo';
+  const ag=el('button','btn','✦ Allarga-la'); ag.type='button'; ag.id='allGo';
+  ag.style.cssText='width:100%;height:36px;justify-content:center;margin-top:8px';
+  ag.onclick=allargaFoto;
+  g4.append(graella, qa, ai, ag);
+  pane.appendChild(g4);
+  pintaQuinTreu();          // quina IA (i, dins, estatAllarga)
+
   const MMU={mm:1,cm:10};
   const aU=px=>MF.unitat==='px' ? px : px/MF.ppp*25.4/MMU[MF.unitat];
   const deU=v=>MF.unitat==='px' ? v : v*MMU[MF.unitat]/25.4*MF.ppp;
@@ -3261,6 +3287,92 @@ function pintaMidaFoto(){
     const fisic=aU(MF.pw); MF.ppp=round(v); if(MF.unitat!=='px') MF.pw=deU(fisic); pinta('r'); } };
   inW.onblur=inH.onblur=inR.onblur=()=>pinta();
   pinta();
+}
+
+/* ===================================================================
+   14c. allargar la foto pels costats (l'usuari ho va demanar per afegir 5 mm
+   de fons a la dreta d'un cartell). Es fa una foto més gran amb l'original al
+   seu lloc i el que és nou és un forat, que omple l'esborrador triat: MI-GAN
+   al mode Mòbil, LaMa o Stable Diffusion a l'Ordinador. Es fa per trossos de
+   512 a la mida de debò (treuPerTrossos), primer els que toquen la foto. La
+   foto d'abans no canvia ni un punt: només s'hi afegeix el que és nou.
+   Les mides (AL) es guarden en punts; s'escriuen en la unitat de la pestanya
+   Mida, a la resolució de la foto.
+=================================================================== */
+const AL={ d:0, b:0, e:0, r:0 };
+const MMU_AL={mm:1,cm:10};
+function escriuAL(px){ return MF.unitat==='px' ? String(round(px)) : String(Math.round(px/S.ppp*25.4/MMU_AL[MF.unitat]*10)/10).replace('.',','); }
+function deAL(v){ return MF.unitat==='px' ? v : v*MMU_AL[MF.unitat]/25.4*S.ppp; }
+function midesAL(){ return { d:round(AL.d), b:round(AL.b), e:round(AL.e), r:round(AL.r) }; }
+function estatAllarga(){
+  const info=$('#allInfo'), go=$('#allGo'); if(!info || !go || !baseCanvas) return;
+  const W=baseCanvas.width, H=baseCanvas.height, m=midesAL();
+  const W2=W+m.e+m.r, H2=H+m.d+m.b, res=[];
+  const ia = IA.mode!=='ordinador' ? 'MI-GAN (la del mode Mòbil; al mode Ordinador pots triar LaMa o Stable Diffusion)' : usaSD() ? 'Stable Diffusion, que s\'inventa més bé el que hi ha de fora però és lenta' : 'LaMa, en uns segons (Stable Diffusion s\'ho inventa millor, però és lenta)';
+  let ok=W2>W || H2>H, t='';
+  if(!ok) t='Escriu quant la vols allargar per algun costat. ';
+  else {
+    t='Farà '+W2+' × '+H2+' px'+(MF.unitat==='px'?'':' ('+mmText(W2,H2,S.ppp)+' a '+S.ppp+' ppp)')+'. ';
+    if(m.e+m.r>W || m.d+m.b>H){ ok=false; t+='És massa: com a molt es pot fer el doble d\'ample i el doble d\'alt, que si no la IA s\'hauria d\'inventar més del que veu. '; }
+    else if(W2>16384 || H2>16384 || W2*H2/1e6>MAX_DESA_MP){ ok=false; t+='És massa gran per a aquest aparell. '; }
+  }
+  info.textContent=t+'Ho fa '+ia+'. La foto d\'ara no canvia: només s\'hi afegeix el que és nou.';
+  go.disabled=!ok || IA.treballant || IA.motor==null;
+  go.classList.toggle('primary', ok);
+}
+async function allargaFoto(){
+  if(IA.treballant || !baseCanvas) return;
+  const m=midesAL(), W=baseCanvas.width, H=baseCanvas.height, W2=W+m.e+m.r, H2=H+m.d+m.b;
+  if(W2===W && H2===H) return;
+  if(IA.motor==null){ say('Un moment: encara s\'està mirant què pot fer servir aquest aparell.'); return; }
+  cancelaEndreca(); if(cropOn){ endCrop(false); setTool('move'); } hideTextEdit();
+  IA.treballant=true; IA.atura=false; estatAllarga(); estatTreu();
+  const t0=performance.now();
+  mantenEncesa();
+  try{
+    const progres=(que,a,t)=>{
+      if(IA.atura) throw new Error('aturat');
+      vel(t ? 'Baixant '+que+'…' : 'Preparant la IA…', t ? a/t : 0, t ? mb(a/1048576)+' de '+mb(t/1048576)+' · només la primera vegada' : 'Només la primera vegada.');
+    };
+    vel('Preparant…',0,'');
+    await preparaMotor(progres);
+    const sessio=await preparaSessioTreu(progres);
+    if(IA.atura) throw new Error('aturat');
+    // la foto al seu lloc, dins d'una de més gran; el que és nou, el forat
+    const gran=mkCanvas(W2,H2); gran.getContext('2d').drawImage(baseCanvas,m.e,m.d);
+    const forat=new Uint8Array(W2*H2).fill(1);
+    for(let y=m.d;y<m.d+H;y++) forat.fill(0,y*W2+m.e,y*W2+m.e+W);
+    vel('Allargant…',0,(sessio.sd?'Amb Stable Diffusion, ':sessio.lama?'Amb LaMa, ':'Amb MI-GAN, ')+(IA.treu.motorReal==='gpu'?'amb la gràfica.':'amb el processador.'));
+    if(sessio.sd) passosSD('Allargant');
+    const nova=await treuPerTrossos(gran, sessio, (n,t)=>{
+      if(IA.atura) throw new Error('aturat');
+      if(!sessio.sd) vel('Allargant…', n/t, 'Tros '+n+' de '+t);
+    }, { forat, rect:{ x0:m.e, y0:m.d, x1:m.e+W, y1:m.d+H } });
+    if(IA.atura) throw new Error('aturat');
+    if(!nova) return;
+    // la foto més gran passa a ser la foto; les pinzellades es mouen amb ella
+    S.src=nova; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
+    mapOps((x,y)=>[x+m.e,y+m.d]);
+    S.cloneSrc=null; $('#cloneSrc').style.display='none';
+    buildBase(); fitToStage();
+    push('Allarga la foto: '+W2+' × '+H2+' px'+(sessio.sd?' · Stable Diffusion':sessio.lama?' · LaMa':''));
+    const temps=minuts((performance.now()-t0)/1000);
+    if(sessio.sd) IA.treu.sd.llavor++;
+    AL.d=AL.b=AL.e=AL.r=0;
+    say('Allargada en '+temps+': ara fa '+W2+' × '+H2+' px.'+(sessio.sd?' Cada vegada en surt una de diferent: si no t\'agrada, desfés-ho i torna-hi.':' Si no t\'agrada, desfés-ho.'));
+  }catch(e){
+    const msg=IA.ultimError=String(e&&e.message||e);
+    if(msg==='aturat') say('Aturat. La foto és com era.');
+    else { say('No s\'ha pogut allargar: '+msg+'.'); console.warn('Allarga:',e); }
+  }finally{
+    IA.treu.sd.cadaPas=null;
+    if(/Allargant/.test(document.title)) document.title=TITOL;
+    IA.treballant=false; IA.atura=false;
+    try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
+    bloqueigPantalla=null;
+    amagaVel();
+    pintaMidaFoto(); estatTreu();
+  }
 }
 
 /* Aplica: si només canvia la resolució, la foto no es toca; si canvien els
@@ -4107,11 +4219,12 @@ function chipsQuinTreu(pre){
   return w;
 }
 function pintaQuinTreu(){
-  for(const pre of ['iaQuin','treuQuin']){
+  for(const pre of ['iaQuin','treuQuin','allQuin']){
     const w=$('#'+pre); if(!w) continue;
     w.hidden=IA.mode!=='ordinador';
     for(const v of ['normal','sd']) $('#'+pre+'-'+v).setAttribute('aria-pressed', IA.treu.quin===v?'true':'false');
   }
+  estatAllarga();
   const qi=$('#iaQuinInfo'); if(!qi) return;
   qi.textContent = IA.mode!=='ordinador' ? 'Al mode Ordinador també pots triar Stable Diffusion, que s\'inventa el que hi falta en lloc d\'omplir-ho.'
     : usaSD() ? 'Stable Diffusion s\'inventa el que hi falta i ho pinta de nou (com el ChatGPT, però sense que la foto surti de l\'aparell). Fa uns '+mb(IA.treu.sd.mb)+' i és lenta: val la pena amb una bona gràfica. Cada vegada en surt una de diferent.'
@@ -4349,14 +4462,18 @@ async function treuAmbIA(src, sessio){
    tou. Per això es va per trossos de 512 a la mida de debò, saltant els que no
    tenen vermell. Cada tros veu els que ja s'han arreglat, i només es queda el
    seu mig (32 punts de marge), que el tros del costat fa la vora. */
-async function treuPerTrossos(src, sessio, cadaTros){
+async function treuPerTrossos(src, sessio, cadaTros, donat){
   const N=IA.treu.N, MG=32, W=src.width, H=src.height;
   const tw=Math.min(N,W), th=Math.min(N,H), sx=N/tw, sy=N/th;
-  // el forat a la mida de debò, una vegada (3 punts més gros a cada banda)
-  const mc=mkCanvas(W,H), mx=mc.getContext('2d',{willReadFrequently:true});
-  tracaMascara(mx,'#fff',6);
-  const md=mx.getImageData(0,0,W,H).data, forat=new Uint8Array(W*H);
-  for(let i=0,k=3;i<forat.length;i++,k+=4) forat[i]=md[k]>127?1:0;
+  // el forat a la mida de debò, una vegada (3 punts més gros a cada banda);
+  // en allargar la foto, ja ve fet (donat.forat: tot el que és nou)
+  let forat=donat && donat.forat;
+  if(!forat){
+    const mc=mkCanvas(W,H), mx=mc.getContext('2d',{willReadFrequently:true});
+    tracaMascara(mx,'#fff',6);
+    const md=mx.getImageData(0,0,W,H).data; forat=new Uint8Array(W*H);
+    for(let i=0,k=3;i<forat.length;i++,k+=4) forat[i]=md[k]>127?1:0;
+  }
   const llocs=(L,t)=>{ if(L<=t) return [0]; const r=[]; for(let p=0;p+t<L;p+=t-2*MG) r.push(p); r.push(L-t); return r; };
   const trossos=[];
   for(const y0 of llocs(H,th)) for(const x0 of llocs(W,tw)){
@@ -4364,6 +4481,26 @@ async function treuPerTrossos(src, sessio, cadaTros){
     let hi=false;
     for(let y=iy0;y<iy1&&!hi;y++){ const f=y*W; for(let x=ix0;x<ix1;x++) if(forat[f+x]){ hi=true; break; } }
     if(hi) trossos.push({x0,y0,ix0,ix1,iy0,iy1});
+  }
+  if(donat && donat.rect){
+    // Allargant, primer els trossos que toquen la foto i després els de més
+    // enfora, que així cadascun veu el que s'ha inventat al costat. Un tros
+    // que fos tot de fora i passés abans no veuria res de la foto.
+    const R=donat.rect, dist=t=>{ const cx=(t.ix0+t.ix1)/2, cy=(t.iy0+t.iy1)/2;
+      return Math.hypot(Math.max(R.x0-cx,0,cx-R.x1), Math.max(R.y0-cy,0,cy-R.y1)); };
+    trossos.sort((a,b)=>dist(a)-dist(b));
+    // i fora els que no farien res: si tot el forat del mig d'un tros també és
+    // al mig d'un altre que va després, aquell altre ja ho pintaria a sobre
+    // (amb una franja estreta passava, i Stable Diffusion feia el doble de feina)
+    for(const t of trossos){
+      t.fx0=Infinity; t.fy0=Infinity; t.fx1=-1; t.fy1=-1;
+      for(let y=t.iy0;y<t.iy1;y++){ const f=y*W; for(let x=t.ix0;x<t.ix1;x++) if(forat[f+x]){
+        if(x<t.fx0) t.fx0=x; if(x>t.fx1) t.fx1=x; if(y<t.fy0) t.fy0=y; if(y>t.fy1) t.fy1=y; } }
+    }
+    for(let i=trossos.length-1;i>=0;i--){
+      const t=trossos[i];
+      if(trossos.some((u,j)=>j>i && u.ix0<=t.fx0 && u.ix1>t.fx1 && u.iy0<=t.fy0 && u.iy1>t.fy1)) trossos.splice(i,1);
+    }
   }
   if(!trossos.length) return null;
   IA.treu.sd.trossos=trossos.length;
@@ -4399,6 +4536,24 @@ async function treuPerTrossos(src, sessio, cadaTros){
     await new Promise(ok=>setTimeout(ok,0));      // que la barra es vegi avançar
   }
   return feina;
+}
+
+/* Stable Diffusion fa molts passos per tros: la barra va pas a pas, diu
+   quant queda i, si serà més de 3 minuts, pregunta (com quan s'amplia). */
+function passosSD(que){
+  const D=IA.treu.sd;
+  D.trossos=1; D.tros=1;
+  let fets=0, segons=0, preguntat=false;
+  D.cadaPas=async(i,n,seg)=>{
+    fets++; if(fets>1) segons+=seg;     // el primer porta la preparació
+    const total=n*D.trossos, queda=fets>1 ? segons/(fets-1)*(total-fets+1) : 0;
+    vel(que+'…', fets/total, 'Pas '+i+' de '+n+(D.trossos>1?' · tros '+D.tros+' de '+D.trossos:'')+(fets>1?' · queden uns '+minuts(queda):''));
+    document.title=round(fets/total*100)+'% · '+que+' · '+TITOL;
+    if(fets>=2 && !preguntat && queda>IA.LLARG){
+      preguntat=true;
+      if(!(await preguntaTemps(queda,'Stable Diffusion fa molta feina: amb una gràfica bona va moltes vegades més de pressa. Amb menys passos (a les opcions de l\'eina d\'esborrar) també va més de pressa, però queda menys acurat; i si no cal inventar res, LaMa ho fa en uns segons.'))) IA.atura=true;
+    }
+  };
 }
 
 /* Troba les ratllades: la foto, en grisos i amb el costat curt de 256 (els
@@ -4499,22 +4654,7 @@ async function fesTreu(){
     const ambRatllades=S.mascara.some(m=>m.ras && !m.obj);
     const D=IA.treu.sd;
     vel(sessio.sd?'Reconstruint…':'Esborrant…',sessio.sd?0:1,(sessio.sd?'Amb Stable Diffusion, ':sessio.lama?'Amb LaMa, ':'Amb MI-GAN, ')+(IA.treu.motorReal==='gpu'?'amb la gràfica.':'amb el processador: pot trigar uns segons.'));
-    if(sessio.sd){
-      // Stable Diffusion fa molts passos per tros: la barra va pas a pas, diu
-      // quant queda i, si serà més de 3 minuts, pregunta (com quan s'amplia)
-      D.trossos=1; D.tros=1;
-      let fets=0, segons=0, preguntat=false;
-      D.cadaPas=async(i,n,seg)=>{
-        fets++; if(fets>1) segons+=seg;     // el primer porta la preparació
-        const total=n*D.trossos, queda=fets>1 ? segons/(fets-1)*(total-fets+1) : 0;
-        vel('Reconstruint…', fets/total, 'Pas '+i+' de '+n+(D.trossos>1?' · tros '+D.tros+' de '+D.trossos:'')+(fets>1?' · queden uns '+minuts(queda):''));
-        document.title=round(fets/total*100)+'% · Reconstruint · '+TITOL;
-        if(fets>=2 && !preguntat && queda>IA.LLARG){
-          preguntat=true;
-          if(!(await preguntaTemps(queda,'Stable Diffusion fa molta feina: amb una gràfica bona va moltes vegades més de pressa. Amb menys passos (a les opcions) també va més de pressa, però queda menys acurat; i si no cal inventar res, LaMa ho fa en uns segons.'))) IA.atura=true;
-        }
-      };
-    }
+    if(sessio.sd) passosSD('Reconstruint');
     const nova=ambRatllades
       ? await treuPerTrossos(baseCanvas, sessio, (n,t)=>{
           if(IA.atura) throw new Error('aturat');
@@ -4541,7 +4681,7 @@ async function fesTreu(){
     else { say('No s\'ha pogut esborrar: '+msg+'.'); console.warn('Esborra:',e); }
   }finally{
     IA.treu.sd.cadaPas=null;
-    if(/Reconstruint/.test(document.title)) document.title=TITOL;
+    if(/Reconstruint|Allargant/.test(document.title)) document.title=TITOL;
     IA.treballant=false; IA.atura=false;
     try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
     bloqueigPantalla=null;
