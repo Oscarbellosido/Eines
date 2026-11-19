@@ -77,6 +77,57 @@ amb la meitat de precisió, en dos trossos.
 Entrades: `foto` [1,3,512,512] de 0 a 1 i `mascara` [1,1,512,512], 1 on s'ha
 d'omplir. Sortida: la foto plena, de 0 a 1.
 
+### `models/sd-unet-q8.onnx.1` a `.10`, `sd-vae-enc-q8.onnx` i `sd-vae-dec-q8.onnx` — reconstruir amb Stable Diffusion
+
+És **Stable Diffusion 1.5 Inpainting**, de Runway i Stability AI
+(https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting,
+revisió 8a4288a7), la IA que, al mode Ordinador, pot reconstruir el que
+s'esborra en lloc d'omplir-ho. 860 milions de números a la UNet i 84 al VAE.
+
+**La llicència és la CreativeML OpenRAIL-M** (`models/LICENSE-SD`, tal com la
+publiquen): deixa fer-lo servir, modificar-lo i redistribuir-lo, també per a
+coses de pagament, però amb les restriccions d'ús del seu annex A (res
+il·legal, ni fer mal a menors, ni enganyar, difamar o assetjar ningú...), que
+s'han de passar a qui el fa servir: l'app ho diu en triar-lo, amb l'enllaç a
+la llicència.
+
+El projecte només publica els pesos per a PyTorch, a Hugging Face. Es parteix
+d'una conversió a ONNX en 32 bits feta amb les eines de sempre (diffusers i
+torch.onnx, `conversion/export_diffusion.py` del mateix repositori):
+
+```
+https://huggingface.co/JasonYANG170/sd15-inpainting-onnx-fp32
+f733b4c88a6e45e88460e00d683a465b546ac7b8c307db4a3b33c49f939a9789  text_encoder/model.onnx
+d6abc46fc2bf96e4fca7dff950beaa67646f9bd0bdd93fcf8621ef122ae8feab  unet/model.onnx
+df01d68458269b62670c8e287743c2a59f613b21039a5d8937ef2d522c677fe9  unet/model.onnx_data
+8912a7e136a1c3ea21699d170a0e98e89608f8eb8213ba27f7e1a2709aebc517  vae_encoder/model.onnx
+668fa7d9b511fa5ce87280b4f0b0e5177483de7c3ffea7166b47c2b7284a47f2  vae_decoder/model.onnx
+```
+
+(El fitxer SHA256SUMS d'aquella conversió és d'abans i no hi lliga; aquestes
+són les empremtes que dona Hugging Face mateix.) **Abans de fer-la servir es
+va comprovar que els pesos són els oficials**: `conversio/fes_sd.py --compara`
+llegeix els `.safetensors` del projecte (en 16 bits, amb numpy, sense
+executar res) i cada pes oficial de la UNet (686), del VAE (108 i 140) i del
+codificador de text (196) és exactament un dels de l'ONNX, sense cap de més.
+
+**Canvis** (`conversio/fes_sd.py`): mides fixes (una imatge de 512 × 512) i
+es calcula d'avançada tot el que no depèn de la foto (l'optimització
+«bàsica» d'onnxruntime), que treu les Constant i ConstantOfShape que la
+gràfica no sap fer; es treuen les sumes de taules de zeros que deixava
+l'atenció de l'exportació (que, amb les mides fixes, eren pesos: la meitat de
+la UNet); el que dona el codificador de text per a la frase buida es desa
+dins de la UNet com un pes més, en lloc de l'entrada `encoder_hidden_states`; els pesos grossos es desen amb 8 bits, amb una escala per canal
+(de 3,4 GB a 863 MB; el resultat queda a 1,4 nivells de 255 del de 32 bits,
+de mitjana dins del forat), i la UNet es parteix en deu trossos.
+
+Entrades de la UNet: `sample` [1,9,64,64] (el latent amb soroll, la màscara i
+el latent de la foto amb el forat, en aquest ordre) i `timestep` [1] (float);
+sortida `out_sample`
+[1,4,64,64], el soroll que hi veu. El VAE: `sample` [1,3,512,512] de −1 a 1 →
+`latent_sample` [1,4,64,64] (la mitjana, sense atzar), i al revés; l'escala
+0,18215 la posa l'app.
+
 ### `models/sam-mira.onnx` i `models/sam-toca.onnx` — tocar l'objecte
 
 És **MobileSAM**, de Chaoning Zhang i altres (Kyung Hee University),

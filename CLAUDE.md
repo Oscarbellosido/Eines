@@ -19,7 +19,7 @@ són les IA de La Cambra Fosca: el motor és a la carpeta `ia/` i els models, a
 
 | Fitxer | Nom a la web | Què fa | Any |
 |---|---|---|---|
-| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares, encara que estiguin molt malmeses), treu el soroll, posa color, esborra coses, treu el fons, redreça fotos de paper, enganxa una imatge sobre una altra i amplia fotografies | 2026 |
+| `cambra-fosca.html` | La Cambra Fosca | Retoca, arregla (també les cares, encara que estiguin molt malmeses), treu el soroll, posa color, esborra coses (i, a l'ordinador, les reconstrueix amb Stable Diffusion), treu el fons, redreça fotos de paper, enganxa una imatge sobre una altra i amplia fotografies | 2026 |
 | `revisio.html` | La Revisió | Repassa la seguretat d'un mòbil Android | 2026 |
 
 ## Estructura
@@ -276,8 +276,9 @@ jocs): 10 GB gratis, i les baixades no es paguen mai.
   "compatibility_date":"2025-06-01","bindings":[{"type":"r2_bucket",
   "name":"MODELS","bucket_name":"eines-models"}]}`) i el fitxer.
 - **Què costa**: res mentre no es passi de 10 GB d'espai, 10 milions de
-  lectures al mes a R2 i 100.000 peticions al dia al Worker. Ara hi ha 1,14 GB
-  (l'IS-Net, que ja no es fa servir, encara hi és: 86 MB).
+  lectures al mes a R2 i 100.000 peticions al dia al Worker. Ara hi ha uns
+  2,1 GB (Stable Diffusion en fa 947 MB; l'IS-Net, que ja no es fa servir,
+  encara hi és: 86 MB).
 
 ## La Cambra Fosca: que no es perdi la feina
 
@@ -534,7 +535,13 @@ què («No li calia treure el soroll (no en té gaire)»).
   només quan calgui): la llista és a dalt de tot, «Com s'afegeix una IA».
   Ara **no** hi entren, a posta: esborrar coses i tocar l'objecte (s'ha de
   dir què es vol treure), el fons (és un canvi, no un arreglo), redreçar la
-  foto de paper (cal marcar les cantonades) i enganxar una imatge.
+  foto de paper (cal marcar les cantonades) i enganxar una imatge. **Stable
+  Diffusion tampoc**: encara que estigui triat a «Esborra coses», les
+  ratllades d'«Arregla-la» s'esborren amb MI-GAN o LaMa (`corrPassos` posa
+  `IA.treu.quin` a 'normal' mentre dura i després el torna com era).
+  S'inventa el que hi falta, és molt lent i fa 900 MB: el que fa sol
+  «Arregla-la» ha de ser segur. A «Tria tu els passos» sí que esborra amb el
+  que hi hagi triat, i ho diu.
 
 **Tria tu els passos** (`restauraAntiga`, a sota, tancat de partida): es
 trien els passos (`PASSOS_ANTIGA`: Ratllades i taques, Soroll i gra, Cares i
@@ -1112,6 +1119,85 @@ pesos, i llegint-les d'allà sortia un número qualsevol i el model omplia
 sempre amb gris llis. Es va veure perquè, mirant capa per capa, tot quedava a
 zero després de la primera multiplicació.
 
+## La Cambra Fosca: reconstruir amb Stable Diffusion
+
+L'usuari va preguntar com ho fa el ChatGPT per reconstruir una foto millor
+que la Cambra Fosca: l'esborrador (LaMa, MI-GAN) omple el forat amb el que hi
+ha al voltant, i el ChatGPT el torna a pintar inventant-s'hi el que hi falta.
+Es van proposar quatre camins i l'usuari va voler **provar Stable Diffusion
+dins de l'app per fer-lo servir des d'un ordinador més potent**. És la
+mateixa mena d'IA que el ChatGPT (de difusió), molt més petita i a
+l'aparell: la foto no surt enlloc.
+
+- **On és**: a «Esborra coses», al mode Ordinador, es tria **LaMa** o **✦
+  Stable Diffusion** (`IA.treu.quin`, `chipsQuinTreu`, a la targeta i a les
+  opcions de la vareta; al mode Mòbil no surt, `usaSD`). Es pinta o es toca
+  el que es vol treure i «Esborra-ho», com sempre: fa servir els mateixos
+  camins (`treuAmbIA` i `treuPerTrossos`, a 512 × 512), i `omple512` passa la
+  feina a `ompleSD`. Les ratllades de «Ratllades i taques» també s'hi poden
+  esborrar.
+- **El model és SD 1.5 Inpainting** (Runway i Stability AI, el que fa servir
+  tothom per esborrar), en tres peces amb els pesos en 8 bits: la UNet (863
+  MB, en deu trossos), que treu el soroll, i les dues meitats del VAE (34 i
+  50 MB), que passen de la foto al «latent» de 4 × 64 × 64 i al revés. Es
+  fa amb `ia/conversio/fes_sd.py`.
+- **Com funciona** (`ompleSD`): la foto (de −1 a 1, amb el forat a zero) es
+  passa al latent; es parteix de soroll i, a cada pas, la UNet rep el latent
+  d'ara, la màscara a 64 × 64 i el latent de la foto, i diu quin soroll hi
+  veu; el pas el treu (**DPM-Solver++ 2M**, `alfesSD` és l'horari de soroll
+  de SD 1.5). Al final, el descodificador en fa la imatge, i només se
+  n'enganxa el forat, com amb LaMa: la resta de la foto no canvia ni un
+  nivell.
+- **No hi ha frase.** Stable Diffusion es guia per una frase en anglès, que
+  passa per una altra IA (el codificador de text, 123 milions de números
+  més). Per esborrar no cal: la de la frase buida es calcula una vegada a
+  `fes_sd.py` i va **dins de la UNet** com un pes més. Al principi es
+  deixava l'entrada `encoder_hidden_states` amb aquell valor de partida, però
+  el motor ho avisava a la consola com un error (la prova ho va veure). Si
+  algun dia s'hi vol posar una frase («una paret de maons»), s'ha de tornar a
+  fer el model amb l'entrada, i amb un altre nom.
+- **Passos** (`IA.treu.sd.passos`, 20 de partida, el control «Passos» de les
+  opcions, de 4 a 40): més passos, més acurat i més lent.
+- **Cada vegada en surt una de diferent** (`IA.treu.sd.llavor` puja a cada
+  «Esborra-ho»): si no agrada, es desfà i es torna a provar. Amb la mateixa
+  llavor, el mateix (`gaussSD`).
+- **És lent i ho diu**: la barra va pas a pas («Pas 3 de 20 · tros 2 de 5 ·
+  queden uns 2 min»), la pestanya diu el percentatge i, si trigarà més de 3
+  minuts, pregunta (`preguntaTemps`, amb un consell propi). Al contenidor,
+  sense gràfica, cada pas són uns 3 segons en Python amb quatre fils, i uns
+  35 al navegador amb un de sol (la primera visita, que encara no és
+  «aïllada»): 20 passos d'un sol tros, uns 13 minuts. Baixar els 900 MB
+  des del mateix ordinador, uns 20 segons. Amb la gràfica integrada de l'ordinador de l'usuari (83
+  GFLOP/s amb l'Amplia), cada pas haurien de ser uns 8 segons; amb una
+  gràfica bona, menys d'un. **No s'ha pogut provar amb gràfica**: si a
+  l'usuari li va malament, el primer és mirar si diu «amb la gràfica».
+- **Al navegador ocupa uns 950 MB** de pesos i, mentre treballa, uns quants
+  centenars més. És a la llista de les IA baixades i del grup «treu» de
+  `LLOCS_IA` (amb les altres d'esborrar: quan es prepara, les altres es
+  deixen anar, i al revés).
+- **La llicència és la CreativeML OpenRAIL-M** (`ia/models/LICENSE-SD`):
+  deixa fer-lo servir i redistribuir-lo, també per a coses de pagament, però
+  amb unes restriccions d'ús (res il·legal, ni fer mal, enganyar o assetjar
+  ningú...) que s'han de passar a qui el fa servir. Per això, en triar-lo, la
+  targeta ho diu en una frase amb l'enllaç a la llicència.
+- **D'on surt**: el projecte només té els pesos per a PyTorch, a Hugging
+  Face. Per baixar-los, l'entorn on es treballa es va obrir a Hugging Face
+  (huggingface.co i els seus servidors de fitxers, el 19 de novembre del
+  2026, amb el permís de l'usuari). Es parteix d'una conversió a ONNX feta
+  per un altre, i es comprova (`fes_sd.py --compara`) que **cada pes és
+  exactament un dels oficials** (UNet, VAE i codificador de text), sense cap
+  de més. `ia/LLEGEIX.md` en té els detalls.
+- **Dues trampes de la conversió**, que `fes_sd.py` resol: amb les mides
+  fixes, l'atenció de l'exportació deixava cinc taules de zeros de [8, 4096,
+  4096] com a pesos (la UNet feia 1,6 GB, la meitat zeros, i al navegador
+  haurien estat 2,7 GB més): sumar zero no fa res i es treu (`treu_zeros`).
+  I les Constant i ConstantOfShape, que la gràfica no sap fer, desapareixen
+  calculant d'avançada el que no depèn de la foto.
+- **Com va**: a la prova de Python, amb 20 passos i la reixa del terra
+  d'una foto del Fossar de les Moreres, refà les rajoles amb les juntes i
+  l'herba. Amb els pesos en 8 bits, el resultat és a 1,4 nivells (de 255) del
+  de 32 bits, de mitjana dins del forat.
+
 ## La Cambra Fosca: treure el fons
 
 L'usuari ho va triar d'una llista de millores. És la targeta **Fons** de la pestanya ✦ IA: deixa
@@ -1315,7 +1401,7 @@ Les mateixes que al repositori dels jocs, i ja ens han mossegat allà:
 `node prova.mjs` (cal Playwright; al contenidor és a
 `/opt/node22/lib/node_modules/playwright`). **La sencera triga uns 25
 minuts; per provar només unes parts, `node prova.mjs cares fons`** (les parts:
-retall, tampo, arregla, amplia, esborra, ratllades, cares, fons, antiga,
+retall, tampo, arregla, amplia, esborra, sd, ratllades, cares, fons, antiga,
 auto, baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app,
 revisio, visites; la portada i el bàsic de
 la Cambra Fosca es proven sempre). Abans de desar un canvi, la sencera. En una còpia nova del repositori,
@@ -1442,6 +1528,21 @@ pàgines amb un navegador de debò i comprova:
   apuntar res a l'historial. Es va comprovar que falla si la goma pinta, si
   el segon dit no llença la ratlla, si «Abans» no ensenya res o si el botó
   no sura;
+- **Stable Diffusion** (`sd`, també serveix el repositori ella mateixa; amb 4
+  passos, que sense gràfica va molt a poc a poc): que al mode Mòbil no es
+  pugui triar i ho digui; que al mode Ordinador LaMa sigui la de partida; que
+  triant Stable Diffusion la targeta digui què fa i quant fa i porti
+  l'enllaç a la llicència (i que el fitxer hi sigui), que surti el control
+  dels passos i que «Tria tu els passos» digui que les ratllades s'hi
+  esborraran; que sobre una paret de maons amb un objecte vermell la barra
+  digui per quin pas va, l'objecte se'n vagi, hi quedi paret, la resta de la
+  foto no canviï ni un nivell, surti a l'historial, es baixin els 12 fitxers
+  i a la memòria només hi hagi les d'esborrar; que tornant-hi no es baixi res
+  i en surti una de diferent; que aturar-la (o respondre «Atura» a la
+  pregunta) deixi la foto com era i no apunti res; que «Arregla-la» amb
+  Stable Diffusion triat esborri les ratllades d'una foto sèpia amb LaMa,
+  sense baixar res de Stable Diffusion, i que la tria es quedi; i que tornant
+  a LaMa se'n vagi el control dels passos;
 - **trobar i esborrar ratllades** (també serveix el repositori ella mateixa):
   sobre una foto vella feta a mida (sepia, muntanyes, una casa, gra) amb tres
   ratllades clares i un plec, que la IA en marqui almenys el 70% i no marqui

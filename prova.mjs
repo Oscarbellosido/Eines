@@ -19,7 +19,7 @@ const MIDES = [320, 360, 390, 768, 1280];
 // Per provar només unes parts (la prova sencera triga uns 25 minuts):
 //   node prova.mjs cares fons
 // Les parts: retall, tampo, arregla, amplia, esborra, ratllades, cares, fons,
-// antiga, auto, baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app, revisio, visites. La portada i el bàsic de
+// sd, antiga, auto, baixades, enganxa, color, cloudflare, soroll, paper, extres, continua, app, revisio, visites. La portada i el bàsic de
 // la Cambra Fosca es proven sempre. Abans de desar un canvi, la sencera.
 const NOMES = process.argv.slice(2);
 const vol = n => !NOMES.length || NOMES.includes(n);
@@ -1092,6 +1092,156 @@ if (vol('arregla')) {
   // sepia i gra) amb ratllades clares i un plec, que se sap on són: la IA les
   // ha de marcar, deixar el que hi ha la goma, i l'esborrador les ha de treure
   // sense tocar la resta.
+  // Stable Diffusion, al mode Ordinador: en lloc d'omplir el forat amb el
+  // que hi ha al voltant, s'hi inventa el que hi falta. Aquí, sense gràfica,
+  // va molt a poc a poc: es fa amb 4 passos, que és poc però ja treu l'objecte.
+  if (vol('sd')) {
+    const abansSD = problemes.length;
+    const p = await navegador.newPage({ viewport: { width: 1280, height: 800 } });
+    vigila(p, 'sd');
+    let baixadesSD = 0;
+    p.on('request', r => { if (/sd-(unet|vae-enc|vae-dec)-q8\.onnx/.test(r.url())) baixadesSD++; });
+    await p.goto(BASE);
+    await p.waitForTimeout(1500);
+    const dades = await p.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 640; c.height = 480;
+      const x = c.getContext('2d');
+      x.fillStyle = '#8f8a82'; x.fillRect(0, 0, 640, 480);
+      x.strokeStyle = '#6f6a62'; x.lineWidth = 2;
+      for (let j = 0; j < 480; j += 20) for (let i = -40; i < 680; i += 40) x.strokeRect(i + ((j / 20) % 2) * 20, j, 40, 20);
+      x.fillStyle = '#d02a2a'; x.fillRect(280, 180, 70, 120);
+      return c.toDataURL('image/png');
+    });
+    await p.setInputFiles('#file', { name: 'paret.png', mimeType: 'image/png', buffer: Buffer.from(dades.split(',')[1], 'base64') });
+    await p.waitForTimeout(800);
+    // el color mitjà i el més diferent de l'original, dins d'un rectangle
+    const mira = r => p.evaluate(async ([r, original]) => {
+      const v = document.querySelector('#view'), d = v.getContext('2d').getImageData(r[0], r[1], r[2], r[3]).data;
+      const i = new Image(); await new Promise(ok => { i.onload = ok; i.src = original; });
+      const c = document.createElement('canvas'); c.width = v.width; c.height = v.height;
+      const x = c.getContext('2d'); x.drawImage(i, 0, 0); const o = x.getImageData(r[0], r[1], r[2], r[3]).data;
+      let s = [0, 0, 0], max = 0; const n = d.length / 4;
+      for (let k = 0; k < d.length; k += 4) { for (let j = 0; j < 3; j++) { s[j] += d[k + j]; max = Math.max(max, Math.abs(d[k + j] - o[k + j])); } }
+      return { m: s.map(v => v / n), max };
+    }, [r, dades]);
+    const pinta = async () => {
+      const v = await p.locator('#view').boundingBox(), e = v.width / await p.evaluate(() => document.querySelector('#view').width);
+      await p.mouse.move(v.x + 290 * e, v.y + 185 * e); await p.mouse.down();
+      for (let y = 185; y <= 300; y += 10) { await p.mouse.move(v.x + 290 * e, v.y + y * e, { steps: 3 }); await p.mouse.move(v.x + 342 * e, v.y + (y + 5) * e, { steps: 3 }); }
+      await p.mouse.up(); await p.waitForTimeout(300);
+    };
+    const acaba = () => p.waitForFunction(() => document.querySelector('#vel').hidden, null, { timeout: 1500000 });
+    const historial = () => p.locator('.hitem span').allInnerTexts();
+    const posa = (id, v) => p.evaluate(([id, v]) => { const r = document.querySelector(id); r.value = v; r.dispatchEvent(new Event('input')); }, [id, v]);
+
+    // al mode Mòbil no es pot triar (ni hi cabria ni hi aniria), i ho diu
+    await obreTargeta(p, 'esborra');
+    await p.click('#iaMode-mobil');
+    if (await p.locator('#iaQuin').isVisible()) problemes.push('al mode Mòbil es pot triar Stable Diffusion');
+    if (!(await p.locator('#iaQuinInfo').innerText()).includes('mode Ordinador')) problemes.push('al mode Mòbil, la targeta no diu que Stable Diffusion és al mode Ordinador');
+    // al mode Ordinador, LaMa de partida, sense control de passos
+    await p.click('#iaMode-ordinador');
+    if (!await p.locator('#iaQuin').isVisible() || await p.locator('#iaQuin-normal').getAttribute('aria-pressed') !== 'true')
+      problemes.push('al mode Ordinador no es pot triar l\'esborrador, o no hi ha LaMa triada de partida');
+    await p.click('#iaQuin-sd');
+    const info = await p.locator('#iaQuinInfo').innerText();
+    if (!/inventa/.test(info) || !/MB/.test(info)) problemes.push('triant Stable Diffusion, la targeta no diu què fa ni quant fa: ' + info);
+    const llic = await p.locator('#iaQuinInfo a').getAttribute('href').catch(() => null);
+    if (llic !== 'ia/models/LICENSE-SD' || !existsSync(join(AQUI, llic))) problemes.push('triant Stable Diffusion, no hi ha l\'enllaç a la seva llicència (o el fitxer no hi és)');
+    await p.click('#iaVesEsborra'); await p.waitForTimeout(400);
+    if (await p.locator('#treuQuin-sd').getAttribute('aria-pressed') !== 'true') problemes.push('a les opcions de l\'eina no surt Stable Diffusion triat');
+    if (!await p.locator('#opt-Passos').count()) problemes.push('amb Stable Diffusion, no hi ha el control dels passos');
+    if (!/Stable Diffusion[\s\S]*La primera vegada es baixa/.test(await p.locator('#treuInfo').innerText())) problemes.push('l\'eina no diu que fa servir Stable Diffusion ni quant es baixa: ' + await p.locator('#treuInfo').innerText());
+    // a «Tria tu els passos», les ratllades s'esborren amb el que hi ha triat, i ho diu
+    if (!/Stable Diffusion/.test(await p.locator('#antigaInfo').textContent())) problemes.push('a «Tria tu els passos» no diu que les ratllades s\'esborraran amb Stable Diffusion');
+
+    // esborrar l'objecte: 4 passos, pas a pas a la barra
+    await posa('#opt-Passos', 4); await posa('#opt-Mida', 40);
+    await pinta();
+    const t0 = Date.now();
+    await p.click('#treuGo');
+    let vistPas = false;
+    try { await p.waitForFunction(() => /Pas [1-4] de 4/.test(document.querySelector('#velDetall').textContent), null, { timeout: 1200000 }); vistPas = true; } catch (e) {}
+    if (!vistPas) problemes.push('mentre reconstrueix, la barra no diu per quin pas va');
+    await acaba();
+    const temps = ((Date.now() - t0) / 1000).toFixed(0);
+    if (!(await historial()).includes('Esborra amb IA · Stable Diffusion')) problemes.push('esborrar amb Stable Diffusion no surt a l\'historial: ' + (await historial()).slice(-1));
+    if (baixadesSD !== 12) problemes.push(`Stable Diffusion s'havia de baixar en 12 fitxers (10 trossos de la UNet i el VAE), i se n'han baixat ${baixadesSD}`);
+    const forat = await mira([280, 180, 70, 120]), paret = await mira([420, 180, 70, 120]);
+    if (forat.m[0] - forat.m[1] > 25) problemes.push(`amb Stable Diffusion, l'objecte vermell no s'ha esborrat (${forat.m.map(Math.round)})`);
+    if (forat.m.some((v, i) => Math.abs(v - paret.m[i]) > 30)) problemes.push(`amb Stable Diffusion, on hi havia l'objecte no hi ha paret (${forat.m.map(Math.round)} contra ${paret.m.map(Math.round)})`);
+    for (const r of [[0, 0, 640, 140], [0, 140, 230, 340], [400, 140, 240, 340]]) {
+      const m = await mira(r);
+      if (m.max > 0) problemes.push(`amb Stable Diffusion, ha canviat la foto lluny del forat (${r}: diferència ${m.max})`);
+    }
+    if (await p.evaluate(() => document.documentElement.dataset.iaVives) !== 'treu') problemes.push('després de Stable Diffusion, a la memòria hi ha altres IA: ' + await p.evaluate(() => document.documentElement.dataset.iaVives));
+    if (!(await p.locator('#treuInfo').innerText()).includes('amb el processador')) problemes.push('després de reconstruir no diu amb què s\'ha fet');
+    const primera = await p.evaluate(() => Array.from(document.querySelector('#view').getContext('2d').getImageData(280, 180, 70, 120).data));
+    // una altra vegada: no es baixa res, i en surt una altra (la llavor canvia)
+    await p.click('#btnUndo'); await p.waitForTimeout(400);
+    await pinta();
+    await p.click('#treuGo'); await acaba();
+    if (baixadesSD !== 12) problemes.push('la segona vegada, Stable Diffusion es torna a baixar');
+    const segona = await p.evaluate(() => Array.from(document.querySelector('#view').getContext('2d').getImageData(280, 180, 70, 120).data));
+    // (amb la mateixa llavor sortiria exactament igual; en una paret tan llisa,
+    // dues llavors donen coses semblants, però no iguals)
+    let dif = 0; for (let k = 0; k < primera.length; k++) if (k % 4 !== 3) dif += Math.abs(primera[k] - segona[k]); dif /= primera.length * 3 / 4;
+    if (dif < 0.3) problemes.push(`tornant-hi, Stable Diffusion fa exactament el mateix (diferència ${dif.toFixed(2)}): la llavor no canvia`);
+    // aturar a mig fer: la foto com era, i res a l'historial (amb molts passos,
+    // si trigarà més de 3 minuts, abans pregunta)
+    await p.click('#btnUndo'); await p.waitForTimeout(400);
+    const passosHist = (await historial()).length;
+    await posa('#opt-Passos', 40);
+    await pinta();
+    await p.click('#treuGo');
+    await p.waitForFunction(() => /Pas [2-9] de 40/.test(document.querySelector('#velDetall').textContent) || !document.querySelector('#velPregunta').hidden, null, { timeout: 1200000 });
+    if (await p.locator('#velPregunta').isVisible()) {
+      if (!(await p.locator('#velPreguntaText').innerText()).includes('Stable Diffusion')) problemes.push('la pregunta d\'una feina llarga no parla de Stable Diffusion: ' + await p.locator('#velPreguntaText').innerText());
+      await p.click('#velNo');
+    } else await p.click('#velAtura');
+    await acaba();
+    if ((await historial()).length !== passosHist) problemes.push('una reconstrucció aturada surt a l\'historial');
+    await p.click('#treuNeteja'); await p.waitForTimeout(300);     // (el vermell de pintar s'hi queda)
+    if ((await mira([280, 180, 70, 120])).max > 0) problemes.push('aturant Stable Diffusion a mig fer, la foto ha canviat');
+    if (/Reconstruint/.test(await p.title())) problemes.push('després d\'aturar, la pestanya encara diu «Reconstruint»');
+    // «Arregla-la» no fa servir mai Stable Diffusion, encara que estigui triat:
+    // una foto sèpia esquerdada (prou gran perquè no li calgui fer-la més gran)
+    // s'arregla amb LaMa, sense baixar res de Stable Diffusion, i la tria es queda
+    {
+      const sepia = await p.evaluate(() => {
+        const w = 1300, h = 900, c = document.createElement('canvas'); c.width = w; c.height = h;
+        const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, h);
+        g.addColorStop(0, '#b29c7a'); g.addColorStop(1, '#5e4c38'); x.fillStyle = g; x.fillRect(0, 0, w, h);
+        x.filter = 'blur(8px)'; x.fillStyle = '#6f5c46'; x.fillRect(300, 300, 700, 500); x.filter = 'none';
+        let s = 5; const r = () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+        x.lineCap = 'round'; x.lineJoin = 'round';
+        for (let i = 0; i < 25; i++) { let px = r() * w, py = r() * h, a = r() * 6.28; x.strokeStyle = 'rgba(243,238,226,0.9)'; x.lineWidth = 2 + r() * 3; x.beginPath(); x.moveTo(px, py);
+          for (let k = 0; k < 40; k++) { a += (r() - .5) * 0.9; px += Math.cos(a) * 7; py += Math.sin(a) * 7; x.lineTo(px, py); } x.stroke(); }
+        return c.toDataURL('image/png');
+      });
+      await p.setInputFiles('#file', { name: 'sepia.png', mimeType: 'image/png', buffer: Buffer.from(sepia.split(',')[1], 'base64') });
+      await p.waitForTimeout(800);
+      await obreTargeta(p, 'antiga');
+      const baixadesAbans = baixadesSD;
+      await p.click('#autoGo');
+      await p.waitForFunction(() => document.querySelector('#vel').hidden && !document.querySelector('#autoGo').disabled, null, { timeout: 1200000 });
+      await p.waitForTimeout(500);
+      const h = await historial(), pla = await p.evaluate(() => document.documentElement.dataset.autoPla);
+      if (!/ratllades/.test(pla) || !h.some(t => t === 'Esborra les ratllades (IA) · LaMa')) problemes.push('amb Stable Diffusion triat, «Arregla-la» no ha esborrat les ratllades amb LaMa: ' + pla + ' / ' + h.join(' · '));
+      if (h.some(t => /Stable Diffusion/.test(t)) || baixadesSD !== baixadesAbans) problemes.push('«Arregla-la» ha fet servir Stable Diffusion: ' + h.join(' · '));
+      await obreTargeta(p, 'esborra');
+      if (await p.locator('#iaQuin-sd').getAttribute('aria-pressed') !== 'true') problemes.push('després d\'«Arregla-la», Stable Diffusion ja no és el triat a «Esborra coses»');
+      await p.click('#iaVesEsborra'); await p.waitForTimeout(300);
+    }
+    // tornant a LaMa, fora el control dels passos; al mode Mòbil, fora la tria
+    await p.click('#treuQuin-normal'); await p.waitForTimeout(200);
+    if (await p.locator('#opt-Passos').count()) problemes.push('tornant a LaMa, hi queda el control dels passos');
+    await obreTargeta(p, 'esborra'); await p.click('#iaMode-mobil'); await p.waitForTimeout(200);
+    if (await p.locator('#treuQuin').isVisible()) problemes.push('al mode Mòbil, a les opcions de l\'eina encara es pot triar Stable Diffusion');
+    console.log(`${problemes.length > abansSD ? '✗' : '✓'} Stable Diffusion al mode Ordinador (4 passos pel processador, ${temps} s): la tria, la llicència, l'objecte fora sense tocar la resta, una altra vegada sense baixar res i diferent, aturar, i «Arregla-la» sense`);
+    await p.close();
+  }
+
   if (vol('ratllades')) {
     const abansR = problemes.length;
     const q = await navegador.newPage({ viewport: { width: 1280, height: 800 } });

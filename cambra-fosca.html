@@ -1740,6 +1740,9 @@ function buildOpts(id,hint){
   }
   else if(id==='treu'){
     slider('Mida',S.brush.size,4,400,' px',v=>{S.brush.size=v;updateCursorSize();});
+    // al mode Ordinador, quina IA esborra: LaMa o Stable Diffusion
+    box.appendChild(chipsQuinTreu('treuQuin'));
+    if(usaSD()) slider('Passos',IA.treu.sd.passos,4,40,'',v=>{IA.treu.sd.passos=v;});
     // pintar o treure vermell: si se t'ha escapat el dit, no cal tornar a començar
     // tocar l'objecte (la IA en troba el contorn), pintar o treure vermell:
     // si se t'ha escapat el dit, no cal tornar a començar
@@ -3449,7 +3452,19 @@ const IA={
   treu:{ fitxer:'models/migan-512.onnx', mb:25.5, N:512, sessio:null, motorReal:null, errorGPU:null, ultim:null,
          // al mode Ordinador, LaMa (Samsung, Apache 2.0): omple molt millor els
          // forats grossos, però fa 99 MB (en dos trossos) i va més lenta
-         lama:{ parts:['models/lama-512.onnx.1','models/lama-512.onnx.2'], mb:98.7, sessio:null, motorReal:null } },
+         lama:{ parts:['models/lama-512.onnx.1','models/lama-512.onnx.2'], mb:98.7, sessio:null, motorReal:null },
+         // quin esborrador s'ha triat al mode Ordinador: 'normal' (LaMa) o
+         // 'sd' (Stable Diffusion, que no omple el forat sinó que hi pinta
+         // una cosa nova; vegeu ompleSD)
+         quin:'normal',
+         // Stable Diffusion 1.5 Inpainting (Runway i Stability AI, CreativeML
+         // OpenRAIL-M), amb els pesos en 8 bits: la UNet (863 MB, en deu
+         // trossos), que és la que treu el soroll a cada pas, i les dues
+         // meitats del VAE, que passen de la foto al «latent» de 64 × 64 i
+         // al revés. Es pot triar quants passos fa (més, més acurat i més lent).
+         sd:{ unet:Array.from({length:10},(_,i)=>'models/sd-unet-q8.onnx.'+(i+1)), enc:'models/sd-vae-enc-q8.onnx', dec:'models/sd-vae-dec-q8.onnx',
+              mbUnet:823.1, mbEnc:32.8, mbDec:47.5, mb:903.4,
+              sUnet:null, sEnc:null, sDec:null, motorReal:null, passos:20, llavor:1 } },
   // «Arregla les cares»: RetinaFace (troba les cares i cinc punts de cada una)
   // i una de les dues que les arreglen posades dretes a 512 × 512:
   // CodeFormer (91 MB, la de partida), que va millor amb les cares molt
@@ -3505,6 +3520,10 @@ async function miraGPU(){
   }catch(e){ return false; }
 }
 const urlIA = cami => new URL(IA.DIR+cami, location.href).href;
+// Stable Diffusion: els seus fitxers, i si és el que esborra ara (només es pot
+// triar al mode Ordinador: al mòbil no hi cap ni hi aniria)
+const fitxersSD = () => [IA.treu.sd.enc, IA.treu.sd.dec, ...IA.treu.sd.unet];
+const usaSD = () => IA.mode==='ordinador' && IA.treu.quin==='sd';
 /* D'on es baixa cada fitxer. Els models, del Worker; el motor, del mateix web.
    A les proves (la pàgina servida des de l'ordinador mateix), tot de la
    carpeta local, que no surtin a internet. La memòria del navegador els desa
@@ -3519,7 +3538,7 @@ async function miraBaixats(){
   try{ await c.delete(urlIA('models/realesr-general-x4v3.onnx')); }catch(e){}
   // l'IS-Net, que feia el fons al mode Ordinador abans del BiRefNet (86 MB)
   try{ await c.delete(urlIA('models/isnet-fp16.onnx')); }catch(e){}
-  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, ...IA.treu.lama.parts, IA.sam.mira, IA.sam.toca, IA.ratllades.fitxer, IA.nitida.fitxer, IA.cares.troba, ...IA.cares.models.codeformer.parts, ...IA.cares.models.gfpgan.parts, ...IA.color.parts, IA.fons.models.mobil.fitxer, ...IA.fons.models.ordinador.parts, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
+  const fitxers=[IA.models.mobil.fitxer, IA.models.ordinador.fitxer, IA.treu.fitxer, ...IA.treu.lama.parts, ...fitxersSD(), IA.sam.mira, IA.sam.toca, IA.ratllades.fitxer, IA.nitida.fitxer, IA.cares.troba, ...IA.cares.models.codeformer.parts, ...IA.cares.models.gfpgan.parts, ...IA.color.parts, IA.fons.models.mobil.fitxer, ...IA.fons.models.ordinador.parts, IA.motors.gpu.wasm, IA.motors.cpu.wasm];
   for(const f of fitxers){ try{ IA.baixats[f]=!!(await c.match(urlIA(f))); }catch(e){} }
 }
 /* Baixa un fitxer gros una sola vegada: després el treu de la memòria del
@@ -3569,6 +3588,9 @@ const LLOCS_IA=[   // [grup, on és, la clau, què més s'ha de buidar]
   ['amplia',   ()=>IA,           'sessio',   'sessioDe'],
   ['treu',     ()=>IA.treu,      'sessio'],
   ['treu',     ()=>IA.treu.lama, 'sessio'],
+  ['treu',     ()=>IA.treu.sd,   'sUnet'],
+  ['treu',     ()=>IA.treu.sd,   'sEnc'],
+  ['treu',     ()=>IA.treu.sd,   'sDec'],
   ['treu',     ()=>IA.sam,       'sMira'],
   ['treu',     ()=>IA.sam,       'sToca'],
   ['ratllades',()=>IA.ratllades, 'sessio'],
@@ -3903,12 +3925,13 @@ $('#velAtura').onclick=()=>{ IA.atura=true; $('#velText').textContent='Aturant�
    pregunta. L'usuari va ampliar amb el model gran una foto de 3 megapíxels i
    va estar una hora esperant sense que ningú li hagués dit res. */
 IA.LLARG=180;
-function preguntaTemps(queda){
+function preguntaTemps(queda, consell){
   return new Promise(resol=>{
     const t=$('#velPreguntaText');
     let h=(IA.cadena?'Aquest pas':'Això')+' trigarà <b>uns '+minuts(queda)+'</b>.';
     if(IA.motor==='gpu' && IA.motorReal==='cpu') h+=' La gràfica no ha arrencat i va amb el processador.';
     if(IA.cadena) h+=' El pots saltar i es farà la resta.';
+    else if(consell) h+=' '+consell;
     else if(IA.mode==='ordinador')
       h+=' El model gran fa unes 15 vegades més feina que el del mòbil. Si no et cal tanta qualitat, atura i tria <b>Mòbil</b>'+
          (hiCapEn('mobil',IA.factor)?'':', retallant primer el tros que vulguis')+'.';
@@ -4042,18 +4065,22 @@ function estatFlota(){
   if(f.hidden===si) f.hidden=!si;
 }
 function estatTreu(){
-  estatFlota(); estatRatllades();
+  estatFlota(); estatRatllades(); pintaQuinTreu();
   const go=$('#treuGo'); if(!go) return;
   go.disabled=!hiHaVermell() || IA.treballant;
   $('#treuNeteja').disabled=!S.mascara.length;
   const info=$('#treuInfo'); if(!info) return;
-  const t=IA.treu, lama=IA.mode==='ordinador';
-  const baixada=lama ? (t.lama.sessio || t.lama.parts.every(f=>IA.baixats[f])) : (t.sessio || IA.baixats[t.fitxer]);
-  let h=lama ? 'Amb el mode Ordinador fa servir LaMa, que omple millor els forats grossos.' : 'Amb el mode Mòbil fa servir MI-GAN, petita i ràpida; per a forats grossos, millor el mode Ordinador (pestanya ✦ IA).';
-  if(t.ultim) h+=' L\'última, en '+t.ultim.temps+', '+(t.ultim.motor==='gpu'?'amb la gràfica':'amb el processador')+'. Si no t\'agrada, desfés-la.';
+  // el control dels passos només hi és amb Stable Diffusion
+  if(S.tool==='treu' && !!$('#opt-Passos')!==usaSD()){ buildOpts('treu',TOOLS.find(x=>x.id==='treu').hint); return; }
+  const t=IA.treu, lama=IA.mode==='ordinador', sd=usaSD(), D=t.sd;
+  const baixada=sd ? (D.sUnet&&D.sEnc&&D.sDec || fitxersSD().every(f=>IA.baixats[f]))
+              : lama ? (t.lama.sessio || t.lama.parts.every(f=>IA.baixats[f])) : (t.sessio || IA.baixats[t.fitxer]);
+  let h=sd ? 'Amb Stable Diffusion, la IA no copia el que hi ha al voltant: s\'inventa el que hi falta i ho pinta de nou. Va millor als forats grossos i a les coses que s\'han de refer; cada vegada en surt una de diferent. És molt gran i lenta: amb una bona gràfica, uns segons per pas; amb el processador, molta estona.'
+        : lama ? 'Amb el mode Ordinador fa servir LaMa, que omple millor els forats grossos.' : 'Amb el mode Mòbil fa servir MI-GAN, petita i ràpida; per a forats grossos, millor el mode Ordinador (pestanya ✦ IA).';
+  if(t.ultim && !!t.ultim.sd===sd) h+=' L\'última, en '+t.ultim.temps+', '+(t.ultim.motor==='gpu'?'amb la gràfica':'amb el processador')+'. Si no t\'agrada, desfés-la.';
   else if(!baixada){
     const motor=IA.motor&&!IA.baixats[IA.motors[IA.motor].wasm]&&IA.carregat!==IA.motor ? IA.motors[IA.motor].mb : 0;
-    h+=' La primera vegada es baixa la IA ('+mb((lama?t.lama.mb:t.mb)+motor)+'); després funciona sense connexió.';
+    h+=' La primera vegada es baixa la IA ('+mb((sd?D.mb:lama?t.lama.mb:t.mb)+motor)+'); després funciona sense connexió.';
   } else h+=' La IA ja és en aquest aparell.';
   if(S.mascToca){
     const sb=IA.sam.sToca || (IA.baixats[IA.sam.mira] && IA.baixats[IA.sam.toca]);
@@ -4062,16 +4089,70 @@ function estatTreu(){
   }
   info.textContent=h+' La foto no surt de l\'aparell.';
 }
+/* Quina IA esborra, al mode Ordinador: LaMa (omple el forat amb el que hi ha
+   al voltant, en segons) o Stable Diffusion (s'hi inventa el que hi falta, i
+   triga). Surt a la targeta i a les opcions de la vareta; al mode Mòbil no. */
+function chipsQuinTreu(pre){
+  const w=el('div','chips'); w.id=pre; w.style.marginTop='8px';
+  [['normal','LaMa'],['sd','✦ Stable Diffusion']].forEach(([v,lab])=>{
+    const c=el('button','chip',lab); c.type='button'; c.id=pre+'-'+v;
+    c.onclick=()=>{
+      if(IA.treballant) return;
+      IA.treu.quin=v;
+      if(S.tool==='treu') buildOpts('treu',TOOLS.find(x=>x.id==='treu').hint);
+      estatTreu(); estatAntiga();
+    };
+    w.appendChild(c);
+  });
+  return w;
+}
+function pintaQuinTreu(){
+  for(const pre of ['iaQuin','treuQuin']){
+    const w=$('#'+pre); if(!w) continue;
+    w.hidden=IA.mode!=='ordinador';
+    for(const v of ['normal','sd']) $('#'+pre+'-'+v).setAttribute('aria-pressed', IA.treu.quin===v?'true':'false');
+  }
+  const qi=$('#iaQuinInfo'); if(!qi) return;
+  qi.textContent = IA.mode!=='ordinador' ? 'Al mode Ordinador també pots triar Stable Diffusion, que s\'inventa el que hi falta en lloc d\'omplir-ho.'
+    : usaSD() ? 'Stable Diffusion s\'inventa el que hi falta i ho pinta de nou (com el ChatGPT, però sense que la foto surti de l\'aparell). Fa uns '+mb(IA.treu.sd.mb)+' i és lenta: val la pena amb una bona gràfica. Cada vegada en surt una de diferent.'
+    : 'LaMa omple el forat amb el que hi ha al voltant, en uns segons. Stable Diffusion s\'inventa el que hi falta: és més lenta i molt més grossa.';
+  // la llicència de Stable Diffusion (CreativeML OpenRAIL-M) demana que qui
+  // el fa servir en sàpiga les restriccions d'ús
+  if(usaSD()){
+    const a=document.createElement('a'); a.href='ia/models/LICENSE-SD'; a.target='_blank'; a.rel='noopener'; a.textContent='la llicència';
+    qi.append(' Amb Stable Diffusion no es pot fer res il·legal ni fer mal, enganyar o assetjar ningú: ho diu ', a, ' (CreativeML OpenRAIL-M).');
+  }
+}
 function estatRatllades(){
   const ri=$('#treuRatlladesInfo'); if(!ri) return;
   $('#treuRatllades').disabled=IA.treballant || IA.motor==null;
   ri.textContent=IA.baixats[IA.ratllades.fitxer]||IA.ratllades.sessio ? 'La IA ja és en aquest aparell.' : 'La primera vegada es baixen '+mb(IA.ratllades.mb)+'.';
 }
-/* La IA d'esborrar: MI-GAN al mode Mòbil i LaMa a l'Ordinador. Torna la
-   sessió i quina és, que les dues volen l'entrada d'una altra manera. */
+/* La IA d'esborrar: MI-GAN al mode Mòbil i LaMa a l'Ordinador (o Stable
+   Diffusion, si s'ha triat). Torna la sessió i quina és, que cadascuna vol
+   l'entrada d'una altra manera. */
 async function preparaSessioTreu(progres){
   const t=IA.treu;
   await nomesIA('treu');
+  if(usaSD()){
+    const D=t.sd;
+    await deixaAnar(t,'sessio'); await deixaAnar(t.lama,'sessio');      // els altres esborradors, fora
+    // tres models: les dues meitats del VAE (petites) i la UNet (la grossa)
+    for(const [clau,fitxers,megues,que] of [['sEnc',[D.enc],D.mbEnc,'Stable Diffusion (1 de 3)'],
+                                            ['sDec',[D.dec],D.mbDec,'Stable Diffusion (2 de 3)'],
+                                            ['sUnet',D.unet,D.mbUnet,'Stable Diffusion (3 de 3)']]){
+      if(D[clau]) continue;
+      let bytes=await baixaTrossos(fitxers,que,megues,progres);
+      progres('preparant el model',0,0);
+      const r=await creaSessio(bytes); bytes=null;
+      D[clau]=r.sessio;
+      if(clau==='sUnet') D.motorReal=r.motorReal;
+      apuntaVives();
+    }
+    t.motorReal=D.motorReal; apuntaVives();
+    return { sd:true, enc:D.sEnc, unet:D.sUnet, dec:D.sDec };
+  }
+  for(const k of ['sUnet','sEnc','sDec']) await deixaAnar(t.sd,k);
   if(IA.mode==='ordinador'){
     const L=t.lama;
     await deixaAnar(t,'sessio');          // l'altre esborrador, fora
@@ -4099,6 +4180,7 @@ async function preparaSessioTreu(progres){
      -1 a 1 amb el forat a zero; surt de -1 a 1.
    - LaMa: la foto de 0 a 1 i la màscara a part (1 = s'omple); surt de 0 a 1. */
 async function omple512(m, d, forat){
+  if(m.sd) return ompleSD(m, d, forat);
   const N=IA.treu.N, P=N*N, s=m.sessio;
   let res;
   if(m.lama){
@@ -4118,6 +4200,82 @@ async function omple512(m, d, forat){
   if(m.lama) for(let i=0;i<3*P;i++) o[i]=y[i]*255;
   else for(let i=0;i<3*P;i++) o[i]=(y[i]+1)*127.5;
   if(sortida.dispose) sortida.dispose();
+  return o;
+}
+
+/* Stable Diffusion (1.5 Inpainting). No omple el forat amb el que hi ha al
+   voltant, com MI-GAN o LaMa: parteix de soroll i, pas a pas, el va traient
+   fins que hi queda una imatge que lliga amb la resta. Per això s'inventa el
+   que hi falta (com el ChatGPT, però dins de l'aparell) i cada vegada en surt
+   una de diferent (la llavor canvia a cada «Esborra-ho»).
+   - No treballa amb la foto sinó amb un «latent» de 4 × 64 × 64, que fa el
+     VAE: la foto (de −1 a 1, amb el forat a zero) hi entra pel codificador i
+     el resultat en surt pel descodificador. Per 0,18215, com SD 1.5.
+   - A cada pas, la UNet rep 9 canals: el latent d'ara, la màscara a 64 × 64
+     (un bloc de 8 × 8 hi és si té cap punt del forat) i el latent de la foto.
+     Diu quin soroll hi veu, i el pas el treu: DPM-Solver++ (2M), que amb 20
+     passos ja ho fa bé. La frase que el guia és la buida, que va dins de la
+     UNet (fes_sd.py).
+   - Torna la imatge sencera de 512, i qui la crida només n'enganxa el forat. */
+const SD_ESC=0.18215;
+let sdAlfes=null;
+function alfesSD(){        // l'horari de soroll de SD 1.5 (beta «scaled_linear»)
+  if(sdAlfes) return sdAlfes;
+  const a=new Float64Array(1000); let p=1;
+  for(let i=0;i<1000;i++){ const b=Math.pow(Math.sqrt(0.00085)+(Math.sqrt(0.012)-Math.sqrt(0.00085))*i/999,2); p*=1-b; a[i]=p; }
+  return sdAlfes=a;
+}
+function gaussSD(llavor,n){  // soroll normal, sempre el mateix per a la mateixa llavor
+  let a=(llavor*2654435761)>>>0||1;
+  const r=()=>{ a=(a+0x6D2B79F5)>>>0; let t=a; t=Math.imul(t^(t>>>15),t|1); t^=t+Math.imul(t^(t>>>7),t|61); return ((t^(t>>>14))>>>0)/4294967296; };
+  const o=new Float32Array(n);
+  for(let i=0;i<n;i+=2){ const u=Math.max(r(),1e-12), v=r(), m=Math.sqrt(-2*Math.log(u)); o[i]=m*Math.cos(2*Math.PI*v); if(i+1<n) o[i+1]=m*Math.sin(2*Math.PI*v); }
+  return o;
+}
+async function ompleSD(m, d, forat){
+  const N=IA.treu.N, P=N*N, L=64*64, D=IA.treu.sd;
+  const e=new Float32Array(3*P);
+  for(let i=0,j=0;i<P;i++,j+=4){ const q=forat[i]?0:1; e[i]=(d[j]/127.5-1)*q; e[P+i]=(d[j+1]/127.5-1)*q; e[2*P+i]=(d[j+2]/127.5-1)*q; }
+  const re=await m.enc.run({[m.enc.inputNames[0]]: new ort.Tensor('float32',e,[1,3,N,N])});
+  const so=re[m.enc.outputNames[0]], latF=new Float32Array(4*L);
+  for(let k=0;k<4*L;k++) latF[k]=so.data[k]*SD_ESC;
+  if(so.dispose) so.dispose();
+  const m64=new Float32Array(L);
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++) if(forat[y*N+x]) m64[(y>>3)*64+(x>>3)]=1;
+  const ac=alfesSD(), n=Math.max(1,D.passos|0), ts=[];
+  for(let k=n;k>=1;k--) ts.push(Math.round(999*k/n));
+  let x=gaussSD(D.llavor,4*L), prev=null, hprev=0;
+  const al=t=>[Math.sqrt(ac[t]),Math.sqrt(1-ac[t])];
+  for(let i=0;i<n;i++){
+    if(IA.atura) throw new Error('aturat');
+    // l'entrada, nova a cada pas: sense gràfica, el motor treballa en un fil a
+    // part i s'emporta el que se li passa
+    const t0=performance.now(), t=ts[i], ent=new Float32Array(9*L);
+    ent.set(x,0); ent.set(m64,4*L); ent.set(latF,5*L);
+    const ru=await m.unet.run({ sample:new ort.Tensor('float32',ent,[1,9,64,64]), timestep:new ort.Tensor('float32',new Float32Array([t]),[1]) });
+    const so2=ru[m.unet.outputNames[0]], eps=so2.data;
+    const [as,ss]=al(t), x0=new Float32Array(4*L);
+    for(let k=0;k<4*L;k++) x0[k]=(x[k]-ss*eps[k])/as;
+    if(so2.dispose) so2.dispose();
+    if(i===n-1) x=x0;
+    else {
+      const [at,st]=al(ts[i+1]), h=Math.log(at/st)-Math.log(as/ss);
+      const primer=!prev || (i===n-2 && n<15);          // primer ordre al principi (i al final, si són pocs)
+      const r=primer?0:hprev/h, c1=st/ss, c2=-at*(Math.exp(-h)-1), xn=new Float32Array(4*L);
+      for(let k=0;k<4*L;k++){
+        const Dk=primer ? x0[k] : (1+1/(2*r))*x0[k]-(1/(2*r))*prev[k];
+        xn[k]=c1*x[k]+c2*Dk;
+      }
+      prev=x0; hprev=h; x=xn;
+    }
+    if(D.cadaPas) await D.cadaPas(i+1,n,(performance.now()-t0)/1000);
+    await new Promise(ok=>setTimeout(ok,0));
+  }
+  for(let k=0;k<4*L;k++) x[k]/=SD_ESC;
+  const rd=await m.dec.run({[m.dec.inputNames[0]]: new ort.Tensor('float32',x,[1,4,64,64])});
+  const so3=rd[m.dec.outputNames[0]], y=so3.data, o=new Float32Array(3*P);
+  for(let k=0;k<3*P;k++) o[k]=Math.min(255,Math.max(0,(y[k]+1)*127.5));
+  if(so3.dispose) so3.dispose();
   return o;
 }
 
@@ -4208,6 +4366,7 @@ async function treuPerTrossos(src, sessio, cadaTros){
     if(hi) trossos.push({x0,y0,ix0,ix1,iy0,iy1});
   }
   if(!trossos.length) return null;
+  IA.treu.sd.trossos=trossos.length;
   const feina=mkCanvas(W,H), fx=feina.getContext('2d',{willReadFrequently:true});
   fx.drawImage(src,0,0);
   const ent=mkCanvas(N,N), ex=ent.getContext('2d',{willReadFrequently:true});
@@ -4215,6 +4374,7 @@ async function treuPerTrossos(src, sessio, cadaTros){
   const P=N*N;
   let n=0;
   for(const t of trossos){
+    IA.treu.sd.tros=n+1;
     ex.clearRect(0,0,N,N);
     ex.drawImage(feina,t.x0,t.y0,tw,th,0,0,N,N);
     const d=ex.getImageData(0,0,N,N).data, ft=new Uint8Array(P);
@@ -4337,11 +4497,28 @@ async function fesTreu(){
     const sessio=await preparaSessioTreu(progres);
     if(IA.atura) throw new Error('aturat');
     const ambRatllades=S.mascara.some(m=>m.ras && !m.obj);
-    vel('Esborrant…',1,(sessio.lama?'Amb LaMa, ':'Amb MI-GAN, ')+(IA.treu.motorReal==='gpu'?'amb la gràfica.':'amb el processador: pot trigar uns segons.'));
+    const D=IA.treu.sd;
+    vel(sessio.sd?'Reconstruint…':'Esborrant…',sessio.sd?0:1,(sessio.sd?'Amb Stable Diffusion, ':sessio.lama?'Amb LaMa, ':'Amb MI-GAN, ')+(IA.treu.motorReal==='gpu'?'amb la gràfica.':'amb el processador: pot trigar uns segons.'));
+    if(sessio.sd){
+      // Stable Diffusion fa molts passos per tros: la barra va pas a pas, diu
+      // quant queda i, si serà més de 3 minuts, pregunta (com quan s'amplia)
+      D.trossos=1; D.tros=1;
+      let fets=0, segons=0, preguntat=false;
+      D.cadaPas=async(i,n,seg)=>{
+        fets++; if(fets>1) segons+=seg;     // el primer porta la preparació
+        const total=n*D.trossos, queda=fets>1 ? segons/(fets-1)*(total-fets+1) : 0;
+        vel('Reconstruint…', fets/total, 'Pas '+i+' de '+n+(D.trossos>1?' · tros '+D.tros+' de '+D.trossos:'')+(fets>1?' · queden uns '+minuts(queda):''));
+        document.title=round(fets/total*100)+'% · Reconstruint · '+TITOL;
+        if(fets>=2 && !preguntat && queda>IA.LLARG){
+          preguntat=true;
+          if(!(await preguntaTemps(queda,'Stable Diffusion fa molta feina: amb una gràfica bona va moltes vegades més de pressa. Amb menys passos (a les opcions) també va més de pressa, però queda menys acurat; i si no cal inventar res, LaMa ho fa en uns segons.'))) IA.atura=true;
+        }
+      };
+    }
     const nova=ambRatllades
       ? await treuPerTrossos(baseCanvas, sessio, (n,t)=>{
           if(IA.atura) throw new Error('aturat');
-          vel('Esborrant les ratllades…', n/t, 'Tros '+n+' de '+t);
+          if(!sessio.sd) vel('Esborrant les ratllades…', n/t, 'Tros '+n+' de '+t);
         })
       : await treuAmbIA(baseCanvas, sessio);
     if(IA.atura) throw new Error('aturat');
@@ -4351,15 +4528,20 @@ async function fesTreu(){
     // mateixa) i desfer torna a la d'abans.
     S.src=nova; S.rot=0; S.flipH=false; S.flipV=false; S.crop=null;
     buildBase(); scheduleRender();
-    push((ambRatllades ? 'Esborra les ratllades (IA)' : 'Esborra amb IA')+(sessio.lama?' · LaMa':''));
+    push((ambRatllades ? 'Esborra les ratllades (IA)' : 'Esborra amb IA')+(sessio.sd?' · Stable Diffusion':sessio.lama?' · LaMa':''));
     const temps=minuts((performance.now()-t0)/1000);
-    IA.treu.ultim={ temps, motor:IA.treu.motorReal };
-    say('Esborrat en '+temps+'. Si no t\'agrada, desfés-ho; si en queda un tros, torna-hi.');
+    IA.treu.ultim={ temps, motor:IA.treu.motorReal, sd:!!sessio.sd };
+    if(sessio.sd){
+      D.llavor++;            // la pròxima vegada, una altra
+      say('Reconstruït en '+temps+'. Cada vegada en surt una de diferent: si no t\'agrada, desfés-ho i torna-hi.');
+    } else say('Esborrat en '+temps+'. Si no t\'agrada, desfés-ho; si en queda un tros, torna-hi.');
   }catch(e){
     const msg=IA.ultimError=String(e&&e.message||e);
     if(msg==='aturat') say('Aturat. La foto és com era.');
     else { say('No s\'ha pogut esborrar: '+msg+'.'); console.warn('Esborra:',e); }
   }finally{
+    IA.treu.sd.cadaPas=null;
+    if(/Reconstruint/.test(document.title)) document.title=TITOL;
     IA.treballant=false; IA.atura=false;
     try{ if(bloqueigPantalla) await bloqueigPantalla.release(); }catch(e){}
     bloqueigPantalla=null;
@@ -4451,6 +4633,9 @@ function construeixIA(){
   // esborrar coses: es pinta a la foto, amb la vareta
   const ce=$('#iaCos-esborra');
   ce.appendChild(el('div','tiny','Una persona del fons, un cable, una taca: la toques (amb «✦ Toca l\'objecte» la IA en troba el contorn) o la pintes de vermell amb el dit, prems «Esborra-ho» i la IA hi posa el que hi hauria al darrere. Amb el mode Ordinador fa servir una IA més grossa (LaMa, 99 MB), que omple molt millor els forats grossos.'));
+  // al mode Ordinador, també Stable Diffusion, que reconstrueix en lloc d'omplir
+  ce.appendChild(chipsQuinTreu('iaQuin'));
+  const qi=el('div','tiny'); qi.id='iaQuinInfo'; ce.appendChild(qi);
   // el més fàcil, al mòbil: tocar l'objecte i que la IA en trobi el contorn
   const et=el('button','btn primary','✦ Toca el que vols treure'); et.type='button'; et.id='iaVesToca';
   et.style.cssText='width:100%;justify-content:center;height:36px;margin-top:8px';
@@ -4533,6 +4718,7 @@ const BAIXABLES=()=>[
   ['Soroll i gra',[IA.nitida.fitxer],IA.nitida.mb],
   ['Esborra coses · Mòbil',[IA.treu.fitxer],IA.treu.mb],
   ['Esborra coses · Ordinador',IA.treu.lama.parts,IA.treu.lama.mb],
+  ['Esborra coses · Stable Diffusion',fitxersSD(),IA.treu.sd.mb],
   ['Toca l\'objecte',[IA.sam.mira,IA.sam.toca],IA.sam.mb],
   ['Cares · trobar-les',[IA.cares.troba],IA.cares.mbTroba],
   ['Cares · CodeFormer',IA.cares.models.codeformer.parts,IA.cares.models.codeformer.mb],
@@ -4654,7 +4840,8 @@ function estatAntiga(){
   if(IA.motor && !hi(IA.motors[IA.motor].wasm) && IA.carregat!==IA.motor) falta+=IA.motors[IA.motor].mb;
   if(P.ratllades){
     if(!hi(IA.ratllades.fitxer)) falta+=IA.ratllades.mb;
-    if(IA.mode==='ordinador'){ if(!IA.treu.lama.parts.every(hi)) falta+=IA.treu.lama.mb; }
+    if(usaSD()){ if(!fitxersSD().every(hi)) falta+=IA.treu.sd.mb; }       // esborra amb el que hi ha triat
+    else if(IA.mode==='ordinador'){ if(!IA.treu.lama.parts.every(hi)) falta+=IA.treu.lama.mb; }
     else if(!hi(IA.treu.fitxer)) falta+=IA.treu.mb;
   }
   if(P.soroll && !hi(IA.nitida.fitxer)) falta+=IA.nitida.mb;
@@ -4662,6 +4849,7 @@ function estatAntiga(){
   if(P.color && !IA.color.parts.every(hi)) falta+=IA.color.mb;
   let t=falta ? 'La primera vegada es baixen '+mb(falta)+'. ' : '';
   t+='Pot trigar uns quants minuts: deixa la pàgina oberta.';
+  if(P.ratllades && usaSD()) t+=' Les ratllades s\'esborren amb Stable Diffusion, que és el que hi ha triat a «Esborra coses»: va molt més a poc a poc.';
   if(P.color) t+=' Els colors se\'ls inventa la IA.';
   info.textContent=t;
   const r=$('#antigaRes');
@@ -4675,6 +4863,11 @@ function estatAntiga(){
 async function corrPassos(passos){
   const t0=performance.now(), eina=S.tool, N=IA.nitida, queAbans=N.que, fFac=IA.factor, fTriat=IA.factorTriat;
   const fets=[], res=[]; let aturat=false;
+  // «Arregla-la» no fa servir mai Stable Diffusion: s'inventa el que hi falta,
+  // és molt lent i fa 900 MB, i el que fa «Arregla-la» ha de ser segur. A
+  // «Tria tu els passos», en canvi, esborra amb el que hi hagi triat.
+  const quinAbans=IA.treu.quin;
+  if(IA.auto) IA.treu.quin='normal';
   IA.cadena={ i:0, n:passos.length, salta:false };
   try{
     for(const k of passos){
@@ -4714,7 +4907,7 @@ async function corrPassos(passos){
       else res.push([k,'res',IA.notaPas]);
     }
   }finally{
-    IA.cadena=null; N.que=queAbans; IA.factor=fFac; IA.factorTriat=fTriat; IA.notaPas=null; amagaVel();
+    IA.cadena=null; N.que=queAbans; IA.factor=fFac; IA.factorTriat=fTriat; IA.notaPas=null; IA.treu.quin=quinAbans; amagaVel();
     $('#velPregunta').hidden=true; $('#velAtura').hidden=false;
     if(hiHaVermell()) netejaVermell();
     if(S.tool==='treu' && eina!=='treu') setTool(eina);
